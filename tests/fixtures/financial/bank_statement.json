@@ -1,0 +1,141 @@
+{
+  "document": "bank_statement.txt",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_fixtures.py",
+  "seed": 42,
+  "entities": [
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 0,
+      "end": 25,
+      "text": "Hickman Ltd National Bank",
+      "context": "Hickman Ltd National Bank\nMONTHLY ACCOUNT STA"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 69,
+      "end": 81,
+      "text": "Sherri Baker",
+      "context": "NT\n\nAccount Holder: Sherri Baker\nMailing Address: 14"
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 99,
+      "end": 138,
+      "text": "148 Eric Track, New Stephanie, NC 00575",
+      "context": "er\nMailing Address: 148 Eric Track, New Stephanie, NC 00575\nAccount Number: TKP"
+    },
+    {
+      "entity_type": "US_BANK_NUMBER",
+      "start": 155,
+      "end": 173,
+      "text": "TKPA15430391171822",
+      "context": "575\nAccount Number: TKPA15430391171822\nRouting Number: 117"
+    },
+    {
+      "entity_type": "US_BANK_NUMBER",
+      "start": 190,
+      "end": 199,
+      "text": "117824894",
+      "context": "822\nRouting Number: 117824894\nStatement Period: 0"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 218,
+      "end": 228,
+      "text": "04/01/2026",
+      "context": "4\nStatement Period: 04/01/2026 - 04/09/2026\n\nBegin"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 231,
+      "end": 241,
+      "text": "04/09/2026",
+      "context": "eriod: 04/01/2026 - 04/09/2026\n\nBeginning Balance:"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 507,
+      "end": 517,
+      "text": "04/02/2026",
+      "context": "-------------------\n04/02/2026    Harris, Collins "
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 521,
+      "end": 547,
+      "text": "Harris, Collins and Carney",
+      "context": "-----\n04/02/2026    Harris, Collins and Carney          -$  947.80"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 580,
+      "end": 590,
+      "text": "04/05/2026",
+      "context": " 947.80  $35,048.72\n04/05/2026    Brooks, Lam and "
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 594,
+      "end": 615,
+      "text": "Brooks, Lam and Hayes",
+      "context": "48.72\n04/05/2026    Brooks, Lam and Hayes               -$  1"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 653,
+      "end": 663,
+      "text": "04/05/2026",
+      "context": " 138.42  $34,910.30\n04/05/2026    Walker LLC      "
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 667,
+      "end": 677,
+      "text": "Walker LLC",
+      "context": "10.30\n04/05/2026    Walker LLC                    "
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 726,
+      "end": 736,
+      "text": "04/06/2026",
+      "context": " 300.65  $34,609.65\n04/06/2026    Chapman and Sons"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 740,
+      "end": 756,
+      "text": "Chapman and Sons",
+      "context": "09.65\n04/06/2026    Chapman and Sons                    "
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 799,
+      "end": 809,
+      "text": "04/08/2026",
+      "context": " 984.35  $35,594.00\n04/08/2026    Robinson, Jones "
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 813,
+      "end": 838,
+      "text": "Robinson, Jones and Welch",
+      "context": "94.00\n04/08/2026    Robinson, Jones and Welch           +$1,998.2"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 1020,
+      "end": 1045,
+      "text": "Hickman Ltd National Bank",
+      "context": "unt, please contact Hickman Ltd National Bank customer service at"
+    }
+  ],
+  "expected_counts": {
+    "DATE_TIME": 7,
+    "LOCATION": 1,
+    "ORGANIZATION": 7,
+    "PERSON": 1,
+    "US_BANK_NUMBER": 2
+  }
+}

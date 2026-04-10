@@ -1,0 +1,120 @@
+{
+  "document": "nda_contract.txt",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_fixtures.py",
+  "seed": 42,
+  "entities": [
+    {
+      "entity_type": "DATE_TIME",
+      "start": 96,
+      "end": 113,
+      "text": "December 22, 2025",
+      "context": " entered into as of December 22, 2025 (the \"Effective Dat"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 163,
+      "end": 175,
+      "text": "Allison Hill",
+      "context": " between:\n\nParty A: Allison Hill, acting on behalf o"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 197,
+      "end": 226,
+      "text": "Miller, Henderson and Johnson",
+      "context": "acting on behalf of Miller, Henderson and Johnson, with principal off"
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 262,
+      "end": 311,
+      "text": "863 Lawrence Valleys, Port Lindachester, MA 36922",
+      "context": " offices located at 863 Lawrence Valleys, Port Lindachester, MA 36922, reachable at kendr"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "start": 326,
+      "end": 352,
+      "text": "kendragalloway@example.org",
+      "context": "36922, reachable at kendragalloway@example.org;\n\nParty B: Noah Rho"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 364,
+      "end": 375,
+      "text": "Noah Rhodes",
+      "context": "mple.org;\n\nParty B: Noah Rhodes, acting on behalf o"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 397,
+      "end": 405,
+      "text": "Hall PLC",
+      "context": "acting on behalf of Hall PLC, with principal off"
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 441,
+      "end": 494,
+      "text": "16155 Roman Stream Suite 816, New Kellystad, OK 25704",
+      "context": " offices located at 16155 Roman Stream Suite 816, New Kellystad, OK 25704, reachable at james"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "start": 509,
+      "end": 531,
+      "text": "jamesshawn@example.com",
+      "context": "25704, reachable at jamesshawn@example.com.\n\nWHEREAS, the part"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 1750,
+      "end": 1762,
+      "text": "May 13, 2027",
+      "context": "ain in effect until May 13, 2027, unless earlier ter"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 2111,
+      "end": 2123,
+      "text": "Allison Hill",
+      "context": "___________________\nAllison Hill\nAuthorized Represen"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 2151,
+      "end": 2180,
+      "text": "Miller, Henderson and Johnson",
+      "context": "zed Representative, Miller, Henderson and Johnson\n\n__________________"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 2208,
+      "end": 2219,
+      "text": "Noah Rhodes",
+      "context": "___________________\nNoah Rhodes\nAuthorized Represen"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 2247,
+      "end": 2255,
+      "text": "Hall PLC",
+      "context": "zed Representative, Hall PLC\n\nWitness: Henry San"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 2266,
+      "end": 2280,
+      "text": "Henry Santiago",
+      "context": " Hall PLC\n\nWitness: Henry Santiago\n"
+    }
+  ],
+  "expected_counts": {
+    "DATE_TIME": 2,
+    "EMAIL_ADDRESS": 2,
+    "LOCATION": 2,
+    "ORGANIZATION": 4,
+    "PERSON": 5
+  }
+}

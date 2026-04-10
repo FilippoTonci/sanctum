@@ -1,0 +1,104 @@
+{
+  "document": "internal_memo.txt",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_fixtures.py",
+  "seed": 42,
+  "entities": [
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 0,
+      "end": 11,
+      "text": "White-Green",
+      "context": "White-Green\nINTERNAL MEMORANDUM"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 50,
+      "end": 62,
+      "text": "Cameron Dean",
+      "context": "M\nCONFIDENTIAL\n\nTO: Cameron Dean, Director of Operat"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 91,
+      "end": 104,
+      "text": "James Elliott",
+      "context": "r of Operations\n    James Elliott, Head of Product De"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 138,
+      "end": 151,
+      "text": "Marvin Taylor",
+      "context": "uct Development\n    Marvin Taylor, Chief Financial Of"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 183,
+      "end": 198,
+      "text": "Jennifer Martin",
+      "context": "ncial Officer\nFROM: Jennifer Martin, Chief Executive Of"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 230,
+      "end": 244,
+      "text": "March 31, 2026",
+      "context": "utive Officer\nDATE: March 31, 2026\nRE: Q2 Strategic Pl"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 491,
+      "end": 503,
+      "text": "Cameron Dean",
+      "context": "ations team, led by Cameron Dean, will focus on stre"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 707,
+      "end": 720,
+      "text": "James Elliott",
+      "context": " Development, under James Elliott's leadership, shoul"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 856,
+      "end": 869,
+      "text": "Marvin Taylor",
+      "context": "by end of week.\n\n3. Marvin Taylor will prepare a deta"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 1045,
+      "end": 1059,
+      "text": "April 18, 2026",
+      "context": "llow-up meeting for April 18, 2026 to review progress."
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 1080,
+      "end": 1092,
+      "text": "Cameron Dean",
+      "context": "to review progress. Cameron Dean, please reserve Con"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 1235,
+      "end": 1250,
+      "text": "Jennifer Martin",
+      "context": "t. 8235.\n\nRegards,\n\nJennifer Martin\nChief Executive Off"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 1275,
+      "end": 1286,
+      "text": "White-Green",
+      "context": "f Executive Officer\nWhite-Green\n"
+    }
+  ],
+  "expected_counts": {
+    "DATE_TIME": 2,
+    "ORGANIZATION": 2,
+    "PERSON": 9
+  }
+}

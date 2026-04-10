@@ -1,0 +1,121 @@
+{
+  "document": "engagement_letter.txt",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_fixtures.py",
+  "seed": 42,
+  "entities": [
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 0,
+      "end": 14,
+      "text": "Gray-Mayo, LLP",
+      "context": "Gray-Mayo, LLP\n503 Linda Locks, Ca"
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 15,
+      "end": 51,
+      "text": "503 Linda Locks, Carlshire, FM 94599",
+      "context": "Gray-Mayo, LLP\n503 Linda Locks, Carlshire, FM 94599\nTel: 801-922-6916\n\n"
+    },
+    {
+      "entity_type": "PHONE_NUMBER",
+      "start": 57,
+      "end": 69,
+      "text": "801-922-6916",
+      "context": "hire, FM 94599\nTel: 801-922-6916\n\nApril 09, 2026\n\nKi"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 71,
+      "end": 85,
+      "text": "April 09, 2026",
+      "context": "\nTel: 801-922-6916\n\nApril 09, 2026\n\nKimberly Sanchez\n7"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 87,
+      "end": 103,
+      "text": "Kimberly Sanchez",
+      "context": "16\n\nApril 09, 2026\n\nKimberly Sanchez\n7242 Julie Plain Su"
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 104,
+      "end": 149,
+      "text": "7242 Julie Plain Suite 969, Coxberg, NY 65187",
+      "context": "6\n\nKimberly Sanchez\n7242 Julie Plain Suite 969, Coxberg, NY 65187\n\nDear Kimberly Sanc"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 156,
+      "end": 172,
+      "text": "Kimberly Sanchez",
+      "context": "erg, NY 65187\n\nDear Kimberly Sanchez,\n\nThank you for sel"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 199,
+      "end": 213,
+      "text": "Gray-Mayo, LLP",
+      "context": "k you for selecting Gray-Mayo, LLP to represent you in"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 625,
+      "end": 638,
+      "text": "Melinda Jones",
+      "context": "TORNEY RESPONSIBLE: Melinda Jones will be the primary"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 704,
+      "end": 717,
+      "text": "Melinda Jones",
+      "context": "tter. You may reach Melinda Jones directly at tasha01"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "start": 730,
+      "end": 749,
+      "text": "tasha01@example.net",
+      "context": "a Jones directly at tasha01@example.net.\n\nFEES AND BILLING:"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "start": 1104,
+      "end": 1123,
+      "text": "kayla51@example.com",
+      "context": "l correspondence to kayla51@example.com or to our office ad"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 1264,
+      "end": 1277,
+      "text": "Melinda Jones",
+      "context": "terms.\n\nSincerely,\n\nMelinda Jones\nPartner, Gray-Mayo,"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 1287,
+      "end": 1301,
+      "text": "Gray-Mayo, LLP",
+      "context": "inda Jones\nPartner, Gray-Mayo, LLP\n\nACCEPTED AND AGREE"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 1351,
+      "end": 1367,
+      "text": "Kimberly Sanchez",
+      "context": "___________________\nKimberly Sanchez\nDate: _____________"
+    }
+  ],
+  "expected_counts": {
+    "DATE_TIME": 1,
+    "EMAIL_ADDRESS": 2,
+    "LOCATION": 2,
+    "ORGANIZATION": 3,
+    "PERSON": 6,
+    "PHONE_NUMBER": 1
+  }
+}

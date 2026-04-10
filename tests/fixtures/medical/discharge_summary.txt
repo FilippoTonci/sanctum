@@ -1,0 +1,34 @@
+Jones and Sons Medical Center
+DISCHARGE SUMMARY
+
+PATIENT INFORMATION
+Name: James Powers
+Date of Birth: 01/27/1962
+Social Security Number: 324-97-1189
+Medical Record Number: MRN-313487
+Address: 54278 Carr Valley, Lake Lisaport, TN 14078
+Phone: (541)718-2449
+
+ATTENDING PHYSICIAN: Dr. Marc Hart
+
+ADMISSION DATE: 03/22/2026
+DISCHARGE DATE: 04/04/2026
+
+CHIEF COMPLAINT: Patient presented with acute chest pain radiating to the left arm, accompanied by shortness of breath and diaphoresis.
+
+HISTORY OF PRESENT ILLNESS: James Powers is a 66-year-old male who presented to the emergency department with substernal chest pain that began approximately three hours prior to arrival. The pain was described as pressure-like, rated 8/10 in severity, and associated with nausea and lightheadedness. The patient has a history of hypertension, hyperlipidemia, and type 2 diabetes mellitus.
+
+HOSPITAL COURSE: The patient was admitted to the cardiac care unit. Initial troponin levels were elevated. Cardiac catheterization revealed a 90% occlusion of the left anterior descending artery. Percutaneous coronary intervention was performed with placement of a drug-eluting stent. The patient tolerated the procedure well and was monitored for 48 hours without complications.
+
+DISCHARGE MEDICATIONS:
+1. Aspirin 81 mg daily
+2. Clopidogrel 75 mg daily
+3. Atorvastatin 40 mg daily
+4. Metoprolol 25 mg twice daily
+5. Lisinopril 10 mg daily
+
+FOLLOW-UP: Patient to follow up with Dr. Marc Hart in two weeks. Cardiac rehabilitation referral has been placed.
+
+Electronically signed by:
+Dr. Marc Hart
+Jones and Sons Medical Center

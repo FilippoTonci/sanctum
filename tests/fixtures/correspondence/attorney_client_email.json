@@ -1,0 +1,127 @@
+{
+  "document": "attorney_client_email.txt",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_fixtures.py",
+  "seed": 42,
+  "entities": [
+    {
+      "entity_type": "PERSON",
+      "start": 6,
+      "end": 18,
+      "text": "Denise Jones",
+      "context": "From: Denise Jones <amy60@example.org>"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "start": 20,
+      "end": 37,
+      "text": "amy60@example.org",
+      "context": "From: Denise Jones <amy60@example.org>\nTo: Devon Flores <"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 43,
+      "end": 55,
+      "text": "Devon Flores",
+      "context": "60@example.org>\nTo: Devon Flores <xprice@example.net"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "start": 57,
+      "end": 75,
+      "text": "xprice@example.net",
+      "context": ">\nTo: Devon Flores <xprice@example.net>\nDate: April 06, 20"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 83,
+      "end": 97,
+      "text": "April 06, 2026",
+      "context": "@example.net>\nDate: April 06, 2026\nSubject: Update on "
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 141,
+      "end": 153,
+      "text": "Devon Flores",
+      "context": " No. 2021-CV-5471 - Devon Flores v. Brenda Hall\n\nPRI"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 157,
+      "end": 168,
+      "text": "Brenda Hall",
+      "context": "1 - Devon Flores v. Brenda Hall\n\nPRIVILEGED AND CON"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 234,
+      "end": 246,
+      "text": "Devon Flores",
+      "context": "COMMUNICATION\n\nDear Devon Flores,\n\nI am writing to u"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 447,
+      "end": 458,
+      "text": "Brenda Hall",
+      "context": "ocument requests on Brenda Hall's counsel. Response"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 547,
+      "end": 558,
+      "text": "Brenda Hall",
+      "context": "led a deposition of Brenda Hall for April 17, 2026."
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 563,
+      "end": 577,
+      "text": "April 17, 2026",
+      "context": " of Brenda Hall for April 17, 2026.\n\n2. MOTION PRACTIC"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 656,
+      "end": 668,
+      "text": "May 30, 2026",
+      "context": "otion to compel for May 30, 2026. I am optimistic ab"
+    },
+    {
+      "entity_type": "PHONE_NUMBER",
+      "start": 1078,
+      "end": 1098,
+      "text": "001-509-967-0546x688",
+      "context": "You can reach me at 001-509-967-0546x688 or amy60@example.or"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "start": 1102,
+      "end": 1119,
+      "text": "amy60@example.org",
+      "context": "509-967-0546x688 or amy60@example.org.\n\nBest regards,\n\nDe"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 1137,
+      "end": 1149,
+      "text": "Denise Jones",
+      "context": "rg.\n\nBest regards,\n\nDenise Jones\nHernandez, Lewis an"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 1150,
+      "end": 1189,
+      "text": "Hernandez, Lewis and Perry & Associates",
+      "context": "ards,\n\nDenise Jones\nHernandez, Lewis and Perry & Associates\n"
+    }
+  ],
+  "expected_counts": {
+    "DATE_TIME": 3,
+    "EMAIL_ADDRESS": 3,
+    "ORGANIZATION": 1,
+    "PERSON": 8,
+    "PHONE_NUMBER": 1
+  }
+}

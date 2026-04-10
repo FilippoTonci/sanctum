@@ -1,0 +1,101 @@
+{
+  "document": "resume.txt",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_fixtures.py",
+  "seed": 42,
+  "entities": [
+    {
+      "entity_type": "PERSON",
+      "start": 0,
+      "end": 12,
+      "text": "Victor Baker",
+      "context": "Victor Baker\n514 Estrada Islands"
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 13,
+      "end": 69,
+      "text": "514 Estrada Islands Suite 482, South Elizabeth, MS 89278",
+      "context": "Victor Baker\n514 Estrada Islands Suite 482, South Elizabeth, MS 89278\ncarlsonmichael@exam"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "start": 70,
+      "end": 96,
+      "text": "carlsonmichael@example.com",
+      "context": "Elizabeth, MS 89278\ncarlsonmichael@example.com | (798)816-9340x608"
+    },
+    {
+      "entity_type": "PHONE_NUMBER",
+      "start": 99,
+      "end": 118,
+      "text": "(798)816-9340x60883",
+      "context": "chael@example.com | (798)816-9340x60883 | linkedin.com/in/v"
+    },
+    {
+      "entity_type": "URL",
+      "start": 121,
+      "end": 149,
+      "text": "linkedin.com/in/victor-baker",
+      "context": "98)816-9340x60883 | linkedin.com/in/victor-baker\n\nPROFESSIONAL SUMMA"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 513,
+      "end": 535,
+      "text": "Bass, Torres and Clark",
+      "context": "r Software Engineer\nBass, Torres and Clark | January 2025 - Pr"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 538,
+      "end": 550,
+      "text": "January 2025",
+      "context": " Torres and Clark | January 2025 - Present\n- Archite"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 869,
+      "end": 892,
+      "text": "Orr, Gilbert and Turner",
+      "context": "\n\nSoftware Engineer\nOrr, Gilbert and Turner | December 2020 - A"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 895,
+      "end": 908,
+      "text": "December 2020",
+      "context": "ilbert and Turner | December 2020 - April 2023\n- Deve"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 911,
+      "end": 921,
+      "text": "April 2023",
+      "context": "r | December 2020 - April 2023\n- Developed real-ti"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 1264,
+      "end": 1299,
+      "text": "Lawson, Morris and Ramos University",
+      "context": "in Computer Science\nLawson, Morris and Ramos University | Graduated March 2"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 1312,
+      "end": 1322,
+      "text": "March 2018",
+      "context": "versity | Graduated March 2018\nDean's List, GPA: 3"
+    }
+  ],
+  "expected_counts": {
+    "DATE_TIME": 4,
+    "EMAIL_ADDRESS": 1,
+    "LOCATION": 1,
+    "ORGANIZATION": 3,
+    "PERSON": 1,
+    "PHONE_NUMBER": 1,
+    "URL": 1
+  }
+}

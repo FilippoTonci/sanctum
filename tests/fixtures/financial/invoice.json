@@ -1,0 +1,101 @@
+{
+  "document": "invoice.txt",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_fixtures.py",
+  "seed": 42,
+  "entities": [
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 15,
+      "end": 30,
+      "text": "Jenkins-Shields",
+      "context": "INVOICE\n\nFrom:\nJenkins-Shields\nAttn: Matthew Lucas"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 37,
+      "end": 50,
+      "text": "Matthew Lucas",
+      "context": "nkins-Shields\nAttn: Matthew Lucas\n33387 Robert Harbor"
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 51,
+      "end": 109,
+      "text": "33387 Robert Harbors Suite 317, North Deniseside, MP 02435",
+      "context": "Attn: Matthew Lucas\n33387 Robert Harbors Suite 317, North Deniseside, MP 02435\nPhone: 432-867-7360"
+    },
+    {
+      "entity_type": "PHONE_NUMBER",
+      "start": 117,
+      "end": 129,
+      "text": "432-867-7360",
+      "context": "de, MP 02435\nPhone: 432-867-7360\nEmail: gallowayjose"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "start": 137,
+      "end": 163,
+      "text": "gallowayjoseph@example.com",
+      "context": "432-867-7360\nEmail: gallowayjoseph@example.com\n\nTo:\nHenderson-Bern"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 169,
+      "end": 186,
+      "text": "Henderson-Bernard",
+      "context": "ph@example.com\n\nTo:\nHenderson-Bernard\nAttn: Kristi Higgin"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 193,
+      "end": 210,
+      "text": "Kristi Higgins MD",
+      "context": "erson-Bernard\nAttn: Kristi Higgins MD\n805 Brendan Neck, N"
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 211,
+      "end": 250,
+      "text": "805 Brendan Neck, North Susan, CO 24857",
+      "context": ": Kristi Higgins MD\n805 Brendan Neck, North Susan, CO 24857\n\nInvoice Number: IN"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 292,
+      "end": 306,
+      "text": "March 28, 2026",
+      "context": "18981\nInvoice Date: March 28, 2026\nDue Date: May 15, 2"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 317,
+      "end": 329,
+      "text": "May 15, 2026",
+      "context": " 28, 2026\nDue Date: May 15, 2026\n\nITEMS\n------------"
+    },
+    {
+      "entity_type": "IBAN_CODE",
+      "start": 912,
+      "end": 934,
+      "text": "GB37HMDS39909169985435",
+      "context": "Business Bank\nIBAN: GB37HMDS39909169985435\n\nPayment is due by "
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 954,
+      "end": 966,
+      "text": "May 15, 2026",
+      "context": "\n\nPayment is due by May 15, 2026. Late payments are "
+    }
+  ],
+  "expected_counts": {
+    "DATE_TIME": 3,
+    "EMAIL_ADDRESS": 1,
+    "IBAN_CODE": 1,
+    "LOCATION": 2,
+    "ORGANIZATION": 2,
+    "PERSON": 2,
+    "PHONE_NUMBER": 1
+  }
+}

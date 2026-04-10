@@ -1,0 +1,31 @@
+NON-DISCLOSURE AGREEMENT
+
+This Non-Disclosure Agreement (the "Agreement") is entered into as of December 22, 2025 (the "Effective Date") by and between:
+
+Party A: Allison Hill, acting on behalf of Miller, Henderson and Johnson, with principal offices located at 863 Lawrence Valleys, Port Lindachester, MA 36922, reachable at kendragalloway@example.org;
+
+Party B: Noah Rhodes, acting on behalf of Hall PLC, with principal offices located at 16155 Roman Stream Suite 816, New Kellystad, OK 25704, reachable at jamesshawn@example.com.
+
+WHEREAS, the parties wish to explore a potential business relationship and, in connection therewith, may disclose to each other certain confidential and proprietary information;
+
+NOW, THEREFORE, in consideration of the mutual covenants and agreements set forth herein, and for other good and valuable consideration, the receipt and sufficiency of which are hereby acknowledged, the parties agree as follows:
+
+1. DEFINITION OF CONFIDENTIAL INFORMATION. "Confidential Information" means any and all non-public, proprietary, or confidential information disclosed by either party to the other party, whether orally, in writing, electronically, or by any other means, including but not limited to: trade secrets, business plans, financial data, customer lists, technical specifications, software code, and marketing strategies.
+
+2. OBLIGATIONS. The receiving party shall: (a) hold the Confidential Information in strict confidence; (b) not disclose the Confidential Information to any third party without the prior written consent of the disclosing party; (c) use the Confidential Information solely for the purpose of evaluating the potential business relationship.
+
+3. TERM. This Agreement shall remain in effect until May 13, 2027, unless earlier terminated by either party upon thirty (30) days written notice to the other party.
+
+4. GOVERNING LAW. This Agreement shall be governed by and construed in accordance with the laws of the State of New York.
+
+IN WITNESS WHEREOF, the parties have executed this Agreement as of the date first written above.
+
+_________________________
+Allison Hill
+Authorized Representative, Miller, Henderson and Johnson
+
+_________________________
+Noah Rhodes
+Authorized Representative, Hall PLC
+
+Witness: Henry Santiago

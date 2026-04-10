@@ -1,0 +1,106 @@
+{
+  "document": "max_density_pii.txt",
+  "provenance": "hand_crafted",
+  "generator": "manual",
+  "seed": null,
+  "entities": [
+    {
+      "entity_type": "PERSON",
+      "start": 25,
+      "end": 46,
+      "text": "Jonathan R. Whitfield",
+      "context": "t intake record for Jonathan R. Whitfield, Social Security Nu"
+    },
+    {
+      "entity_type": "US_SSN",
+      "start": 71,
+      "end": 82,
+      "text": "583-29-4710",
+      "context": "ial Security Number 583-29-4710, born on March 15, "
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 92,
+      "end": 106,
+      "text": "March 15, 1987",
+      "context": "83-29-4710, born on March 15, 1987, residing at 4201 M"
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 120,
+      "end": 175,
+      "text": "4201 Maple Creek Drive, Apartment 12B, Austin, TX 78701",
+      "context": ", 1987, residing at 4201 Maple Creek Drive, Apartment 12B, Austin, TX 78701. Primary contact nu"
+    },
+    {
+      "entity_type": "PHONE_NUMBER",
+      "start": 203,
+      "end": 217,
+      "text": "(512) 555-0147",
+      "context": "y contact number is (512) 555-0147 and email address i"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "start": 239,
+      "end": 267,
+      "text": "j.whitfield@nexagen-corp.com",
+      "context": "nd email address is j.whitfield@nexagen-corp.com. Mr. Whitfield is e"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 298,
+      "end": 317,
+      "text": "NexaGen Corporation",
+      "context": "ield is employed by NexaGen Corporation as a senior financi"
+    },
+    {
+      "entity_type": "CREDIT_CARD",
+      "start": 391,
+      "end": 410,
+      "text": "4532-1234-5678-9012",
+      "context": "sed via credit card 4532-1234-5678-9012, expiration 09/27. "
+    },
+    {
+      "entity_type": "IBAN_CODE",
+      "start": 459,
+      "end": 481,
+      "text": "DE89370400440532013000",
+      "context": "transfers, use IBAN DE89370400440532013000. Driver's license n"
+    },
+    {
+      "entity_type": "US_DRIVER_LICENSE",
+      "start": 507,
+      "end": 518,
+      "text": "TX-84291053",
+      "context": "er's license number TX-84291053 on file. Client acc"
+    },
+    {
+      "entity_type": "IP_ADDRESS",
+      "start": 571,
+      "end": 585,
+      "text": "192.168.14.203",
+      "context": "tal from IP address 192.168.14.203. Full case document"
+    },
+    {
+      "entity_type": "URL",
+      "start": 627,
+      "end": 676,
+      "text": "https://portal.meridianlaw.com/cases/WH-2024-0891",
+      "context": "ion is available at https://portal.meridianlaw.com/cases/WH-2024-0891."
+    }
+  ],
+  "expected_counts": {
+    "CREDIT_CARD": 1,
+    "DATE_TIME": 1,
+    "EMAIL_ADDRESS": 1,
+    "IBAN_CODE": 1,
+    "IP_ADDRESS": 1,
+    "LOCATION": 1,
+    "ORGANIZATION": 1,
+    "PERSON": 1,
+    "PHONE_NUMBER": 1,
+    "URL": 1,
+    "US_DRIVER_LICENSE": 1,
+    "US_SSN": 1
+  }
+}

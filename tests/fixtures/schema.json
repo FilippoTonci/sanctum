@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sanctum Ground Truth Annotation",
+  "description": "Schema for PII ground-truth annotation files that accompany test fixture documents.",
+  "type": "object",
+  "required": ["document", "provenance", "entities", "expected_counts"],
+  "properties": {
+    "document": {
+      "type": "string",
+      "description": "Filename of the corresponding .txt document."
+    },
+    "provenance": {
+      "type": "string",
+      "enum": ["synthetic", "public_domain", "hand_crafted"],
+      "description": "How the document was sourced."
+    },
+    "generator": {
+      "type": ["string", "null"],
+      "description": "Script or method that produced this document."
+    },
+    "seed": {
+      "type": ["integer", "null"],
+      "description": "Random seed used for reproducibility (null if not applicable)."
+    },
+    "entities": {
+      "type": "array",
+      "description": "List of PII entity annotations with exact character offsets.",
+      "items": {
+        "type": "object",
+        "required": ["entity_type", "start", "end", "text"],
+        "properties": {
+          "entity_type": {
+            "type": "string",
+            "description": "Presidio entity type, e.g. PERSON, EMAIL_ADDRESS, US_SSN."
+          },
+          "start": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Start character offset (inclusive) in the .txt file."
+          },
+          "end": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "End character offset (exclusive) in the .txt file."
+          },
+          "text": {
+            "type": "string",
+            "description": "The literal PII text that appears at [start:end]."
+          },
+          "context": {
+            "type": "string",
+            "description": "Surrounding text snippet for human review."
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "expected_counts": {
+      "type": "object",
+      "description": "Mapping of entity_type to expected occurrence count.",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0
+      }
+    },
+    "_note": {
+      "type": "string",
+      "description": "Optional note for reviewers."
+    }
+  },
+  "additionalProperties": false
+}

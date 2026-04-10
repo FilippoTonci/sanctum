@@ -1,0 +1,113 @@
+{
+  "document": "referral_letter.txt",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_fixtures.py",
+  "seed": 42,
+  "entities": [
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 0,
+      "end": 25,
+      "text": "Walsh LLC Family Practice",
+      "context": "Walsh LLC Family Practice\n12805 Russell Canyo"
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 26,
+      "end": 68,
+      "text": "12805 Russell Canyon, Michaelton, MH 47399",
+      "context": "LLC Family Practice\n12805 Russell Canyon, Michaelton, MH 47399\nPhone: (902)756-342"
+    },
+    {
+      "entity_type": "PHONE_NUMBER",
+      "start": 76,
+      "end": 95,
+      "text": "(902)756-3421x60733",
+      "context": "on, MH 47399\nPhone: (902)756-3421x60733\n\nMarch 28, 2026\n\nDr"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 97,
+      "end": 111,
+      "text": "March 28, 2026",
+      "context": "902)756-3421x60733\n\nMarch 28, 2026\n\nDr. Sarah Davis\nFi"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 113,
+      "end": 128,
+      "text": "Dr. Sarah Davis",
+      "context": "33\n\nMarch 28, 2026\n\nDr. Sarah Davis\nFigueroa PLC Cardio"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 129,
+      "end": 163,
+      "text": "Figueroa PLC Cardiology Associates",
+      "context": "26\n\nDr. Sarah Davis\nFigueroa PLC Cardiology Associates\n158 Dickson Summit,"
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 164,
+      "end": 207,
+      "text": "158 Dickson Summit, East Michelle, AS 23707",
+      "context": "rdiology Associates\n158 Dickson Summit, East Michelle, AS 23707\nPhone: 733-203-6541"
+    },
+    {
+      "entity_type": "PHONE_NUMBER",
+      "start": 215,
+      "end": 232,
+      "text": "733-203-6541x4586",
+      "context": "le, AS 23707\nPhone: 733-203-6541x4586\n\nDear Dr. Sarah Dav"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 239,
+      "end": 254,
+      "text": "Dr. Sarah Davis",
+      "context": "203-6541x4586\n\nDear Dr. Sarah Davis,\n\nI am writing to r"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 291,
+      "end": 303,
+      "text": "Donald Smith",
+      "context": "o refer my patient, Donald Smith (Date of Birth: 01/"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 320,
+      "end": 330,
+      "text": "01/22/1995",
+      "context": "ith (Date of Birth: 01/22/1995), for cardiology ev"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 376,
+      "end": 388,
+      "text": "Donald Smith",
+      "context": "on and management.\n\nDonald Smith has been under my c"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 1236,
+      "end": 1255,
+      "text": "Dr. Deborah Freeman",
+      "context": "ation.\n\nSincerely,\n\nDr. Deborah Freeman\nWalsh LLC Family Pr"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 1256,
+      "end": 1281,
+      "text": "Walsh LLC Family Practice",
+      "context": "Dr. Deborah Freeman\nWalsh LLC Family Practice\n"
+    }
+  ],
+  "expected_counts": {
+    "DATE_TIME": 2,
+    "LOCATION": 2,
+    "ORGANIZATION": 3,
+    "PERSON": 5,
+    "PHONE_NUMBER": 2
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "document": "offer_letter.txt",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_fixtures.py",
+  "seed": 42,
+  "entities": [
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 0,
+      "end": 17,
+      "text": "Chambers and Sons",
+      "context": "Chambers and Sons\n03791 Perry Roads, "
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 18,
+      "end": 59,
+      "text": "03791 Perry Roads, Lake Heather, NM 52884",
+      "context": "Chambers and Sons\n03791 Perry Roads, Lake Heather, NM 52884\n\nApril 08, 2026\n\nMa"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 61,
+      "end": 75,
+      "text": "April 08, 2026",
+      "context": " Heather, NM 52884\n\nApril 08, 2026\n\nMary Campbell\n6328"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 77,
+      "end": 90,
+      "text": "Mary Campbell",
+      "context": "84\n\nApril 08, 2026\n\nMary Campbell\n63287 Angela Vista,"
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 91,
+      "end": 138,
+      "text": "63287 Angela Vista, South Dennismouth, TN 70117",
+      "context": "2026\n\nMary Campbell\n63287 Angela Vista, South Dennismouth, TN 70117\n\nDear Mary Campbell"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 145,
+      "end": 158,
+      "text": "Mary Campbell",
+      "context": "uth, TN 70117\n\nDear Mary Campbell,\n\nOn behalf of Cham"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 174,
+      "end": 191,
+      "text": "Chambers and Sons",
+      "context": "bell,\n\nOn behalf of Chambers and Sons, I am pleased to ex"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 466,
+      "end": 476,
+      "text": "Lisa Davis",
+      "context": "neering\nReports To: Lisa Davis, VP of Engineering\n"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 508,
+      "end": 520,
+      "text": "May 06, 2026",
+      "context": "neering\nStart Date: May 06, 2026\nAnnual Salary: $160"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "start": 995,
+      "end": 1013,
+      "text": "pgreen@example.net",
+      "context": " letter by email to pgreen@example.net or by calling +1-49"
+    },
+    {
+      "entity_type": "PHONE_NUMBER",
+      "start": 1028,
+      "end": 1043,
+      "text": "+1-495-979-8687",
+      "context": "e.net or by calling +1-495-979-8687.\n\nWe look forward t"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 1105,
+      "end": 1115,
+      "text": "Lisa Davis",
+      "context": " team.\n\nSincerely,\n\nLisa Davis\nVP of Engineering, "
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 1135,
+      "end": 1152,
+      "text": "Chambers and Sons",
+      "context": "\nVP of Engineering, Chambers and Sons\n\nACCEPTANCE:\n\n_____"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 1193,
+      "end": 1206,
+      "text": "Mary Campbell",
+      "context": "___________________\nMary Campbell\nDate: _____________"
+    }
+  ],
+  "expected_counts": {
+    "DATE_TIME": 2,
+    "EMAIL_ADDRESS": 1,
+    "LOCATION": 2,
+    "ORGANIZATION": 3,
+    "PERSON": 5,
+    "PHONE_NUMBER": 1
+  }
+}

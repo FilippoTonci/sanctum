@@ -1,0 +1,24 @@
+Hickman Ltd National Bank
+MONTHLY ACCOUNT STATEMENT
+
+Account Holder: Sherri Baker
+Mailing Address: 148 Eric Track, New Stephanie, NC 00575
+Account Number: TKPA15430391171822
+Routing Number: 117824894
+Statement Period: 04/01/2026 - 04/09/2026
+
+Beginning Balance: $35,996.52
+
+TRANSACTION HISTORY
+----------------------------------------------------------------------
+Date          Description                             Amount   Balance
+----------------------------------------------------------------------
+04/02/2026    Harris, Collins and Carney          -$  947.80  $35,048.72
+04/05/2026    Brooks, Lam and Hayes               -$  138.42  $34,910.30
+04/05/2026    Walker LLC                          -$  300.65  $34,609.65
+04/06/2026    Chapman and Sons                    +$  984.35  $35,594.00
+04/08/2026    Robinson, Jones and Welch           +$1,998.27  $37,592.27
+----------------------------------------------------------------------
+Ending Balance: $37,592.27
+
+For questions about your account, please contact Hickman Ltd National Bank customer service at 1-800-555-0199.

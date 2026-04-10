@@ -1,0 +1,107 @@
+{
+  "document": "discharge_summary.txt",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_fixtures.py",
+  "seed": 42,
+  "entities": [
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 0,
+      "end": 29,
+      "text": "Jones and Sons Medical Center",
+      "context": "Jones and Sons Medical Center\nDISCHARGE SUMMARY\n\n"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 75,
+      "end": 87,
+      "text": "James Powers",
+      "context": "T INFORMATION\nName: James Powers\nDate of Birth: 01/2"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 103,
+      "end": 113,
+      "text": "01/27/1962",
+      "context": "wers\nDate of Birth: 01/27/1962\nSocial Security Num"
+    },
+    {
+      "entity_type": "US_SSN",
+      "start": 138,
+      "end": 149,
+      "text": "324-97-1189",
+      "context": "al Security Number: 324-97-1189\nMedical Record Numb"
+    },
+    {
+      "entity_type": "LOCATION",
+      "start": 193,
+      "end": 235,
+      "text": "54278 Carr Valley, Lake Lisaport, TN 14078",
+      "context": "MRN-313487\nAddress: 54278 Carr Valley, Lake Lisaport, TN 14078\nPhone: (541)718-244"
+    },
+    {
+      "entity_type": "PHONE_NUMBER",
+      "start": 243,
+      "end": 256,
+      "text": "(541)718-2449",
+      "context": "rt, TN 14078\nPhone: (541)718-2449\n\nATTENDING PHYSICIA"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 279,
+      "end": 292,
+      "text": "Dr. Marc Hart",
+      "context": "TTENDING PHYSICIAN: Dr. Marc Hart\n\nADMISSION DATE: 03"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 310,
+      "end": 320,
+      "text": "03/22/2026",
+      "context": "rt\n\nADMISSION DATE: 03/22/2026\nDISCHARGE DATE: 04/"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "start": 337,
+      "end": 347,
+      "text": "04/04/2026",
+      "context": "026\nDISCHARGE DATE: 04/04/2026\n\nCHIEF COMPLAINT: P"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 514,
+      "end": 526,
+      "text": "James Powers",
+      "context": "OF PRESENT ILLNESS: James Powers is a 66-year-old ma"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 1454,
+      "end": 1467,
+      "text": "Dr. Marc Hart",
+      "context": "t to follow up with Dr. Marc Hart in two weeks. Cardi"
+    },
+    {
+      "entity_type": "PERSON",
+      "start": 1558,
+      "end": 1571,
+      "text": "Dr. Marc Hart",
+      "context": "onically signed by:\nDr. Marc Hart\nJones and Sons Medi"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "start": 1572,
+      "end": 1601,
+      "text": "Jones and Sons Medical Center",
+      "context": "d by:\nDr. Marc Hart\nJones and Sons Medical Center\n"
+    }
+  ],
+  "expected_counts": {
+    "DATE_TIME": 3,
+    "LOCATION": 1,
+    "ORGANIZATION": 2,
+    "PERSON": 5,
+    "PHONE_NUMBER": 1,
+    "US_SSN": 1
+  }
+}
