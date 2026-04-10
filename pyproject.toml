@@ -38,17 +38,18 @@ docs = [
 sanctum = "sanctum.cli.commands:cli"
 
 [tool.setuptools.packages.find]
-where = ["src"]
+include = ["sanctum*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "--import-mode=importlib"
 markers = [
     "evaluation: marks tests as evaluation scoring (deselect with '-m \"not evaluation\"')",
     "integration: marks tests as integration tests requiring real Presidio engines",
 ]
 
 [tool.ruff]
-src = ["src"]
+src = ["sanctum"]
 line-length = 100
 
 [tool.ruff.lint]

@@ -1,13 +1,17 @@
 <div align="center">
 
+<br/>
+
 <img src="https://img.shields.io/badge/version-0.1.0--alpha-blue?style=for-the-badge" alt="Version"/>
 <img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License"/>
-<img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey?style=for-the-badge" alt="Platform"/>
+<img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=for-the-badge" alt="Platform"/>
 <img src="https://img.shields.io/badge/python-3.10%2B-yellow?style=for-the-badge" alt="Python"/>
 <img src="https://img.shields.io/badge/built%20on-Microsoft%20Presidio-0078D4?style=for-the-badge&logo=microsoft" alt="Built on Presidio"/>
 <img src="https://img.shields.io/badge/status-In%20Development-orange?style=for-the-badge" alt="Status"/>
 
-# 🔐 Sanctum
+# Sanctum
+
+<img src="img/SanctumLogo.png" alt="Sanctum" width="280"/>
 
 ### *Local-First Document Anonymization for Professionals*
 
@@ -148,54 +152,61 @@ Sanctum explicitly labels which threshold has been met for every document proces
 
 ## 🚀 Getting Started
 
-> **Note:** Sanctum is currently in early development. The install process below reflects the planned release experience.
+> **Note:** Sanctum is currently in Phase 0 (foundation). The CLI is functional for text-based PII detection and anonymization. A packaged desktop app is planned for later phases.
 
 ### Prerequisites
 
-- Windows 10/11 or macOS 12+
-- Python 3.10+ *(developer install only — the packaged app bundles everything)*
+- Python 3.10+
+- Windows, macOS, or Linux
 
-### Option A — Packaged App *(planned)*
-
-> Download the latest release from the [Releases page](https://github.com/your-username/sanctum/releases).
-> Run the installer — no Python or CLI setup required.
-
-### Option B — Developer Install
+### Developer Install
 
 ```bash
 # Clone the repository
 git clone https://github.com/your-username/sanctum.git
 cd sanctum
 
-# Install Python dependencies
-pip install -r requirements.txt
+# Install in editable mode with dev dependencies
+pip install -e ".[dev]"
 
-# Download NLP models
+# Download the spaCy NLP model
 python -m spacy download en_core_web_sm
-
-# Launch the app
-python sanctum/app.py
 ```
 
-### Quick Usage (Python SDK)
+### CLI Usage
+
+```bash
+# Detect PII in text
+sanctum analyze "Call John Smith at 555-0123 about case #2024-CV-1234"
+
+# Anonymize with default operator (redact)
+sanctum anonymize "John Smith, SSN 123-45-6789"
+
+# Show current configuration
+sanctum config
+```
+
+### Python API
 
 ```python
-from sanctum import SanctumGateway
+from sanctum.core.engine import SanctumEngine
+from sanctum.analyzer.adapter import PresidioAnalyzer
+from sanctum.anonymizer.adapter import PresidioAnonymizer
 
-gateway = SanctumGateway(mode="hips", confidence_threshold=0.5)
+engine = SanctumEngine(
+    analyzer=PresidioAnalyzer(),
+    anonymizer=PresidioAnonymizer(),
+)
 
 text = "Please review the contract for John Smith at Acme Corp, reachable at john@acme.com."
 
-result = gateway.anonymize(text)
+# Detect PII
+detections = engine.analyze(text)
 
+# Detect and anonymize in one step
+result = engine.process(text)
 print(result.anonymized_text)
-# "Please review the contract for [Alex Doe] at [Redwood Partners], reachable at [contact@domain.com]."
-
-print(result.risk_score)
-# 0.08  →  Low residual identifiability
-
-print(result.trace)
-# [{'entity': 'PERSON', 'original': 'John Smith', 'method': 'HIPS', 'score': 0.97, 'context': 'contract'}]
+# "Please review the contract for <PERSON> at <ORGANIZATION>, reachable at <EMAIL_ADDRESS>."
 ```
 
 ---
@@ -217,41 +228,48 @@ Sanctum is designed to help professionals meet the requirements of:
 
 ## 🗺️ Roadmap
 
-### v0.1 — Foundation *(current)*
+### Phase 0 — Foundation ✅ *(complete)*
 - [x] Core Presidio integration (Analyzer + Anonymizer engines)
-- [x] spaCy NER backend
-- [ ] Basic CLI interface
-- [ ] Redact, Hash, and Pseudonymize operators
+- [x] Hexagonal architecture: core domain layer with Protocol-based ports
+- [x] spaCy NER backend with configurable model tiers
+- [x] Redact, Hash, HIPS (Faker), and Pseudonymize operators
+- [x] Configuration system (Pydantic Settings, env var support)
+- [x] CLI interface (`sanctum analyze`, `sanctum anonymize`, `sanctum config`)
+- [x] Plain text document adapter (reader + writer)
+- [x] Test infrastructure: unit, integration, and evaluation harness
+- [x] Evaluation corpus: 12 annotated synthetic fixtures across 6 domains
 
-### v0.2 — Desktop Service
-- [ ] Background service (localhost API)
-- [ ] HIPS surrogate replacement via Faker integration
-- [ ] Encrypted mapping store with master key
-- [ ] Confidence thresholding and risk scoring
+### Phase 1 — Document Processing & API
+- [ ] Document format adapters (`.docx`, `.xlsx`, `.pdf` text extraction)
+- [ ] Flask localhost API (background service for future GUI)
+- [ ] Encrypted mapping store (AES-256, local SQLite) for reversible pseudonymization
+- [ ] Custom legal-domain recognizers (case numbers, bar IDs, Bates numbers)
+- [ ] Transformer-based NER (Professional tier)
+- [ ] CI/CD pipeline + pre-commit hooks + linter enforcement
 
-### v0.3 — Native Desktop GUI
+### Phase 2 — Intelligence & Compliance
+- [ ] HIPAA entity recognizer mode (18 safe harbor identifiers)
+- [ ] Risk scoring — post-anonymization residual identifiability metric
+- [ ] Confidence thresholding with entity-specific policies
+- [ ] Audit trail and decision trace export (JSON/PDF)
+- [ ] Locale-specific recognizers (UK, EU, India)
+
+### Phase 3 — Desktop GUI & Packaging
 - [ ] Standalone desktop GUI (Electron or native wrapper around Python core)
 - [ ] Drag-and-drop document import (`.docx`, `.pdf`, `.xlsx`)
-- [ ] Selective redaction by entity type
-- [ ] Decision trace viewer panel
-- [ ] Packaged installer for Windows (`.exe`) and macOS (`.dmg`)
+- [ ] Selective redaction by entity type with human-in-the-loop review
+- [ ] `.pdf` burn-in redaction (structural removal, not just visual)
+- [ ] Packaged installers for Windows (`.exe`) and macOS (`.dmg`)
 
-### v0.4 — Store & Professional Release
-- [ ] `.pdf` burn-in redaction (structural removal)
+### Phase 4 — Store Release & GA
 - [ ] `.xlsx` cell-level anonymization
-- [ ] HIPAA entity recognizer mode
-- [ ] Locale-specific recognizers (UK, EU, India)
 - [ ] Tiered model selection in GUI (Standard / Professional)
+- [ ] Multi-language support
+- [ ] Differential privacy noise layer for structured exports
 - [ ] Submission to Microsoft Store and/or Mac App Store
 
-### v1.0 — GA
-- [ ] Transformer-based NER (Professional tier)
-- [ ] Differential privacy noise layer for structured exports
-- [ ] Audit log export (PDF) for ethics compliance documentation
-- [ ] Multi-language support
-
-### 🔮 Future Extensions *(post-v1.0)*
-- [ ] **Microsoft Word Ribbon Add-in** — optional integration for users who prefer to anonymize without leaving Word; dependent on v1.0 stability
+### Future Extensions *(post-GA)*
+- [ ] **Microsoft Word Ribbon Add-in** — anonymize without leaving Word
 - [ ] Track Changes integration for PII redlines within Word
 
 ---
@@ -274,16 +292,18 @@ Sanctum is a tool to *reduce* risk, not eliminate it. Users must understand:
 
 ## 🧰 Tech Stack
 
-| Layer | Technology |
-|---|---|
-| Anonymization Engine | [Microsoft Presidio](https://github.com/microsoft/presidio) |
-| NER Models | [spaCy](https://spacy.io/), HuggingFace Transformers |
-| Synthetic Data (HIPS) | [Faker](https://faker.readthedocs.io/) |
-| Desktop GUI | Electron / native wrapper (TBD) |
-| Background Service | Python + Flask (localhost) |
-| Encrypted Mapping Store | AES-256 (local SQLite) |
-| Document Processing | python-docx, openpyxl, pdfplumber |
-| Packaging | PyInstaller / Electron Builder |
+| Layer | Technology | Status |
+|---|---|---|
+| Anonymization Engine | [Microsoft Presidio](https://github.com/microsoft/presidio) | ✅ Integrated |
+| NER Models | [spaCy](https://spacy.io/) (standard), HuggingFace Transformers (planned) | ✅ spaCy active |
+| Synthetic Data (HIPS) | [Faker](https://faker.readthedocs.io/) | ✅ Integrated |
+| Configuration | [Pydantic Settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) | ✅ Integrated |
+| CLI | [Click](https://click.palletsprojects.com/) + [Rich](https://rich.readthedocs.io/) | ✅ Integrated |
+| Desktop GUI | Electron / native wrapper | Planned (Phase 3) |
+| Background Service | Python + Flask (localhost) | Planned (Phase 1) |
+| Encrypted Mapping Store | AES-256 (local SQLite) | Planned (Phase 1) |
+| Document Processing | python-docx, openpyxl, pdfplumber | Planned (Phase 1) |
+| Packaging | PyInstaller / Electron Builder | Planned (Phase 3) |
 
 ---
 
