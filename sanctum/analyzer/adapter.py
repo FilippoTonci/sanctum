@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from presidio_analyzer import AnalyzerEngine
+from typing import Any
 
+from presidio_analyzer import AnalyzerEngine
 from sanctum.core.models import DetectionResult
 
 
@@ -10,8 +11,8 @@ class PresidioAnalyzer:
 
     def __init__(
         self,
-        nlp_engine=None,
-        registry=None,
+        nlp_engine: Any = None,
+        registry: Any = None,
         default_score_threshold: float = 0.35,
         default_language: str = "en",
     ) -> None:

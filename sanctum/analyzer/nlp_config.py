@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from typing import Any
+
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 
 
-def create_nlp_engine(model_name: str = "en_core_web_sm"):
+def create_nlp_engine(model_name: str = "en_core_web_sm") -> Any:
     """Create a spaCy-backed NLP engine for Presidio analysis."""
     provider = NlpEngineProvider(
         nlp_configuration={

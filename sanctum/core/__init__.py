@@ -13,9 +13,9 @@ from sanctum.core.protocols import Analyzer, Anonymizer, DocumentReader, Documen
 
 __all__ = [
     "AnalysisError",
+    "Analyzer",
     "AnonymizationError",
     "AnonymizationResult",
-    "Analyzer",
     "Anonymizer",
     "ConfigurationError",
     "DetectionResult",

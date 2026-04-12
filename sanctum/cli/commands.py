@@ -3,7 +3,6 @@ from __future__ import annotations
 import click
 from rich.console import Console
 from rich.table import Table
-
 from sanctum.config.settings import settings
 from sanctum.core.engine import SanctumEngine
 from sanctum.core.exceptions import SanctumError
@@ -88,7 +87,7 @@ def analyze(text: str, language: str, threshold: float, entities: str | None) ->
         console.print(f"\nFound {len(detections)} entities in text")
     except SanctumError as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @cli.command()
@@ -139,7 +138,7 @@ def anonymize(text: str, operator: str, language: str, threshold: float) -> None
         console.print(table)
     except SanctumError as e:
         console.print(f"[red]Error: {e}[/red]")
-        raise SystemExit(1)
+        raise SystemExit(1) from e
 
 
 @cli.command()

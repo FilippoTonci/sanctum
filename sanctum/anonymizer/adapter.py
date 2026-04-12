@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from presidio_analyzer import RecognizerResult
 from presidio_anonymizer import AnonymizerEngine
-from presidio_anonymizer.entities import OperatorConfig
-
+from presidio_anonymizer.entities import OperatorConfig, RecognizerResult
 from sanctum.core.models import AnonymizationResult, DetectionResult, OperatorPolicy
 
 

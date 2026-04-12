@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import ClassVar
+
 from faker import Faker
 from presidio_anonymizer.operators import Operator, OperatorType
 
@@ -7,7 +9,7 @@ from presidio_anonymizer.operators import Operator, OperatorType
 class HipsOperator(Operator):
     """Replaces PII with contextually plausible synthetic values using Faker."""
 
-    _ENTITY_GENERATORS = {
+    _ENTITY_GENERATORS: ClassVar[dict[str, str]] = {
         "PERSON": "name",
         "LOCATION": "city",
         "PHONE_NUMBER": "phone_number",
@@ -32,9 +34,9 @@ class HipsOperator(Operator):
         generator = self._ENTITY_GENERATORS.get(entity_type)
 
         if generator:
-            replacement = getattr(self._fake, generator)()
+            replacement = str(getattr(self._fake, generator)())
         else:
-            replacement = self._fake.bothify("????-####")
+            replacement = str(self._fake.bothify("????-####"))
 
         self._mapping[text] = replacement
         return replacement
