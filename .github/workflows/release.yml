@@ -1,0 +1,42 @@
+# Release workflow — stub for Phase 3.
+# When Sanctum ships as a packaged desktop app, this will build signed
+# installers for Windows/macOS/Linux and publish GitHub Releases.
+#
+# For now, it runs only on a manual trigger and just verifies the package
+# builds. No publishing, no artifacts uploaded to any external registry.
+
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (no publish)"
+        type: boolean
+        default: true
+
+jobs:
+  build:
+    name: Build sdist/wheel
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build distributions
+        run: python -m build
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/

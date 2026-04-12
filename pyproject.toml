@@ -27,11 +27,24 @@ dev = [
     "pytest-mock>=3.11",
     "ruff>=0.1",
     "mypy>=1.5",
+    "pre-commit>=3.5",
+    "detect-secrets>=1.4",
 ]
-docs = [
+# Renamed from the misnamed `docs` group; will carry the document-adapter
+# runtime deps once WS2 lands.
+documents = [
     "python-docx>=0.8.11",
     "openpyxl>=3.1",
     "pdfplumber>=0.9",
+]
+ci = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+    "pytest-mock>=3.11",
+    "ruff>=0.1",
+    "mypy>=1.5",
+    "pre-commit>=3.5",
+    "detect-secrets>=1.4",
 ]
 
 [project.scripts]
@@ -42,20 +55,92 @@ include = ["sanctum*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--import-mode=importlib"
+addopts = [
+    "--import-mode=importlib",
+    "--strict-markers",
+    "--cov=sanctum",
+    "--cov-report=term-missing",
+    "--cov-report=xml",
+]
 markers = [
     "evaluation: marks tests as evaluation scoring (deselect with '-m \"not evaluation\"')",
     "integration: marks tests as integration tests requiring real Presidio engines",
 ]
 
+[tool.coverage.run]
+branch = true
+source = ["sanctum"]
+omit = [
+    "sanctum/__main__.py",
+    "tests/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "\\.\\.\\.",
+]
+
 [tool.ruff]
 src = ["sanctum"]
 line-length = 100
+target-version = "py310"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W"]
+select = [
+    "E",     # pycodestyle errors
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "W",     # pycodestyle warnings
+    "B",     # flake8-bugbear
+    "UP",    # pyupgrade
+    "SIM",   # flake8-simplify
+    "RUF",   # ruff-specific
+    "ANN",   # flake8-annotations
+]
+ignore = [
+    "ANN401",  # any-type (allowed in adapters with opaque metadata)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN", "B011"]
+"scripts/**" = ["ANN"]
 
 [tool.mypy]
 python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
+warn_unused_ignores = true
+plugins = ["pydantic.mypy"]
+
+# Strict on the domain — Protocols and compliance invariants live here.
+[[tool.mypy.overrides]]
+module = "sanctum.core.*"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_decorators = true
+
+# Third-party libraries without type stubs.
+[[tool.mypy.overrides]]
+module = [
+    "presidio_analyzer.*",
+    "presidio_anonymizer.*",
+    "faker.*",
+    "pdfplumber.*",
+    "openpyxl.*",
+    "docx.*",
+    "pptx.*",
+    "reportlab.*",
+    "spacy.*",
+]
+ignore_missing_imports = true
+
+# Tests run under lenient defaults.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+check_untyped_defs = false
