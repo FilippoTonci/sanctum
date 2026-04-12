@@ -1,0 +1,53 @@
+{
+  "document": "invoice.xlsx",
+  "format": "xlsx",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_office_fixtures.py",
+  "source_text": "tests/fixtures/financial/invoice.txt",
+  "pii_inventory": [
+    {
+      "entity_type": "ORGANIZATION",
+      "text": "Jenkins-Shields"
+    },
+    {
+      "entity_type": "PERSON",
+      "text": "Matthew Lucas"
+    },
+    {
+      "entity_type": "LOCATION",
+      "text": "33387 Robert Harbors Suite 317, North Deniseside, MP 02435"
+    },
+    {
+      "entity_type": "PHONE_NUMBER",
+      "text": "432-867-7360"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "text": "gallowayjoseph@example.com"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "text": "Henderson-Bernard"
+    },
+    {
+      "entity_type": "PERSON",
+      "text": "Kristi Higgins MD"
+    },
+    {
+      "entity_type": "LOCATION",
+      "text": "805 Brendan Neck, North Susan, CO 24857"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "text": "March 28, 2026"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "text": "May 15, 2026"
+    },
+    {
+      "entity_type": "IBAN_CODE",
+      "text": "GB37HMDS39909169985435"
+    }
+  ]
+}

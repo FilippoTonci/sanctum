@@ -1,0 +1,37 @@
+{
+  "document": "internal_memo.pptx",
+  "format": "pptx",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_office_fixtures.py",
+  "source_text": "tests/fixtures/correspondence/internal_memo.txt",
+  "pii_inventory": [
+    {
+      "entity_type": "ORGANIZATION",
+      "text": "White-Green"
+    },
+    {
+      "entity_type": "PERSON",
+      "text": "Cameron Dean"
+    },
+    {
+      "entity_type": "PERSON",
+      "text": "James Elliott"
+    },
+    {
+      "entity_type": "PERSON",
+      "text": "Marvin Taylor"
+    },
+    {
+      "entity_type": "PERSON",
+      "text": "Jennifer Martin"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "text": "March 31, 2026"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "text": "April 18, 2026"
+    }
+  ]
+}

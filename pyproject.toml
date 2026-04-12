@@ -30,12 +30,15 @@ dev = [
     "pre-commit>=3.5",
     "detect-secrets>=1.4",
 ]
-# Renamed from the misnamed `docs` group; will carry the document-adapter
-# runtime deps once WS2 lands.
+# Document-adapter runtime deps (WS2). Reportlab + pypdf live here so the
+# fixture-generator script and PDF derivative-writer can produce PDFs.
 documents = [
     "python-docx>=0.8.11",
     "openpyxl>=3.1",
     "pdfplumber>=0.9",
+    "python-pptx>=0.6.21",
+    "pypdf>=4.0",
+    "reportlab>=4.0",
 ]
 ci = [
     "pytest>=7.4",
@@ -45,6 +48,10 @@ ci = [
     "mypy>=1.5",
     "pre-commit>=3.5",
     "detect-secrets>=1.4",
+    # Document-adapter deps are required at test-collection time: the
+    # office-fixture determinism test imports the generator script, which
+    # imports python-docx/openpyxl/python-pptx/reportlab.
+    "sanctum[documents]",
 ]
 
 [project.scripts]

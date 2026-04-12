@@ -58,3 +58,13 @@ nosetests.xml
 *.ipr
 venv/
 .vscode
+
+# Dev-only office fixtures pulled by scripts/fetch_public_office_samples.py.
+# Never committed — used for local developer-time testing only. CI stays
+# offline and reads the committed generated fixtures under
+# tests/fixtures/office/ (not the public/ subdir).
+tests/fixtures/office/public/
+
+# Coverage outputs produced by the new CI gate.
+coverage.xml
+htmlcov/

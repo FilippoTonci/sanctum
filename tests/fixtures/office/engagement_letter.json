@@ -1,0 +1,45 @@
+{
+  "document": "engagement_letter.pdf",
+  "format": "pdf",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_office_fixtures.py",
+  "source_text": "tests/fixtures/legal/engagement_letter.txt",
+  "pii_inventory": [
+    {
+      "entity_type": "ORGANIZATION",
+      "text": "Gray-Mayo, LLP"
+    },
+    {
+      "entity_type": "LOCATION",
+      "text": "503 Linda Locks, Carlshire, FM 94599"
+    },
+    {
+      "entity_type": "PHONE_NUMBER",
+      "text": "801-922-6916"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "text": "April 09, 2026"
+    },
+    {
+      "entity_type": "PERSON",
+      "text": "Kimberly Sanchez"
+    },
+    {
+      "entity_type": "LOCATION",
+      "text": "7242 Julie Plain Suite 969, Coxberg, NY 65187"
+    },
+    {
+      "entity_type": "PERSON",
+      "text": "Melinda Jones"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "text": "tasha01@example.net"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "text": "kayla51@example.com"
+    }
+  ]
+}

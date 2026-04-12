@@ -1,0 +1,6 @@
+{
+  "tests/fixtures/office/engagement_letter.pdf": "71beab8ef230233ff6a3c2a34d15c0d8143d8069ada48d7191083985755a6ae8",
+  "tests/fixtures/office/internal_memo.pptx": "5f3c41adda5eb25887982f68dab136208974adc60e9834e9845d07ce6d6fd02b",
+  "tests/fixtures/office/invoice.xlsx": "4d5fa218fcb67108e1d775a6ea2738fd8d6f0da6e5ee90727abfdec4be2019aa",
+  "tests/fixtures/office/nda_contract.docx": "c740c7dede8a9a4a7569da4cf81402492dec08c07c3493c2255e0d8d1a00aa15"
+}

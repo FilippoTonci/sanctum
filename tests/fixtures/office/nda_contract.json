@@ -1,0 +1,53 @@
+{
+  "document": "nda_contract.docx",
+  "format": "docx",
+  "provenance": "synthetic",
+  "generator": "scripts/generate_office_fixtures.py",
+  "source_text": "tests/fixtures/legal/nda_contract.txt",
+  "pii_inventory": [
+    {
+      "entity_type": "DATE_TIME",
+      "text": "December 22, 2025"
+    },
+    {
+      "entity_type": "PERSON",
+      "text": "Allison Hill"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "text": "Miller, Henderson and Johnson"
+    },
+    {
+      "entity_type": "LOCATION",
+      "text": "863 Lawrence Valleys, Port Lindachester, MA 36922"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "text": "kendragalloway@example.org"
+    },
+    {
+      "entity_type": "PERSON",
+      "text": "Noah Rhodes"
+    },
+    {
+      "entity_type": "ORGANIZATION",
+      "text": "Hall PLC"
+    },
+    {
+      "entity_type": "LOCATION",
+      "text": "16155 Roman Stream Suite 816, New Kellystad, OK 25704"
+    },
+    {
+      "entity_type": "EMAIL_ADDRESS",
+      "text": "jamesshawn@example.com"
+    },
+    {
+      "entity_type": "DATE_TIME",
+      "text": "May 13, 2027"
+    },
+    {
+      "entity_type": "PERSON",
+      "text": "Henry Santiago"
+    }
+  ]
+}
