@@ -6,6 +6,23 @@ Presidio. **All processing must be offline** — no runtime network calls.
 ## Session start
 - Run `pre-commit install` to wire git hooks in this clone.
 
+## Work plans, commits, PRs
+
+Work is organized around **plans** in `~/.claude/plans/` (e.g. Phase 1 plan with
+Workstreams WS1…WSN, each with numbered substeps). Map that structure onto git:
+
+- **One PR per workstream** — a WS is the unit of review. Open the PR against
+  `main` when the WS starts; keep it in draft while substeps land.
+- **One commit per substep** — commit progressively as each substep finishes
+  (tests green, pre-commit clean). Don't batch a whole workstream into one
+  commit. Commit subject should name the phase/workstream, e.g.
+  `Add .pdf derivative adapter (Phase 1 WS2)`.
+- Before starting a WS, confirm with the user which plan/WS we're on and
+  create the branch + draft PR. Before each substep commit, show the diff and
+  confirm it's the right slice.
+- If a substep surfaces unrelated cleanup, split it into its own commit (or
+  its own PR if it crosses WS boundaries) — don't smuggle it in.
+
 ## Architecture — hexagonal (ports & adapters)
 
 ```
