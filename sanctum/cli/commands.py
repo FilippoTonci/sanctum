@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import click
 from rich.console import Console
 from rich.table import Table
 from sanctum.config.settings import settings
 from sanctum.core.engine import SanctumEngine
 from sanctum.core.exceptions import SanctumError
+from sanctum.documents import adapter_for
 
 console = Console()
 
@@ -136,6 +139,62 @@ def anonymize(text: str, operator: str, language: str, threshold: float) -> None
             table.add_row(d.entity_type, d.text_span, applied_op)
 
         console.print(table)
+    except SanctumError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1) from e
+
+
+@cli.command("process-file")
+@click.argument("input_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("output_path", type=click.Path(dir_okay=False, path_type=Path))
+@click.option(
+    "--language",
+    "-l",
+    default=settings.analyzer.default_language,
+    show_default=True,
+    help="Language of the document text.",
+)
+@click.option(
+    "--threshold",
+    "-t",
+    default=settings.analyzer.default_score_threshold,
+    show_default=True,
+    type=float,
+    help="Minimum confidence score for detections.",
+)
+@click.option(
+    "--entities",
+    "-e",
+    default=None,
+    help="Comma-separated list of entity types to detect.",
+)
+def process_file(
+    input_path: Path,
+    output_path: Path,
+    language: str,
+    threshold: float,
+    entities: str | None,
+) -> None:
+    """Anonymize a structured office document (.docx/.xlsx/.pdf/.pptx)."""
+    try:
+        reader, writer = adapter_for(input_path)
+        engine = _create_engine()
+        entity_list = [e.strip() for e in entities.split(",")] if entities else None
+        results = engine.process_document(
+            reader,
+            writer,
+            input_path,
+            output_path,
+            language=language,
+            score_threshold=threshold,
+            entities=entity_list,
+        )
+
+        total = sum(len(r.detections) for r in results)
+        console.print(
+            f"[green]Wrote anonymized document to {output_path}[/green] "
+            f"({len(results)} segments changed, {total} entities replaced)."
+        )
     except SanctumError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise SystemExit(1) from e
