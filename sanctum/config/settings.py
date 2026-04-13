@@ -18,9 +18,13 @@ class AnalyzerSettings(BaseSettings):
 
 
 class AnonymizerSettings(BaseSettings):
-    """Defaults for the anonymizer."""
+    """Defaults for the anonymizer.
 
-    default_operator: str = "redact"
+    Valid values for `default_operator` are listed with descriptions in
+    `sanctum.anonymizer.operators.BUILTIN_OPERATOR_NAMES`.
+    """
+
+    default_operator: str = "replace"
 
 
 class SanctumSettings(BaseSettings):

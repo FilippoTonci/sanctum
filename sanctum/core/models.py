@@ -21,7 +21,11 @@ class DetectionResult(BaseModel):
 
 
 class OperatorPolicy(BaseModel):
-    """User-configurable anonymization operator for an entity type."""
+    """User-configurable anonymization operator for an entity type.
+
+    Valid values for `operator_name` are listed with descriptions in
+    `sanctum.anonymizer.operators.BUILTIN_OPERATOR_NAMES`.
+    """
 
     operator_name: str
     params: dict[str, Any] = Field(default_factory=dict)

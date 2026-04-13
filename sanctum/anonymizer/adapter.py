@@ -8,7 +8,7 @@ from sanctum.core.models import AnonymizationResult, DetectionResult, OperatorPo
 class PresidioAnonymizer:
     """Wraps presidio-anonymizer's AnonymizerEngine for PII redaction."""
 
-    def __init__(self, default_operator: str = "redact") -> None:
+    def __init__(self, default_operator: str = "replace") -> None:
         self._engine = AnonymizerEngine()
         self._default_operator = default_operator
 
