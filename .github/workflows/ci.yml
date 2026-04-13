@@ -69,11 +69,8 @@ jobs:
       - name: Download spaCy model
         run: python -m spacy download en_core_web_sm
 
-      - name: Run unit tests
-        run: pytest -m "not integration and not evaluation"
-
-      - name: Run integration tests
-        run: pytest -m integration
+      - name: Run tests
+        run: pytest -m "not evaluation"
 
       - name: Enforce coverage gates
         run: |
