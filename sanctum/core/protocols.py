@@ -3,7 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from sanctum.core.models import AnonymizationResult, DetectionResult, OperatorPolicy
+from sanctum.core.models import (
+    AnonymizationResult,
+    DetectionResult,
+    OperatorPolicy,
+    StructuredDocument,
+)
 
 
 @runtime_checkable
@@ -43,3 +48,17 @@ class DocumentWriter(Protocol):
     """Writes content to a file path."""
 
     def write(self, path: Path, content: str) -> None: ...
+
+
+@runtime_checkable
+class StructuredDocumentReader(Protocol):
+    """Reads a real-world office document into a StructuredDocument."""
+
+    def read(self, path: Path) -> StructuredDocument: ...
+
+
+@runtime_checkable
+class StructuredDocumentWriter(Protocol):
+    """Projects a (possibly mutated) StructuredDocument back to disk."""
+
+    def write(self, doc: StructuredDocument, path: Path) -> None: ...

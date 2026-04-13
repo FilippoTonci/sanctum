@@ -6,10 +6,27 @@ from sanctum.core.exceptions import (
     AnonymizationError,
     ConfigurationError,
     DocumentError,
+    PdfWriteRefusedError,
     SanctumError,
+    UnsupportedDocumentFormatError,
+    UnsupportedPdfError,
 )
-from sanctum.core.models import AnonymizationResult, DetectionResult, OperatorPolicy
-from sanctum.core.protocols import Analyzer, Anonymizer, DocumentReader, DocumentWriter
+from sanctum.core.models import (
+    AnonymizationResult,
+    DetectionResult,
+    DocumentFormat,
+    OperatorPolicy,
+    StructuredDocument,
+    TextSegment,
+)
+from sanctum.core.protocols import (
+    Analyzer,
+    Anonymizer,
+    DocumentReader,
+    DocumentWriter,
+    StructuredDocumentReader,
+    StructuredDocumentWriter,
+)
 
 __all__ = [
     "AnalysisError",
@@ -20,9 +37,17 @@ __all__ = [
     "ConfigurationError",
     "DetectionResult",
     "DocumentError",
+    "DocumentFormat",
     "DocumentReader",
     "DocumentWriter",
     "OperatorPolicy",
+    "PdfWriteRefusedError",
     "SanctumEngine",
     "SanctumError",
+    "StructuredDocument",
+    "StructuredDocumentReader",
+    "StructuredDocumentWriter",
+    "TextSegment",
+    "UnsupportedDocumentFormatError",
+    "UnsupportedPdfError",
 ]
