@@ -8,14 +8,15 @@ Downloads excerpts from publicly available legal and financial filings and
 saves them under tests/fixtures/ with stub annotation files.  The annotation
 JSON files contain provenance metadata but require manual entity review.
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import pathlib
 import textwrap
-import urllib.request
 import urllib.error
+import urllib.request
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ def _write_stub_annotation(txt_path: pathlib.Path, provenance: str = "public_dom
         "entities": [],
         "expected_counts": {},
         "_note": "Entities must be annotated manually. Run the document through "
-                 "Presidio and then hand-verify the results to populate this file.",
+        "Presidio and then hand-verify the results to populate this file.",
     }
     json_path.write_text(
         json.dumps(annotation, indent=2, ensure_ascii=False) + "\n",
@@ -48,8 +49,7 @@ def _write_stub_annotation(txt_path: pathlib.Path, provenance: str = "public_dom
 # ---------------------------------------------------------------------------
 
 SEC_10K_URL = (
-    "https://www.sec.gov/Archives/edgar/data/320193/000032019323000106"
-    "/aapl-20230930.htm"
+    "https://www.sec.gov/Archives/edgar/data/320193/000032019323000106" "/aapl-20230930.htm"
 )
 
 
@@ -209,6 +209,7 @@ def create_cuad_placeholder() -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")

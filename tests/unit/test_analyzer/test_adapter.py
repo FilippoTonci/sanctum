@@ -3,7 +3,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from sanctum.core.models import DetectionResult
 
 
@@ -60,18 +59,14 @@ class TestPresidioAnalyzer:
         assert location.entity_type == "LOCATION"
         assert location.text_span == "NYC"
 
-    def test_uses_default_threshold(
-        self, adapter: object, mock_presidio_engine: MagicMock
-    ) -> None:
+    def test_uses_default_threshold(self, adapter: object, mock_presidio_engine: MagicMock) -> None:
         mock_presidio_engine.analyze.return_value = []
         adapter.analyze("some text")
 
         call_kwargs = mock_presidio_engine.analyze.call_args[1]
         assert call_kwargs["score_threshold"] == 0.4
 
-    def test_uses_custom_threshold(
-        self, adapter: object, mock_presidio_engine: MagicMock
-    ) -> None:
+    def test_uses_custom_threshold(self, adapter: object, mock_presidio_engine: MagicMock) -> None:
         mock_presidio_engine.analyze.return_value = []
         adapter.analyze("some text", score_threshold=0.8)
 

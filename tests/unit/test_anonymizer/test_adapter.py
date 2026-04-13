@@ -3,7 +3,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from sanctum.core.models import DetectionResult, OperatorPolicy
 
 
@@ -34,7 +33,11 @@ class TestPresidioAnonymizer:
                 entity_type="PERSON", start=0, end=10, score=0.9, text_span="John Smith"
             ),
             DetectionResult(
-                entity_type="EMAIL_ADDRESS", start=20, end=40, score=0.85, text_span="john@example.com"
+                entity_type="EMAIL_ADDRESS",
+                start=20,
+                end=40,
+                score=0.85,
+                text_span="john@example.com",
             ),
         ]
 

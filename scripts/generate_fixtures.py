@@ -7,6 +7,7 @@ Usage:
 All paths are relative to the project root.  Faker is seeded with 42 for
 reproducibility.
 """
+
 from __future__ import annotations
 
 import json
@@ -88,8 +89,13 @@ class EntityCollector:
         return dict(sorted(counts.items()))
 
 
-def _write(doc_path: str, text: str, entities: list[dict], ec: EntityCollector,
-           provenance: str = "synthetic") -> None:
+def _write(
+    doc_path: str,
+    text: str,
+    entities: list[dict],
+    ec: EntityCollector,
+    provenance: str = "synthetic",
+) -> None:
     """Write .txt and .json annotation side-car."""
     txt_path = FIXTURES / doc_path
     txt_path.parent.mkdir(parents=True, exist_ok=True)
@@ -104,14 +110,16 @@ def _write(doc_path: str, text: str, entities: list[dict], ec: EntityCollector,
         "entities": entities,
         "expected_counts": ec.expected_counts(),
     }
-    json_path.write_text(json.dumps(annotation, indent=2, ensure_ascii=False) + "\n",
-                         encoding="utf-8")
+    json_path.write_text(
+        json.dumps(annotation, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
     logger.info("Wrote %s", txt_path.relative_to(ROOT))
 
 
 # ---------------------------------------------------------------------------
 # Document generators
 # ---------------------------------------------------------------------------
+
 
 def gen_nda_contract() -> None:
     ec = EntityCollector()
@@ -129,9 +137,11 @@ def gen_nda_contract() -> None:
     email2 = fake.email()
     witness_name = fake.name()
 
-    ec.add("NON-DISCLOSURE AGREEMENT\n\nThis Non-Disclosure Agreement (the \"Agreement\") is entered into as of ")
+    ec.add(
+        'NON-DISCLOSURE AGREEMENT\n\nThis Non-Disclosure Agreement (the "Agreement") is entered into as of '
+    )
     ec.add_entity(eff_date, "DATE_TIME")
-    ec.add(" (the \"Effective Date\") by and between:\n\n")
+    ec.add(' (the "Effective Date") by and between:\n\n')
 
     ec.add("Party A: ")
     ec.add_entity(party1, "PERSON")
@@ -162,7 +172,7 @@ def gen_nda_contract() -> None:
     ec.add("receipt and sufficiency of which are hereby acknowledged, the parties ")
     ec.add("agree as follows:\n\n")
 
-    ec.add("1. DEFINITION OF CONFIDENTIAL INFORMATION. \"Confidential Information\" ")
+    ec.add('1. DEFINITION OF CONFIDENTIAL INFORMATION. "Confidential Information" ')
     ec.add("means any and all non-public, proprietary, or confidential information ")
     ec.add("disclosed by either party to the other party, whether orally, in writing, ")
     ec.add("electronically, or by any other means, including but not limited to: ")
@@ -292,8 +302,10 @@ def gen_bank_statement() -> None:
     merchants = [fake.company() for _ in range(5)]
     amounts = [fake.pyfloat(min_value=10, max_value=2500, right_digits=2) for _ in range(5)]
     txn_dates = sorted(
-        [fake.date_between_dates(date_start=stmt_date.replace(day=1), date_end=stmt_date)
-         for _ in range(5)]
+        [
+            fake.date_between_dates(date_start=stmt_date.replace(day=1), date_end=stmt_date)
+            for _ in range(5)
+        ]
     )
 
     ec.add_entity(bank_name, "ORGANIZATION")
@@ -738,7 +750,9 @@ def gen_attorney_client_email() -> None:
     email_atty = fake.email()
     email_client = fake.email()
     phone = fake.phone_number()
-    case_ref = f"Case No. {fake.random_int(min=2020, max=2026)}-CV-{fake.random_int(min=1000, max=9999)}"
+    case_ref = (
+        f"Case No. {fake.random_int(min=2020, max=2026)}-CV-{fake.random_int(min=1000, max=9999)}"
+    )
     email_date = fake.date_between(start_date="-7d", end_date="today").strftime("%B %d, %Y")
     depo_date = fake.date_between(start_date="+7d", end_date="+30d").strftime("%B %d, %Y")
     hearing_date = fake.date_between(start_date="+30d", end_date="+90d").strftime("%B %d, %Y")
@@ -887,6 +901,7 @@ def gen_internal_memo() -> None:
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
+
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")

@@ -3,7 +3,6 @@ from __future__ import annotations
 from unittest.mock import Mock
 
 import pytest
-
 from sanctum.core.engine import SanctumEngine
 from sanctum.core.exceptions import AnalysisError, AnonymizationError
 from sanctum.core.models import DetectionResult, OperatorPolicy
@@ -42,9 +41,7 @@ class TestEngineAnonymize:
         self, engine: SanctumEngine, mock_analyzer: Mock, mock_anonymizer: Mock, sample_text: str
     ) -> None:
         detections = [
-            DetectionResult(
-                entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice"
-            ),
+            DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice"),
         ]
         engine.anonymize(sample_text, detections=detections)
 
@@ -63,9 +60,7 @@ class TestEngineAnonymize:
         self, engine: SanctumEngine, mock_anonymizer: Mock, sample_text: str
     ) -> None:
         detections = [
-            DetectionResult(
-                entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice"
-            ),
+            DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice"),
         ]
         mock_anonymizer.anonymize.side_effect = ValueError("Operator failed")
 

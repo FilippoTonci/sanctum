@@ -4,10 +4,8 @@ from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
-
 from sanctum.core.engine import SanctumEngine
 from sanctum.core.models import AnonymizationResult, DetectionResult
-
 
 SAMPLE_TEXT = (
     "My name is John Smith and my SSN is 123-45-6789. "

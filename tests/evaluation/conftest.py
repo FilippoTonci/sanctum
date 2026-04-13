@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Iterator
 
 import pytest
-
 from tests.evaluation.scorer import EntityScorer
 
 

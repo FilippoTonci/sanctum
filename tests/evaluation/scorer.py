@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 
 from sanctum.core.models import DetectionResult
@@ -62,7 +62,9 @@ class EntityScorer:
 
             precision = tp / (tp + len(fps)) if (tp + len(fps)) > 0 else 0.0
             recall = tp / (tp + len(fns)) if (tp + len(fns)) > 0 else 0.0
-            f1 = (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+            f1 = (
+                (2 * precision * recall / (precision + recall)) if (precision + recall) > 0 else 0.0
+            )
 
             per_entity[entity_type] = EntityMetrics(
                 precision=precision,
@@ -119,8 +121,12 @@ class EntityScorer:
     def _macro_average(self, per_entity: dict[str, EntityMetrics]) -> EntityMetrics:
         if not per_entity:
             return EntityMetrics(
-                precision=0.0, recall=0.0, f1=0.0,
-                true_positives=0, false_positives=0, false_negatives=0,
+                precision=0.0,
+                recall=0.0,
+                f1=0.0,
+                true_positives=0,
+                false_positives=0,
+                false_negatives=0,
             )
 
         total_tp = sum(m.true_positives for m in per_entity.values())

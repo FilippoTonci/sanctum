@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from sanctum.analyzer.adapter import PresidioAnalyzer
 from sanctum.anonymizer.adapter import PresidioAnonymizer
 from sanctum.anonymizer.operators.hips import HipsOperator

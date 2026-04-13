@@ -126,17 +126,17 @@ dependencies = [
     # Core engine
     "presidio-analyzer>=2.2.350",
     "presidio-anonymizer>=2.2.350",
-    
+
     # NLP — standard tier
     "spacy>=3.4.4,!=3.7.0",
-    
+
     # Synthetic data replacement
     "faker>=20.0",
-    
+
     # Configuration
     "pydantic>=2.0,<3.0",
     "pydantic-settings>=2.0,<3.0",
-    
+
     # CLI
     "click>=8.0",
     "rich>=13.0",          # Pretty terminal output for detection results
@@ -295,11 +295,11 @@ class AnonymizationResult(BaseModel):
     """Complete result of an anonymization operation."""
     text: str                        # The anonymized text
     items: list[AnonymizationItem]   # What was replaced and how
-    
+
     @property
     def entity_count(self) -> int:
         return len(self.items)
-    
+
     @property
     def entities_by_type(self) -> dict[str, list[AnonymizationItem]]:
         result: dict[str, list[AnonymizationItem]] = {}
@@ -317,7 +317,7 @@ class AnonymizationResult(BaseModel):
 ```python
 class SanctumEngine:
     """Composes an Analyzer and Anonymizer into a single pipeline.
-    
+
     This is the primary entry point for the domain layer.
     Injected dependencies, no framework imports.
     """
@@ -330,11 +330,11 @@ class SanctumEngine:
         score_threshold: float = 0.35,
         language: str = "en",
     ) -> None: ...
-    
+
     def detect(self, text: str, **kwargs) -> list[DetectionResult]:
         """Run detection only — for human-in-the-loop review step."""
         ...
-    
+
     def anonymize(
         self,
         text: str,
@@ -355,7 +355,7 @@ class SanctumEngine:
 ```python
 class PresidioAnalyzerAdapter:
     """Adapter: wraps presidio_analyzer.AnalyzerEngine to implement core.protocols.Analyzer."""
-    
+
     def __init__(
         self,
         nlp_engine: NlpEngine | None = None,
@@ -364,7 +364,7 @@ class PresidioAnalyzerAdapter:
     ) -> None:
         # Build AnalyzerEngine from injected or default components
         ...
-    
+
     def analyze(self, text, *, entities=None, language="en", score_threshold=0.0):
         # Call self._engine.analyze(...)
         # Convert List[RecognizerResult] → List[DetectionResult]
@@ -379,12 +379,12 @@ class PresidioAnalyzerAdapter:
 ```python
 class PresidioAnonymizerAdapter:
     """Adapter: wraps presidio_anonymizer.AnonymizerEngine to implement core.protocols.Anonymizer."""
-    
+
     def __init__(self) -> None:
         self._engine = AnonymizerEngine()
         # Register custom operators (HIPS, etc.)
         ...
-    
+
     def anonymize(self, text, detections, *, operators=None):
         # Convert DetectionResult → RecognizerResult (reverse mapping)
         # Convert OperatorPolicy → OperatorConfig
@@ -398,11 +398,11 @@ class PresidioAnonymizerAdapter:
 ```python
 class HipsOperator(Operator):
     """Custom Presidio operator: replaces PII with contextually plausible Faker data.
-    
+
     Maintains a mapping dict for consistency within a session —
     same input always produces same output.
     """
-    
+
     ENTITY_TO_FAKER = {
         "PERSON": "name",
         "PHONE_NUMBER": "phone_number",
@@ -417,7 +417,7 @@ class HipsOperator(Operator):
         "IBAN_CODE": "iban",
         "US_DRIVER_LICENSE": "bothify",  # Pattern-based
     }
-    
+
     # NOT thread-safe — documented limitation, matches Presidio's own warning
     _mapping: dict[str, str]
     _faker: Faker
@@ -452,11 +452,11 @@ class SanctumSettings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
     )
-    
+
     nlp: NlpSettings = NlpSettings()
     analyzer: AnalyzerSettings = AnalyzerSettings()
     anonymizer: AnonymizerSettings = AnonymizerSettings()
-    
+
     log_level: str = "INFO"
     data_dir: str = "~/.sanctum"               # Mapping store, logs, config
 ```
@@ -604,12 +604,12 @@ Define a JSON Schema for the annotation format to validate fixtures automaticall
 ```python
 class EntityScorer:
     """Measures detection quality by entity type.
-    
+
     Supports two matching modes:
     - EXACT: start and end offsets must match exactly
     - OVERLAP: any character overlap counts as a match (more lenient)
     """
-    
+
     def score(
         self,
         predictions: list[DetectionResult],
@@ -623,7 +623,7 @@ class ScoreReport(BaseModel):
     overall: Metrics          # precision, recall, f1
     by_entity: dict[str, Metrics]
     confusion: list[ConfusionEntry]  # FP/FN details for debugging
-    
+
 class Metrics(BaseModel):
     precision: float
     recall: float
@@ -642,13 +642,13 @@ def test_detection_quality(fixture_path, sanctum_engine, scorer):
     """Parameterized evaluation: one test per fixture document."""
     annotation = load_annotation(fixture_path)
     text = Path(annotation.text_file).read_text()
-    
+
     predictions = sanctum_engine.detect(text)
     report = scorer.score(predictions, annotation.entities)
-    
+
     # Log metrics for human review — don't hard-fail on thresholds yet
     log_metrics(annotation.document_id, report)
-    
+
     # Soft assertions: warn on regression, fail on catastrophic drops
     assert report.overall.recall > 0.3, f"Catastrophic recall drop on {annotation.document_id}"
 ```
@@ -742,7 +742,7 @@ def sanctum_engine(nlp_model):
     from sanctum.analyzer.adapter import PresidioAnalyzerAdapter
     from sanctum.anonymizer.adapter import PresidioAnonymizerAdapter
     from sanctum.core.engine import SanctumEngine
-    
+
     analyzer = PresidioAnalyzerAdapter()
     anonymizer = PresidioAnonymizerAdapter()
     return SanctumEngine(analyzer=analyzer, anonymizer=anonymizer)
