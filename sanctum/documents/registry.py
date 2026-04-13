@@ -4,6 +4,7 @@ The registry stays lazy: concrete adapters are imported only when their
 format is requested. This keeps plain-text callers from paying the
 python-docx/openpyxl/pdfplumber/python-pptx import cost.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -38,8 +39,7 @@ def adapter_for(path: Path) -> AdapterPair:
     module_name = _SUFFIX_MAP.get(suffix)
     if module_name is None:
         raise UnsupportedDocumentFormatError(
-            f"No adapter registered for '{suffix}' files. "
-            f"Supported: {sorted(_SUFFIX_MAP)}"
+            f"No adapter registered for '{suffix}' files. " f"Supported: {sorted(_SUFFIX_MAP)}"
         )
 
     import importlib

@@ -4,6 +4,7 @@ These stub out the engine + adapter plumbing so the test exercises only
 the command wiring: arg parsing, dispatch to ``adapter_for``, and
 return-code behaviour on error.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -26,9 +27,7 @@ def _fake_result() -> AnonymizationResult:
         original_text="Alice",
         anonymized_text="<PERSON>",
         detections=[
-            DetectionResult(
-                entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice"
-            )
+            DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice")
         ],
         operators_applied={"PERSON": "replace"},
     )
@@ -65,9 +64,7 @@ def test_process_file_happy_path(runner: CliRunner, tmp_path: Path) -> None:
     assert "1 entities replaced" in output
 
 
-def test_process_file_unknown_extension_exits_nonzero(
-    runner: CliRunner, tmp_path: Path
-) -> None:
+def test_process_file_unknown_extension_exits_nonzero(runner: CliRunner, tmp_path: Path) -> None:
     src = tmp_path / "in.odt"
     src.write_bytes(b"fake")
     out = tmp_path / "out.odt"

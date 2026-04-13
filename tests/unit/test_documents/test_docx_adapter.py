@@ -1,4 +1,5 @@
 """Unit tests for the .docx reader/writer adapter pair."""
+
 from __future__ import annotations
 
 from pathlib import Path

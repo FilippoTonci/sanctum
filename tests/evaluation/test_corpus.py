@@ -26,9 +26,9 @@ class TestCorpusScoring:
 
         all_reports: list[tuple[str, ScoringReport]] = []
 
-        for text, annotations in fixture_pairs:
-            doc_name = annotations.get("document", "<unknown>")
-            ground_truth = annotations["entities"]
+        for text, fixture_annotations in fixture_pairs:
+            doc_name = fixture_annotations.get("document", "<unknown>")
+            ground_truth = fixture_annotations["entities"]
 
             predicted = analyzer.analyze(text)
             report = scorer.score(predicted, ground_truth)

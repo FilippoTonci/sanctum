@@ -1,4 +1,5 @@
 """Unit tests for the .pptx reader/writer adapter pair."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -29,9 +30,7 @@ def test_reader_produces_run_level_segments(reader: Reader) -> None:
     assert any("Jennifer Martin" in seg.text for seg in doc.segments)
 
 
-def test_round_trip_preserves_visible_text(
-    reader: Reader, writer: Writer, tmp_path: Path
-) -> None:
+def test_round_trip_preserves_visible_text(reader: Reader, writer: Writer, tmp_path: Path) -> None:
     doc = reader.read(FIXTURE)
     out = tmp_path / "roundtrip.pptx"
     writer.write(doc, out)
@@ -45,9 +44,7 @@ def test_round_trip_preserves_visible_text(
         assert a_text == b_text
 
 
-def test_writer_applies_segment_edits(
-    reader: Reader, writer: Writer, tmp_path: Path
-) -> None:
+def test_writer_applies_segment_edits(reader: Reader, writer: Writer, tmp_path: Path) -> None:
     doc = reader.read(FIXTURE)
     target = next(seg for seg in doc.segments if "Jennifer Martin" in seg.text)
     new_segments = [

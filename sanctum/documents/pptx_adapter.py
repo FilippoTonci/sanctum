@@ -12,6 +12,7 @@ Phase 1 scope: speaker notes, slide masters, and grouped shapes are
 *not* anonymized. They flow through the raw handle untouched — lifting
 that is a Phase 2 task.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -28,9 +29,7 @@ if TYPE_CHECKING:
     from sanctum.core.models import StructuredDocument, TextSegment
 
 
-def _iter_text_frame_runs(
-    text_frame: TextFrame, prefix: str
-) -> list[tuple[str, _Run]]:
+def _iter_text_frame_runs(text_frame: TextFrame, prefix: str) -> list[tuple[str, _Run]]:
     pairs: list[tuple[str, _Run]] = []
     for p_idx, para in enumerate(text_frame.paragraphs):
         for r_idx, run in enumerate(para.runs):

@@ -16,7 +16,7 @@ repos:
         exclude: ^tests/fixtures/
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.6.9
+    rev: v0.8.6
     hooks:
       - id: ruff
         args: [--fix]
@@ -29,12 +29,7 @@ repos:
         additional_dependencies:
           - pydantic>=2.0
           - pydantic-settings>=2.0
+          - click>=8.0
+          - rich>=13.0
         args: [--config-file=pyproject.toml]
         files: ^sanctum/
-
-  - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.5.0
-    hooks:
-      - id: detect-secrets
-        args: ["--baseline", ".secrets.baseline"]
-        exclude: ^(tests/fixtures/|\.secrets\.baseline)

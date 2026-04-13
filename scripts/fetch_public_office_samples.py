@@ -29,6 +29,7 @@ Your own drop zone:
     real professional documents you want to test against into that dir.
     They stay local; the path is gitignored.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -53,11 +54,11 @@ HTTP_TIMEOUT = 30  # seconds
 class Sample:
     """A single file to fetch."""
 
-    name: str                # local filename under OUT/<source>/
+    name: str  # local filename under OUT/<source>/
     url: str
     license: str
     notes: str
-    source: str              # subdir under OUT (e.g. "python-docx")
+    source: str  # subdir under OUT (e.g. "python-docx")
 
 
 # -- Curated sample list ----------------------------------------------------
@@ -128,20 +129,14 @@ SAMPLES: list[Sample] = [
     # samples are also good for adapter exploration.
     Sample(
         name="AutoCad_Simple.pdf",
-        url=(
-            "https://raw.githubusercontent.com/py-pdf/pypdf/main/"
-            "resources/AutoCad_Simple.pdf"
-        ),
+        url=("https://raw.githubusercontent.com/py-pdf/pypdf/main/" "resources/AutoCad_Simple.pdf"),
         license="BSD-3-Clause (pypdf resources)",
         notes="Small text-bearing PDF (~3 KB); smoke test for pdfplumber extraction.",
         source="pypdf",
     ),
     Sample(
         name="FormTestFromOo.pdf",
-        url=(
-            "https://raw.githubusercontent.com/py-pdf/pypdf/main/"
-            "resources/FormTestFromOo.pdf"
-        ),
+        url=("https://raw.githubusercontent.com/py-pdf/pypdf/main/" "resources/FormTestFromOo.pdf"),
         license="BSD-3-Clause (pypdf resources)",
         notes="PDF form fields — useful for exploring AcroForm extraction later.",
         source="pypdf",
@@ -194,7 +189,9 @@ def _fetch_sample(sample: Sample, refresh: bool) -> dict[str, str] | None:
     dest = dest_dir / sample.name
 
     if dest.exists() and not refresh:
-        logger.info("skip %s (already present; pass --refresh to overwrite)", dest.relative_to(ROOT))
+        logger.info(
+            "skip %s (already present; pass --refresh to overwrite)", dest.relative_to(ROOT)
+        )
         data = dest.read_bytes()
     else:
         try:

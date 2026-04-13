@@ -90,7 +90,10 @@ class EntityScorer:
         ground_truth: list[dict],
         mode: MatchMode,
     ) -> tuple[int, list[DetectionResult], list[dict]]:
-        """Match predicted against ground truth. Returns (tp_count, unmatched_preds, unmatched_gts)."""
+        """Match predicted against ground truth.
+
+        Returns ``(tp_count, unmatched_preds, unmatched_gts)``.
+        """
         # Sort predictions by score descending for greedy matching
         sorted_preds = sorted(predicted, key=lambda p: p.score, reverse=True)
         matched_gt_indices: set[int] = set()

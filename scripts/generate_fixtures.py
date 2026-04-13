@@ -51,13 +51,7 @@ class EntityCollector:
         """Append PII text and record the span."""
         start = self._offset
         end = start + len(text)
-        # build a short context window (up to 20 chars each side)
-        full = self.full_text()
-        ctx_start = max(0, start - 20)
-        ctx_end = min(len(full) + len(text), end + 20)
-        # we haven't appended yet, so build context manually
-        before = full[ctx_start:]
-        after = ""  # will be filled later; we patch context at the end
+        # Context window is patched after the document is fully built.
         self.entities.append(
             {
                 "entity_type": entity_type,
@@ -138,7 +132,8 @@ def gen_nda_contract() -> None:
     witness_name = fake.name()
 
     ec.add(
-        'NON-DISCLOSURE AGREEMENT\n\nThis Non-Disclosure Agreement (the "Agreement") is entered into as of '
+        "NON-DISCLOSURE AGREEMENT\n\n"
+        'This Non-Disclosure Agreement (the "Agreement") is entered into as of '
     )
     ec.add_entity(eff_date, "DATE_TIME")
     ec.add(' (the "Effective Date") by and between:\n\n')

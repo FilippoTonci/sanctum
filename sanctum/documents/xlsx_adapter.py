@@ -9,6 +9,7 @@ other feature we don't currently project through segments.
 Segment IDs use ``sheet={name}/{coord}`` (e.g. ``sheet=Header/A3``).
 Excel disallows ``/`` in sheet names, so the delimiter is unambiguous.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -43,9 +44,7 @@ class Reader:
                     if cell.value is None:
                         continue
                     seg_id = f"sheet={sheet_name}/{cell.coordinate}"
-                    segments.append(
-                        build_segment(seg_id, str(cell.value), sheet=sheet_name)
-                    )
+                    segments.append(build_segment(seg_id, str(cell.value), sheet=sheet_name))
 
         return build_document(
             source_path=path,

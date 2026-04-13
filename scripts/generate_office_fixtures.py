@@ -21,6 +21,7 @@ This script is intentionally framework-free: it does not import anything
 from ``sanctum.*``. Fixtures must remain readable even if the adapter
 layer is broken.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -37,7 +38,6 @@ from docx import Document as DocxDocument
 from docx.shared import Pt
 from openpyxl import Workbook
 from pptx import Presentation
-from pptx.util import Inches, Pt as PptxPt
 from reportlab.lib.pagesizes import LETTER
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
@@ -71,9 +71,7 @@ def _normalize_office_zip(path: pathlib.Path) -> None:
     otherwise untouched.
     """
     buf = io.BytesIO()
-    with zipfile.ZipFile(path, "r") as src, zipfile.ZipFile(
-        buf, "w", zipfile.ZIP_DEFLATED
-    ) as dst:
+    with zipfile.ZipFile(path, "r") as src, zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as dst:
         for info in sorted(src.infolist(), key=lambda i: i.filename):
             data = src.read(info.filename)
             if info.filename == "docProps/core.xml":
@@ -296,8 +294,7 @@ def build_pptx_memo() -> pathlib.Path:
     slide1 = prs.slides.add_slide(layout_title)
     slide1.shapes.title.text = "White-Green — Internal Memorandum"
     slide1.placeholders[1].text = (
-        "Q2 Strategic Planning and Budget Allocation — "
-        "From Jennifer Martin, CEO"
+        "Q2 Strategic Planning and Budget Allocation — " "From Jennifer Martin, CEO"
     )
 
     # Slide 2: content (bullet list) — exercises paragraph/run walking

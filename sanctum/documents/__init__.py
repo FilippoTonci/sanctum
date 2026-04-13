@@ -4,6 +4,7 @@ Plain-text adapters live in :mod:`sanctum.documents.base`. Office-format
 adapters (docx/xlsx/pdf/pptx) live alongside them and are dispatched via
 :func:`sanctum.documents.registry.adapter_for`.
 """
+
 from __future__ import annotations
 
 from sanctum.documents.base import TextDocumentReader, TextDocumentWriter

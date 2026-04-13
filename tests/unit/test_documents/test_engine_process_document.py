@@ -4,6 +4,7 @@ Exercises the core orchestrator against in-memory mock reader/writer
 implementations. Real adapter behaviour is covered under the per-format
 test files.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -65,9 +66,7 @@ def test_process_document_skips_empty_segments(mock_reader, mock_writer):
     )
     engine = SanctumEngine(analyzer=analyzer, anonymizer=anonymizer)
 
-    results = engine.process_document(
-        mock_reader, mock_writer, Path("in.docx"), Path("out.docx")
-    )
+    results = engine.process_document(mock_reader, mock_writer, Path("in.docx"), Path("out.docx"))
 
     assert results == []
     analyzer.analyze.assert_not_called()
@@ -93,9 +92,7 @@ def test_process_document_anonymizes_each_segment(mock_reader, mock_writer):
     )
     engine = SanctumEngine(analyzer=analyzer, anonymizer=anonymizer)
 
-    results = engine.process_document(
-        mock_reader, mock_writer, Path("in.docx"), Path("out.docx")
-    )
+    results = engine.process_document(mock_reader, mock_writer, Path("in.docx"), Path("out.docx"))
 
     assert len(results) == 2
     written_doc, _ = mock_writer.write.call_args.args
@@ -116,9 +113,7 @@ def test_process_document_preserves_segments_with_no_detections(mock_reader, moc
     )
     engine = SanctumEngine(analyzer=analyzer, anonymizer=anonymizer)
 
-    results = engine.process_document(
-        mock_reader, mock_writer, Path("in.xlsx"), Path("out.xlsx")
-    )
+    results = engine.process_document(mock_reader, mock_writer, Path("in.xlsx"), Path("out.xlsx"))
 
     assert results == []
     anonymizer.anonymize.assert_not_called()
@@ -131,9 +126,7 @@ def test_process_document_wraps_read_failure(mock_reader, mock_writer):
     engine = SanctumEngine(analyzer=Mock(), anonymizer=Mock())
 
     with pytest.raises(DocumentError, match="Failed to read"):
-        engine.process_document(
-            mock_reader, mock_writer, Path("in.docx"), Path("out.docx")
-        )
+        engine.process_document(mock_reader, mock_writer, Path("in.docx"), Path("out.docx"))
     mock_writer.write.assert_not_called()
 
 
@@ -149,9 +142,7 @@ def test_process_document_wraps_write_failure(mock_reader, mock_writer):
     engine = SanctumEngine(analyzer=analyzer, anonymizer=Mock())
 
     with pytest.raises(DocumentError, match="Failed to write"):
-        engine.process_document(
-            mock_reader, mock_writer, Path("in.docx"), Path("out.docx")
-        )
+        engine.process_document(mock_reader, mock_writer, Path("in.docx"), Path("out.docx"))
 
 
 def test_process_document_preserves_raw_handle(mock_reader, mock_writer):

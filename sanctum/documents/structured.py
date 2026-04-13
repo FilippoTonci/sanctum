@@ -1,4 +1,5 @@
 """Shared helpers for adapter-side construction of StructuredDocument."""
+
 from __future__ import annotations
 
 from pathlib import Path

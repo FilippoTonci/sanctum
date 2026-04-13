@@ -129,9 +129,7 @@ class SanctumEngine:
                 operator_policies=operator_policies,
             )
             results.append(result)
-            new_segments.append(
-                segment.model_copy(update={"text": result.anonymized_text})
-            )
+            new_segments.append(segment.model_copy(update={"text": result.anonymized_text}))
 
         mutated = doc.model_copy(update={"segments": new_segments})
         # Preserve the opaque raw handle: ``model_copy`` carries it through

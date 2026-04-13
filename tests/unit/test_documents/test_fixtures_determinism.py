@@ -5,6 +5,7 @@ release starts emitting something time-based we don't normalize yet. Running
 the generator twice must produce identical bytes; the committed MANIFEST
 must match what the generator currently produces.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -58,11 +59,7 @@ def test_generator_is_deterministic(tmp_path, monkeypatch):
         out_dir.mkdir(parents=True)
         for build in gen.BUILDERS:
             build()
-        return {
-            p.name: _sha256(p)
-            for p in sorted(out_dir.iterdir())
-            if p.suffix != ".json"
-        }
+        return {p.name: _sha256(p) for p in sorted(out_dir.iterdir()) if p.suffix != ".json"}
 
     first = _run()
     second = _run()

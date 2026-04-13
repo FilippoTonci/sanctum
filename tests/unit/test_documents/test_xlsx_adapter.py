@@ -1,4 +1,5 @@
 """Unit tests for the .xlsx reader/writer adapter pair."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -37,9 +38,7 @@ def test_reader_metadata_records_sheet(reader: Reader) -> None:
     assert seg.id == "sheet=Header/A1"
 
 
-def test_round_trip_preserves_numeric_cells(
-    reader: Reader, writer: Writer, tmp_path: Path
-) -> None:
+def test_round_trip_preserves_numeric_cells(reader: Reader, writer: Writer, tmp_path: Path) -> None:
     doc = reader.read(FIXTURE)
     out = tmp_path / "roundtrip.xlsx"
     writer.write(doc, out)
@@ -97,9 +96,7 @@ def test_skips_missing_sheet_silently(writer: Writer, reader: Reader, tmp_path: 
     wb.save(str(src))
 
     doc = reader.read(src)
-    doc.segments.append(
-        type(doc.segments[0])(id="sheet=Ghost/A1", text="phantom", metadata={})
-    )
+    doc.segments.append(type(doc.segments[0])(id="sheet=Ghost/A1", text="phantom", metadata={}))
     out = tmp_path / "out.xlsx"
     writer.write(doc, out)
     assert load_workbook(str(out))["Data"]["A1"].value == "keep"

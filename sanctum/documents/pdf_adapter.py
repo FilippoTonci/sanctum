@@ -14,6 +14,7 @@ Phase 1 approach:
   raise :class:`UnsupportedPdfError` — OCR is out of scope for
   Phase 1.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -90,11 +91,7 @@ class Writer:
             # reportlab's Paragraph treats ``<`` and ``&`` as markup —
             # escape them so anonymized placeholders like ``<PERSON>``
             # render literally.
-            safe = (
-                segment.text.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-            )
+            safe = segment.text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             for chunk in safe.split("\n"):
                 if chunk:
                     flowables.append(Paragraph(chunk, body_style))

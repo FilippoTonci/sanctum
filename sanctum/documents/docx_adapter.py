@@ -14,6 +14,7 @@ Phase 1 does not read headers, footers, footnotes, or comments — they
 are preserved byte-for-byte in the raw handle but not anonymized. This
 is an explicit scope cut; lifting it is a Phase 2 task.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -31,9 +32,7 @@ if TYPE_CHECKING:
     from sanctum.core.models import StructuredDocument, TextSegment
 
 
-def _iter_paragraph_runs(
-    paragraph: Paragraph, prefix: str
-) -> list[tuple[str, Run]]:
+def _iter_paragraph_runs(paragraph: Paragraph, prefix: str) -> list[tuple[str, Run]]:
     """Return ``[(segment_id, run), ...]`` for every run in ``paragraph``."""
     return [(f"{prefix}/r{j}", run) for j, run in enumerate(paragraph.runs)]
 

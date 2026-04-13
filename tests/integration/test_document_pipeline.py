@@ -6,6 +6,7 @@ up and (b) no longer contains the original person-name PII.
 
 Marked ``integration`` so the default unit-test run skips them.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
