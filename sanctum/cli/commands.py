@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import click
 from rich.console import Console
@@ -8,9 +10,54 @@ from rich.table import Table
 from sanctum.config.settings import settings
 from sanctum.core.engine import SanctumEngine
 from sanctum.core.exceptions import SanctumError
+from sanctum.core.models import OperatorPolicy
 from sanctum.documents import adapter_for
+from sanctum.security import (
+    EncryptedFileMappingStore,
+    InMemoryMappingStore,
+)
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+    from sanctum.core.protocols import MappingStore
 
 console = Console()
+
+
+@contextmanager
+def _mapping_store(store_path: Path | None, passphrase: str | None) -> Iterator[MappingStore]:
+    """Yield an unlocked mapping store, locking (and persisting) on exit.
+
+    `store_path=None` → session-only `InMemoryMappingStore` (no passphrase
+    required). Otherwise `EncryptedFileMappingStore` is unlocked with the
+    given passphrase; the store re-encrypts and writes on context exit so
+    any new mappings created during the call are persisted.
+    """
+    if store_path is None:
+        store: MappingStore = InMemoryMappingStore()
+        store.unlock()
+    else:
+        if not passphrase:
+            raise click.UsageError(
+                "--passphrase is required when --store is supplied "
+                "(or use the SANCTUM_PASSPHRASE env var)."
+            )
+        store = EncryptedFileMappingStore(store_path)
+        store.unlock(passphrase)
+    try:
+        yield store
+    finally:
+        store.lock()
+
+
+def _pseudonymize_policies(store: MappingStore) -> dict[str, OperatorPolicy]:
+    return {
+        "DEFAULT": OperatorPolicy(
+            operator_name="pseudonymize",
+            params={"store": store},
+        )
+    }
 
 
 def _create_engine() -> SanctumEngine:
@@ -117,15 +164,44 @@ def analyze(text: str, language: str, threshold: float, entities: str | None) ->
     type=float,
     help="Minimum confidence score for detections.",
 )
-def anonymize(text: str, operator: str, language: str, threshold: float) -> None:
+@click.option(
+    "--store",
+    "store_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Path to a persistent encrypted mapping file (used with --operator pseudonymize).",
+)
+@click.option(
+    "--passphrase",
+    envvar="SANCTUM_PASSPHRASE",
+    default=None,
+    help="Passphrase for the mapping store. Prefer the SANCTUM_PASSPHRASE env var.",
+)
+def anonymize(
+    text: str,
+    operator: str,
+    language: str,
+    threshold: float,
+    store_path: Path | None,
+    passphrase: str | None,
+) -> None:
     """Detect and anonymize PII in TEXT."""
     try:
         engine = _create_engine()
-        result = engine.process(
-            text,
-            language=language,
-            score_threshold=threshold,
-        )
+        if operator == "pseudonymize":
+            with _mapping_store(store_path, passphrase) as store:
+                result = engine.process(
+                    text,
+                    language=language,
+                    score_threshold=threshold,
+                    operator_policies=_pseudonymize_policies(store),
+                )
+        else:
+            result = engine.process(
+                text,
+                language=language,
+                score_threshold=threshold,
+            )
 
         console.print(f"\n[bold]Anonymized text:[/bold]\n{result.anonymized_text}\n")
 
@@ -168,33 +244,130 @@ def anonymize(text: str, operator: str, language: str, threshold: float) -> None
     default=None,
     help="Comma-separated list of entity types to detect.",
 )
+@click.option(
+    "--operator",
+    "-o",
+    default=None,
+    help="Anonymization operator; use 'pseudonymize' for consistent reversible surrogates.",
+)
+@click.option(
+    "--store",
+    "store_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Path to a persistent encrypted mapping file (used with --operator pseudonymize).",
+)
+@click.option(
+    "--passphrase",
+    envvar="SANCTUM_PASSPHRASE",
+    default=None,
+    help="Passphrase for the mapping store. Prefer the SANCTUM_PASSPHRASE env var.",
+)
 def process_file(
     input_path: Path,
     output_path: Path,
     language: str,
     threshold: float,
     entities: str | None,
+    operator: str | None,
+    store_path: Path | None,
+    passphrase: str | None,
 ) -> None:
     """Anonymize a structured office document (.docx/.xlsx/.pdf/.pptx)."""
     try:
         reader, writer = adapter_for(input_path)
         engine = _create_engine()
         entity_list = [e.strip() for e in entities.split(",")] if entities else None
-        results = engine.process_document(
-            reader,
-            writer,
-            input_path,
-            output_path,
-            language=language,
-            score_threshold=threshold,
-            entities=entity_list,
-        )
+
+        if operator == "pseudonymize":
+            with _mapping_store(store_path, passphrase) as store:
+                results = engine.process_document(
+                    reader,
+                    writer,
+                    input_path,
+                    output_path,
+                    language=language,
+                    score_threshold=threshold,
+                    entities=entity_list,
+                    operator_policies=_pseudonymize_policies(store),
+                )
+        else:
+            results = engine.process_document(
+                reader,
+                writer,
+                input_path,
+                output_path,
+                language=language,
+                score_threshold=threshold,
+                entities=entity_list,
+            )
 
         total = sum(len(r.detections) for r in results)
         console.print(
             f"[green]Wrote anonymized document to {output_path}[/green] "
             f"({len(results)} segments changed, {total} entities replaced)."
         )
+    except SanctumError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1) from e
+
+
+@cli.group()
+def mapping() -> None:
+    """Manage the encrypted mapping store used by the pseudonymize operator."""
+
+
+@mapping.command("reverse")
+@click.argument("pseudonym")
+@click.argument("entity_type")
+@click.option(
+    "--store",
+    "store_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    help="Path to an existing encrypted mapping file.",
+)
+@click.option(
+    "--passphrase",
+    envvar="SANCTUM_PASSPHRASE",
+    prompt=True,
+    hide_input=True,
+    help="Passphrase for the mapping store.",
+)
+def mapping_reverse(pseudonym: str, entity_type: str, store_path: Path, passphrase: str) -> None:
+    """Look up the original that maps to PSEUDONYM for ENTITY_TYPE."""
+    try:
+        store = EncryptedFileMappingStore(store_path)
+        store.unlock(passphrase)
+        try:
+            original = store.reverse(pseudonym, entity_type)
+        finally:
+            store.lock()
+        if original is None:
+            console.print(f"[yellow]No mapping found for {pseudonym} ({entity_type}).[/yellow]")
+            raise SystemExit(2)
+        console.print(original)
+    except SanctumError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1) from e
+
+
+@mapping.command("rotate")
+@click.option(
+    "--store",
+    "store_path",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+)
+@click.option("--old-passphrase", prompt=True, hide_input=True)
+@click.option("--new-passphrase", prompt=True, hide_input=True, confirmation_prompt=True)
+def mapping_rotate(store_path: Path, old_passphrase: str, new_passphrase: str) -> None:
+    """Re-encrypt the mapping file under a new passphrase (fresh salt)."""
+    try:
+        store = EncryptedFileMappingStore(store_path)
+        store.rotate_passphrase(old_passphrase, new_passphrase)
+        store.lock()
+        console.print(f"[green]Rotated passphrase on {store_path}.[/green]")
     except SanctumError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise SystemExit(1) from e
