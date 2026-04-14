@@ -75,7 +75,7 @@ jobs:
       - name: Enforce coverage gates
         run: |
           python -m coverage report \
-            --include="sanctum/core/*,sanctum/documents/*" \
+            --include="sanctum/core/*,sanctum/documents/*,sanctum/security/*" \
             --fail-under=85
           python -m coverage report --fail-under=70
 
