@@ -16,11 +16,16 @@ Built-in operators (name → behaviour, with example on "John Smith"):
 - custom      User-supplied lambda (via OperatorConfig params).
 - hips        Sanctum's Faker-based synthetic replacement
               (contextually plausible fake data).        → "Michael Jones"
+- pseudonymize Consistent, reversible Faker replacement
+               backed by a MappingStore. Requires
+               `params={"store": MappingStore}`.          → "Michael Jones"
+               (same input → same output across calls)
 """
 
 from __future__ import annotations
 
 from sanctum.anonymizer.operators.hips import HipsOperator
+from sanctum.anonymizer.operators.pseudonymize import PseudonymizeOperator
 
 BUILTIN_OPERATOR_NAMES: tuple[str, ...] = (
     "redact",
@@ -31,6 +36,7 @@ BUILTIN_OPERATOR_NAMES: tuple[str, ...] = (
     "keep",
     "custom",
     "hips",
+    "pseudonymize",
 )
 
-__all__ = ["BUILTIN_OPERATOR_NAMES", "HipsOperator"]
+__all__ = ["BUILTIN_OPERATOR_NAMES", "HipsOperator", "PseudonymizeOperator"]
