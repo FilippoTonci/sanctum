@@ -9,9 +9,10 @@ Differs from ``HipsOperator`` in two ways:
 * **Reversible** — the store can be ``reverse()``'d to recover the
   original given the pseudonym (when unlocked).
 
-Presidio instantiates operators with no args, so state (the store, the
-Faker instance) comes in via ``params``. The operator itself is
-stateless between calls.
+Split of state: the ``MappingStore`` is request-scoped (different CLI
+invocations unlock different stores) and arrives via ``params``; the
+``Faker`` is operator-lifetime and lives on the instance, mirroring
+``HipsOperator``.
 """
 
 from __future__ import annotations
@@ -36,19 +37,22 @@ class PseudonymizeOperator(Operator):
         "DATE_TIME": "date",
     }
 
+    def __init__(self) -> None:
+        super().__init__()
+        self._fake = Faker()
+
     def operate(self, text: str = "", params: dict | None = None) -> str:
         params = params or {}
         store = params.get("store")
         if store is None:
             raise ValueError("pseudonymize operator requires a `store` param")
         entity_type = params.get("entity_type", "PERSON")
-        fake: Faker = params.get("faker") or Faker()
         generator = self._ENTITY_GENERATORS.get(entity_type)
 
         def factory() -> str:
             if generator:
-                return str(getattr(fake, generator)())
-            return str(fake.bothify("????-####"))
+                return str(getattr(self._fake, generator)())
+            return str(self._fake.bothify("????-####"))
 
         result: str = store.get_or_create(text, entity_type, factory)
         return result

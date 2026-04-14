@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-from faker import Faker
 from sanctum.anonymizer.operators.pseudonymize import PseudonymizeOperator
 from sanctum.security.mapping_store import InMemoryMappingStore
 
@@ -15,9 +14,7 @@ def _unlocked_store() -> InMemoryMappingStore:
 def test_same_original_produces_same_pseudonym():
     op = PseudonymizeOperator()
     store = _unlocked_store()
-    fake = Faker()
-    fake.seed_instance(42)
-    params = {"store": store, "entity_type": "PERSON", "faker": fake}
+    params = {"store": store, "entity_type": "PERSON"}
 
     first = op.operate("Alice Smith", params)
     second = op.operate("Alice Smith", params)
