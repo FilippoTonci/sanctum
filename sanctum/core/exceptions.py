@@ -40,3 +40,21 @@ class PdfWriteRefusedError(DocumentError):
     document). Overwriting the original is disallowed because it would
     silently drop images, forms, and layout — deferred to Phase 3.
     """
+
+
+class MappingStoreError(SanctumError):
+    """Raised for mapping-store read/write/state failures."""
+
+
+class IncorrectPassphraseError(MappingStoreError):
+    """Raised when an `unlock()` attempt fails AEAD authentication.
+
+    Surfaced explicitly so callers don't have to interpret the underlying
+    `cryptography.exceptions.InvalidTag`. A failed tag check in this
+    context almost always means wrong passphrase (and occasionally
+    tampering — same remediation from the user's perspective).
+    """
+
+
+class MappingStoreLockedError(MappingStoreError):
+    """Raised when a locked store is asked to read, write, or mutate."""

@@ -152,6 +152,7 @@ module = [
     "reportlab.*",
     "spacy.*",
     "argon2.*",
+    "cryptography.*",
 ]
 ignore_missing_imports = true
 
