@@ -219,4 +219,9 @@ def config() -> None:
     # Anonymizer settings
     table.add_row("anonymizer", "default_operator", settings.anonymizer.default_operator)
 
+    # Security / mapping-store settings
+    table.add_row("security", "session_only", str(settings.security.session_only))
+    table.add_row("security", "store_path", str(settings.security.store_path))
+    table.add_row("security", "kdf_memory_cost_kib", str(settings.security.kdf_memory_cost))
+
     console.print(table)
