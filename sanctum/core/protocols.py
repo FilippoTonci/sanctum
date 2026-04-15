@@ -69,14 +69,11 @@ class StructuredDocumentWriter(Protocol):
 class MappingStore(Protocol):
     """Persistent original -> pseudonym store for reversible pseudonymization.
 
-    Two impls satisfy this Protocol: an in-memory dict (session-only, no
-    passphrase) and a passphrase-encrypted file. A SQLite-backed scale impl
-    is a deferred follow-up and will slot in behind the same interface.
+    Lifecycle concerns (passphrase, unlock, lock) are intentionally *not* in
+    this Protocol — they're specific to the encrypted-file impl. Consumers
+    that only read/write mappings depend on this minimal surface; the CLI
+    composition root knows the concrete type and drives lifecycle itself.
     """
-
-    def unlock(self, passphrase: str | None = None) -> None: ...
-
-    def lock(self) -> None: ...
 
     def get_or_create(self, original: str, entity_type: str, factory: Callable[[], str]) -> str: ...
 

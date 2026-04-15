@@ -31,7 +31,12 @@ def pipeline() -> SanctumEngine:
 
 
 def _policies(store):
-    return {"DEFAULT": OperatorPolicy(operator_name="pseudonymize", params={"store": store})}
+    return {
+        "DEFAULT": OperatorPolicy(
+            operator_name="pseudonymize",
+            params={"store": store, "language": "en"},
+        )
+    }
 
 
 def _find_person(result) -> tuple[str, str]:
@@ -49,7 +54,6 @@ def _find_person(result) -> tuple[str, str]:
 
 def test_inmemory_pseudonymize_is_consistent_across_calls(pipeline: SanctumEngine):
     store = InMemoryMappingStore()
-    store.unlock()
 
     text = "John Smith met John Smith at lunch."
     result = pipeline.process(text, operator_policies=_policies(store))

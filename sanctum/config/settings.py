@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -46,6 +46,12 @@ class SecuritySettings(BaseSettings):
     kdf_time_cost: int = 3
     kdf_memory_cost: int = 128 * 1024  # KiB; 128 MiB default.
     kdf_parallelism: int = 1
+
+    @model_validator(mode="after")
+    def _require_store_path_when_persistent(self) -> SecuritySettings:
+        if not self.session_only and self.store_path is None:
+            raise ValueError("security.store_path must be set when security.session_only is False")
+        return self
 
 
 class SanctumSettings(BaseSettings):

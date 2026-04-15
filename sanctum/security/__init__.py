@@ -14,13 +14,13 @@ def create_mapping_store(settings: SecuritySettings) -> MappingStore:
     """Factory — pick the mapping-store impl that matches ``settings``.
 
     ``session_only=True`` (default) builds an `InMemoryMappingStore`; nothing
-    touches disk. Otherwise `store_path` must be set and the caller must
-    ``unlock(passphrase)`` before using the store.
+    touches disk. Otherwise `store_path` is guaranteed non-None by
+    `SecuritySettings`'s model validator, and the caller must
+    ``unlock(passphrase)`` on the returned store before using it.
     """
     if settings.session_only:
         return InMemoryMappingStore()
-    if settings.store_path is None:
-        raise ValueError("security.store_path must be set when security.session_only is False")
+    assert settings.store_path is not None  # model validator enforces this
     return EncryptedFileMappingStore(
         settings.store_path,
         kdf_time_cost=settings.kdf_time_cost,

@@ -27,35 +27,34 @@ console = Console()
 
 @contextmanager
 def _mapping_store(store_path: Path | None, passphrase: str | None) -> Iterator[MappingStore]:
-    """Yield an unlocked mapping store, locking (and persisting) on exit.
+    """Yield a ready mapping store, persisting on exit when file-backed.
 
-    `store_path=None` → session-only `InMemoryMappingStore` (no passphrase
-    required). Otherwise `EncryptedFileMappingStore` is unlocked with the
-    given passphrase; the store re-encrypts and writes on context exit so
-    any new mappings created during the call are persisted.
+    `store_path=None` → `InMemoryMappingStore` (no lifecycle). Otherwise
+    `EncryptedFileMappingStore` is unlocked with the given passphrase;
+    the store re-encrypts and writes on context exit so any new mappings
+    created during the call are persisted.
     """
     if store_path is None:
-        store: MappingStore = InMemoryMappingStore()
-        store.unlock()
-    else:
-        if not passphrase:
-            raise click.UsageError(
-                "--passphrase is required when --store is supplied "
-                "(or use the SANCTUM_PASSPHRASE env var)."
-            )
-        store = EncryptedFileMappingStore(store_path)
-        store.unlock(passphrase)
+        yield InMemoryMappingStore()
+        return
+    if not passphrase:
+        raise click.UsageError(
+            "--passphrase is required when --store is supplied "
+            "(or use the SANCTUM_PASSPHRASE env var)."
+        )
+    encrypted = EncryptedFileMappingStore(store_path)
+    encrypted.unlock(passphrase)
     try:
-        yield store
+        yield encrypted
     finally:
-        store.lock()
+        encrypted.lock()
 
 
-def _pseudonymize_policies(store: MappingStore) -> dict[str, OperatorPolicy]:
+def _pseudonymize_policies(store: MappingStore, language: str) -> dict[str, OperatorPolicy]:
     return {
         "DEFAULT": OperatorPolicy(
             operator_name="pseudonymize",
-            params={"store": store},
+            params={"store": store, "language": language},
         )
     }
 
@@ -194,7 +193,7 @@ def anonymize(
                     text,
                     language=language,
                     score_threshold=threshold,
-                    operator_policies=_pseudonymize_policies(store),
+                    operator_policies=_pseudonymize_policies(store, language),
                 )
         else:
             result = engine.process(
@@ -289,7 +288,7 @@ def process_file(
                     language=language,
                     score_threshold=threshold,
                     entities=entity_list,
-                    operator_policies=_pseudonymize_policies(store),
+                    operator_policies=_pseudonymize_policies(store, language),
                 )
         else:
             results = engine.process_document(

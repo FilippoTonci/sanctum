@@ -17,8 +17,9 @@ def test_session_only_builds_inmemory():
 
 
 def test_persistent_requires_store_path():
+    """The `session_only=False` + no `store_path` combo fails at config-load."""
     with pytest.raises(ValueError):
-        create_mapping_store(SecuritySettings(session_only=False, store_path=None))
+        SecuritySettings(session_only=False, store_path=None)
 
 
 def test_persistent_builds_encrypted_file(tmp_path: Path):

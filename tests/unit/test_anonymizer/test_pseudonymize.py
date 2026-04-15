@@ -6,9 +6,7 @@ from sanctum.security.mapping_store import InMemoryMappingStore
 
 
 def _unlocked_store() -> InMemoryMappingStore:
-    s = InMemoryMappingStore()
-    s.unlock()
-    return s
+    return InMemoryMappingStore()
 
 
 def test_same_original_produces_same_pseudonym():
@@ -41,6 +39,23 @@ def test_missing_store_raises():
     op = PseudonymizeOperator()
     with pytest.raises(ValueError):
         op.operate("Alice", {"entity_type": "PERSON"})
+
+
+def test_missing_entity_type_raises():
+    op = PseudonymizeOperator()
+    with pytest.raises(ValueError):
+        op.operate("Alice", {"store": _unlocked_store()})
+
+
+def test_locale_is_taken_from_language_param():
+    """Italian input should produce italian-locale surrogates."""
+    op = PseudonymizeOperator()
+    store = _unlocked_store()
+    op.operate("Mario Rossi", {"store": store, "entity_type": "PERSON", "language": "it"})
+    op.operate("Jean Dupont", {"store": store, "entity_type": "PERSON", "language": "fr"})
+    # Fakers for both locales are cached on the operator instance.
+    assert "it_IT" in op._fakers
+    assert "fr_FR" in op._fakers
 
 
 def test_validate_accepts_store_and_rejects_missing():
