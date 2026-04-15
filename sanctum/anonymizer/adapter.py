@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig, RecognizerResult
+from sanctum.anonymizer.operators.pseudonymize import PseudonymizeOperator
 from sanctum.core.models import AnonymizationResult, DetectionResult, OperatorPolicy
 
 
@@ -10,6 +11,7 @@ class PresidioAnonymizer:
 
     def __init__(self, default_operator: str = "replace") -> None:
         self._engine = AnonymizerEngine()
+        self._engine.add_anonymizer(PseudonymizeOperator)
         self._default_operator = default_operator
 
     def anonymize(

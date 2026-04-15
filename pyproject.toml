@@ -40,6 +40,12 @@ documents = [
     "pypdf>=4.0",
     "reportlab>=4.0",
 ]
+# Mapping-store runtime deps (WS3). cryptography provides ChaCha20-Poly1305
+# AEAD; argon2-cffi provides the Argon2id passphrase KDF.
+security = [
+    "cryptography>=42",
+    "argon2-cffi>=23",
+]
 ci = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
@@ -52,6 +58,8 @@ ci = [
     # office-fixture determinism test imports the generator script, which
     # imports python-docx/openpyxl/python-pptx/reportlab.
     "sanctum[documents]",
+    # Security deps pulled in so mapping-store tests run under the gate.
+    "sanctum[security]",
 ]
 
 [project.scripts]
@@ -143,6 +151,8 @@ module = [
     "pptx.*",
     "reportlab.*",
     "spacy.*",
+    "argon2.*",
+    "cryptography.*",
 ]
 ignore_missing_imports = true
 

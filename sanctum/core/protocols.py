@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -62,3 +63,18 @@ class StructuredDocumentWriter(Protocol):
     """Projects a (possibly mutated) StructuredDocument back to disk."""
 
     def write(self, doc: StructuredDocument, path: Path) -> None: ...
+
+
+@runtime_checkable
+class MappingStore(Protocol):
+    """Persistent original -> pseudonym store for reversible pseudonymization.
+
+    Lifecycle concerns (passphrase, unlock, lock) are intentionally *not* in
+    this Protocol — they're specific to the encrypted-file impl. Consumers
+    that only read/write mappings depend on this minimal surface; the CLI
+    composition root knows the concrete type and drives lifecycle itself.
+    """
+
+    def get_or_create(self, original: str, entity_type: str, factory: Callable[[], str]) -> str: ...
+
+    def reverse(self, pseudonym: str, entity_type: str) -> str | None: ...

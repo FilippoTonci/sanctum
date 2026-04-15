@@ -240,12 +240,12 @@ Sanctum is designed to help professionals meet the requirements of:
 - [x] Evaluation corpus: 12 annotated synthetic fixtures across 6 domains
 
 ### Phase 1 — Document Processing & API
-- [ ] Document format adapters (`.docx`, `.xlsx`, `.pdf` text extraction)
+- [x] Document format adapters (`.docx`, `.xlsx`, `.pdf`, `.pptx`)
+- [x] Encrypted mapping store (ChaCha20-Poly1305 + Argon2id) for reversible pseudonymization
+- [x] CI/CD pipeline + pre-commit hooks + linter enforcement
 - [ ] Flask localhost API (background service for future GUI)
-- [ ] Encrypted mapping store (AES-256, local SQLite) for reversible pseudonymization
 - [ ] Custom legal-domain recognizers (case numbers, bar IDs, Bates numbers)
 - [ ] Transformer-based NER (Professional tier)
-- [ ] CI/CD pipeline + pre-commit hooks + linter enforcement
 
 ### Phase 2 — Intelligence & Compliance
 - [ ] HIPAA entity recognizer mode (18 safe harbor identifiers)
