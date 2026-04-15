@@ -19,5 +19,6 @@ repos:
           - pydantic-settings>=2.0
           - click>=8.0
           - rich>=13.0
+          - flask>=3
         args: [--config-file=pyproject.toml]
         files: ^sanctum/
