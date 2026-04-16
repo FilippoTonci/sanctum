@@ -39,7 +39,7 @@ def adapter_for(path: Path) -> AdapterPair:
     module_name = _SUFFIX_MAP.get(suffix)
     if module_name is None:
         raise UnsupportedDocumentFormatError(
-            f"No adapter registered for '{suffix}' files. " f"Supported: {sorted(_SUFFIX_MAP)}"
+            f"No adapter registered for '{suffix}' files. Supported: {sorted(_SUFFIX_MAP)}"
         )
 
     import importlib
