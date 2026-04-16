@@ -32,6 +32,7 @@ from sanctum.core.exceptions import (
     UnsupportedDocumentFormatError,
 )
 from sanctum.core.models import OperatorPolicy
+from sanctum.core.protocols import MappingStore
 from sanctum.documents import adapter_for
 
 pipeline_bp = Blueprint("pipeline", __name__)
@@ -42,6 +43,32 @@ MAX_INPUT_BYTES: Final[int] = 50 * 1024 * 1024  # 50 MiB hard cap on document in
 def _get_engine() -> SanctumEngine | None:
     engine = current_app.config.get("SANCTUM_ENGINE")
     return engine if isinstance(engine, SanctumEngine) else None
+
+
+def _unlocked_store() -> MappingStore | None:
+    """Return the active mapping store iff one is currently unlocked."""
+    store = current_app.config.get("SANCTUM_MAPPING_STORE")
+    if store is None:
+        return None
+    is_unlocked = getattr(store, "is_unlocked", False)
+    return store if is_unlocked else None
+
+
+def _build_pseudonymize_policies(store: MappingStore, language: str) -> dict[str, OperatorPolicy]:
+    """Mirror of `cli.commands._pseudonymize_policies`, kept in sync intentionally."""
+    return {
+        "DEFAULT": OperatorPolicy(
+            operator_name="pseudonymize",
+            params={"store": store, "language": language},
+        )
+    }
+
+
+_PSEUDONYMIZE_LOCKED_ERROR: dict[str, str] = {
+    "error": (
+        "pseudonymize requires the encrypted mapping store; unlock it via /mapping/unlock first"
+    ),
+}
 
 
 def _parse_body(model_cls: type[Any]) -> tuple[Any, tuple[dict, int] | None]:
@@ -98,16 +125,13 @@ def anonymize() -> tuple[dict, int]:
     if err is not None:
         return err
 
-    if req.operator == "pseudonymize":
-        return {
-            "error": (
-                "pseudonymize requires the encrypted mapping store; "
-                "unlock it via /mapping/unlock (available in WS4.7) first"
-            )
-        }, 400
-
     operator_policies: dict[str, OperatorPolicy] | None = None
-    if req.operator is not None:
+    if req.operator == "pseudonymize":
+        store = _unlocked_store()
+        if store is None:
+            return _PSEUDONYMIZE_LOCKED_ERROR, 400
+        operator_policies = _build_pseudonymize_policies(store, req.language)
+    elif req.operator is not None:
         operator_policies = {"DEFAULT": OperatorPolicy(operator_name=req.operator)}
 
     try:
@@ -137,6 +161,8 @@ def _validate_local_path(value: str, *, must_exist: bool) -> tuple[Path | None, 
     UNC paths — ``\\\\server\\share`` on Windows or ``//server/share`` as the
     POSIX analog — point at network shares; honoring one would defeat the
     airgap by reading or writing across the network. Refuse them outright.
+    Used by /process-file and the /mapping routes — both take server-side
+    paths from the client, both must defend the airgap boundary identically.
     """
     if not value:
         return None, "path is empty"
@@ -147,7 +173,7 @@ def _validate_local_path(value: str, *, must_exist: bool) -> tuple[Path | None, 
     if not path.is_absolute():
         return None, "path must be absolute"
     if must_exist and not path.is_file():
-        return None, "input_path does not exist or is not a regular file"
+        return None, "path does not exist or is not a regular file"
     return path, None
 
 
@@ -162,13 +188,14 @@ def process_file() -> tuple[dict, int]:
     if err is not None:
         return err
 
+    operator_policies: dict[str, OperatorPolicy] | None = None
     if req.operator == "pseudonymize":
-        return {
-            "error": (
-                "pseudonymize requires the encrypted mapping store; "
-                "unlock it via /mapping/unlock (available in WS4.7) first"
-            )
-        }, 400
+        store = _unlocked_store()
+        if store is None:
+            return _PSEUDONYMIZE_LOCKED_ERROR, 400
+        operator_policies = _build_pseudonymize_policies(store, req.language)
+    elif req.operator is not None:
+        operator_policies = {"DEFAULT": OperatorPolicy(operator_name=req.operator)}
 
     in_path, in_err = _validate_local_path(req.input_path, must_exist=True)
     if in_err is not None:
@@ -188,10 +215,6 @@ def process_file() -> tuple[dict, int]:
         reader, writer = adapter_for(in_path)
     except UnsupportedDocumentFormatError as exc:
         return {"error": str(exc)}, 415
-
-    operator_policies: dict[str, OperatorPolicy] | None = None
-    if req.operator is not None:
-        operator_policies = {"DEFAULT": OperatorPolicy(operator_name=req.operator)}
 
     try:
         results = engine.process_document(

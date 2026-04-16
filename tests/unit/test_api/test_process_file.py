@@ -209,7 +209,7 @@ def test_process_file_415_on_unsupported_format(tmp_path: Path):
     assert r.status_code == 415
 
 
-def test_process_file_rejects_pseudonymize_until_ws47(tmp_path: Path):
+def test_process_file_rejects_pseudonymize_when_store_locked(tmp_path: Path):
     src = tmp_path / "in.docx"
     src.write_bytes(b"x")
     client = _client(_engine([], _empty_result()))

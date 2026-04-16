@@ -112,3 +112,53 @@ class ProcessFileResponse(_Frozen):
     output_path: str
     segments_changed: int
     entities_replaced: int
+
+
+class UnlockMappingRequest(_StrictRequest):
+    """Body for `POST /mapping/unlock`.
+
+    `store_path` is server-side; same UNC/absolute rules as /process-file.
+    A non-existent file is treated as "create on first lock" — matches the
+    CLI behavior where `EncryptedFileMappingStore.unlock` on a missing
+    path generates a fresh salt and starts with empty entries.
+    """
+
+    store_path: str
+    passphrase: str = Field(min_length=1)
+
+
+class MappingStatusResponse(_Frozen):
+    """Body for `POST /mapping/{unlock,lock}` — current store state."""
+
+    unlocked: bool
+    store_path: str | None
+
+
+class ReverseMappingRequest(_StrictRequest):
+    """Body for `POST /mapping/reverse` — look up the original behind a pseudonym."""
+
+    pseudonym: str = Field(min_length=1)
+    entity_type: str = Field(min_length=1)
+
+
+class ReverseMappingResponse(_Frozen):
+    """Body for `POST /mapping/reverse` — the original that maps to the pseudonym."""
+
+    pseudonym: str
+    entity_type: str
+    original: str
+
+
+class RotateMappingKeyRequest(_StrictRequest):
+    """Body for `POST /mapping/rotate-key` — re-encrypt under a new passphrase."""
+
+    store_path: str
+    old_passphrase: str = Field(min_length=1)
+    new_passphrase: str = Field(min_length=1)
+
+
+class RotateMappingKeyResponse(_Frozen):
+    """Body for `POST /mapping/rotate-key` — confirmation of rotation."""
+
+    rotated: bool
+    store_path: str

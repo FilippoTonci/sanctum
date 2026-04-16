@@ -208,7 +208,7 @@ def test_anonymize_400_on_missing_body():
     assert r.status_code == 400
 
 
-def test_anonymize_rejects_pseudonymize_until_ws47():
+def test_anonymize_rejects_pseudonymize_when_store_locked():
     engine, *_ = _engine()
     client = _client(engine)
     r = client.post(
@@ -218,6 +218,50 @@ def test_anonymize_rejects_pseudonymize_until_ws47():
     )
     assert r.status_code == 400
     assert "mapping store" in r.get_json()["error"]
+
+
+def test_anonymize_uses_unlocked_store_for_pseudonymize(tmp_path):
+    """When the store is unlocked, /anonymize should pass it to the operator policy."""
+    from sanctum.api.app import create_app
+    from sanctum.security.mapping_store import EncryptedFileMappingStore
+
+    def cheap_factory(path):
+        return EncryptedFileMappingStore(
+            path, kdf_time_cost=1, kdf_memory_cost=8, kdf_parallelism=1
+        )
+
+    detection = DetectionResult(entity_type="PERSON", start=0, end=5, score=0.99, text_span="Alice")
+    result = AnonymizationResult(
+        original_text="Alice",
+        anonymized_text="Pseudo",
+        detections=[detection],
+        operators_applied={"PERSON": "pseudonymize"},
+    )
+    engine, _, anonymizer = _engine(detections=[detection], result=result)
+    app = create_app(
+        token="t", host="127.0.0.1", port=8765, engine=engine, mapping_store_factory=cheap_factory
+    )
+    client = app.test_client()
+
+    # Unlock first.
+    u = client.post(
+        "/mapping/unlock",
+        headers={**LOOPBACK, **AUTH},
+        json={"store_path": str(tmp_path / "store.bin"), "passphrase": "p"},
+    )
+    assert u.status_code == 200
+
+    r = client.post(
+        "/anonymize",
+        headers={**LOOPBACK, **AUTH},
+        json={"text": "Alice", "operator": "pseudonymize", "language": "en"},
+    )
+    assert r.status_code == 200, r.get_json()
+    # The operator policy should have received the unlocked store + language.
+    policies = anonymizer.calls[0]["operator_policies"]
+    assert policies["DEFAULT"].operator_name == "pseudonymize"
+    assert policies["DEFAULT"].params["language"] == "en"
+    assert "store" in policies["DEFAULT"].params
 
 
 def test_anonymize_happy_path_returns_full_result():
