@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING
 from flask import Flask, current_app, request
 
 from sanctum.api.auth import _is_local_host_header, _is_local_origin
+from sanctum.api.routes.health import health_bp
 
 if TYPE_CHECKING:
     from sanctum.core.engine import SanctumEngine
@@ -62,5 +63,7 @@ def create_app(
         if origin is not None and not _is_local_origin(origin, allowed):
             return {"error": "origin not allowed"}, 403
         return None
+
+    app.register_blueprint(health_bp)
 
     return app
