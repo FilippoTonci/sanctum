@@ -86,3 +86,29 @@ class AnonymizeResponse(_Frozen):
     anonymized_text: str
     detections: list[DetectionResult]
     operators_applied: dict[str, str]
+
+
+class ProcessFileRequest(_StrictRequest):
+    """Body for `POST /process-file`.
+
+    Both paths are *server-side* paths (the API is local; the GUI runs on
+    the same machine). The route refuses non-absolute paths and UNC paths
+    so a malicious client can't coerce the server into reading from or
+    writing to a network share — that would defeat the airgap by smuggling
+    data across the network mount.
+    """
+
+    input_path: str
+    output_path: str
+    language: str = "en"
+    entities: list[str] | None = None
+    score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    operator: str | None = None
+
+
+class ProcessFileResponse(_Frozen):
+    """Body for `POST /process-file` — summary of what the engine did."""
+
+    output_path: str
+    segments_changed: int
+    entities_replaced: int

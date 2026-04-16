@@ -20,7 +20,7 @@ from flask import Flask, current_app, request
 
 from sanctum.api.auth import _is_local_host_header, _is_local_origin
 from sanctum.api.routes.health import health_bp
-from sanctum.api.routes.pipeline import pipeline_bp
+from sanctum.api.routes.pipeline import MAX_INPUT_BYTES, pipeline_bp
 
 if TYPE_CHECKING:
     from sanctum.core.engine import SanctumEngine
@@ -53,6 +53,10 @@ def create_app(
     app.config["SANCTUM_API_TOKEN"] = token
     app.config["SANCTUM_ALLOWED_HOSTS"] = _build_allowed_hosts(host, port)
     app.config["SANCTUM_ENGINE"] = engine
+    # Defense in depth — the file-processing routes pass paths, not bodies,
+    # but a JSON body big enough to OOM the server is still cheap to refuse
+    # at the WSGI layer. Aligns with the per-file MAX_INPUT_BYTES check.
+    app.config["MAX_CONTENT_LENGTH"] = MAX_INPUT_BYTES
 
     @app.before_request
     def _enforce_local_host() -> tuple[dict, int] | None:
