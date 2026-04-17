@@ -61,7 +61,7 @@ The current tool landscape leaves individual practitioners with no practical opt
 - **100% local processing** — Presidio engine, NLP models, and OCR all reside on your machine
 - **Zero network calls** — no data ever transmitted to a cloud provider
 - **Zero-Retention Mode** — no data stored after session ends
-- **Encrypted Mapping Store** — pseudonym-to-original mappings protected by a user-defined master key
+- **Encrypted Mapping Store** — pseudonym-to-original mappings persisted in a single-file AEAD container (ChaCha20-Poly1305 + Argon2id passphrase KDF)
 
 ### 🧠 NLP-Plus Semantic Intelligence
 - **Confidence Thresholding** — set your own risk tolerance (e.g., "flag anything above 30% confidence")
@@ -72,8 +72,9 @@ The current tool landscape leaves individual practitioners with no practical opt
 
 ### 📂 Multi-Format Support
 - `.docx` — Word documents with full formatting preservation
-- `.xlsx` — Excel spreadsheets
-- `.pdf` — with burn-in redaction (text structurally removed, not just visually obscured)
+- `.xlsx` — Excel spreadsheets (per-string-cell segmentation)
+- `.pdf` — per-page text extraction with derivative output (burn-in redaction planned for Phase 3)
+- `.pptx` — PowerPoint decks (per-text-frame segmentation)
 
 ---
 
@@ -152,7 +153,7 @@ Sanctum explicitly labels which threshold has been met for every document proces
 
 ## 🚀 Getting Started
 
-> **Note:** Sanctum is currently in Phase 0 (foundation). The CLI is functional for text-based PII detection and anonymization. A packaged desktop app is planned for later phases.
+> **Note:** Phase 0 is complete and Phase 1 is well underway — CLI, structured document adapters (`.docx` / `.xlsx` / `.pdf` / `.pptx`), encrypted mapping store, and a localhost Flask API are functional. A packaged desktop GUI is planned for Phase 3.
 
 ### Prerequisites
 
@@ -179,8 +180,11 @@ python -m spacy download en_core_web_sm
 # Detect PII in text
 sanctum analyze "Call John Smith at 555-0123 about case #2024-CV-1234"
 
-# Anonymize with default operator (redact)
+# Anonymize with default operator (replace)
 sanctum anonymize "John Smith, SSN 123-45-6789"
+
+# Process a structured document end-to-end (.docx / .xlsx / .pdf / .pptx)
+sanctum process-file input.docx --output anonymized.docx
 
 # Show current configuration
 sanctum config
@@ -240,10 +244,11 @@ Sanctum is designed to help professionals meet the requirements of:
 - [x] Evaluation corpus: 12 annotated synthetic fixtures across 6 domains
 
 ### Phase 1 — Document Processing & API
-- [x] Document format adapters (`.docx`, `.xlsx`, `.pdf`, `.pptx`)
-- [x] Encrypted mapping store (ChaCha20-Poly1305 + Argon2id) for reversible pseudonymization
+- [x] Document format adapters (`.docx`, `.xlsx`, `.pdf`, `.pptx`) with round-trip fidelity
+- [x] Encrypted mapping store (ChaCha20-Poly1305 AEAD + Argon2id KDF, single-file container) for reversible pseudonymization
 - [x] CI/CD pipeline + pre-commit hooks + linter enforcement
-- [ ] Flask localhost API (background service for future GUI)
+- [x] Flask localhost API (`/analyze`, `/anonymize`, `/process-file`, `/mapping/*`) served via waitress — background service for future GUI
+- [x] HTTP-reachable `mask` and `encrypt` operators via `operator_params`
 - [ ] Custom legal-domain recognizers (case numbers, bar IDs, Bates numbers)
 - [ ] Transformer-based NER (Professional tier)
 
@@ -300,9 +305,9 @@ Sanctum is a tool to *reduce* risk, not eliminate it. Users must understand:
 | Configuration | [Pydantic Settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) | ✅ Integrated |
 | CLI | [Click](https://click.palletsprojects.com/) + [Rich](https://rich.readthedocs.io/) | ✅ Integrated |
 | Desktop GUI | Electron / native wrapper | Planned (Phase 3) |
-| Background Service | Python + Flask (localhost) | Planned (Phase 1) |
-| Encrypted Mapping Store | AES-256 (local SQLite) | Planned (Phase 1) |
-| Document Processing | python-docx, openpyxl, pdfplumber | Planned (Phase 1) |
+| Background Service | Python + Flask (localhost), served by [waitress](https://docs.pylonsproject.org/projects/waitress/) | ✅ Integrated |
+| Encrypted Mapping Store | ChaCha20-Poly1305 AEAD + Argon2id KDF (single-file container, OS file lock) | ✅ Integrated |
+| Document Processing | python-docx, openpyxl, pdfplumber, pypdf, python-pptx, reportlab | ✅ Integrated |
 | Packaging | PyInstaller / Electron Builder | Planned (Phase 3) |
 
 ---
