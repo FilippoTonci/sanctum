@@ -7,11 +7,17 @@ import. Models accumulate here as routes land in subsequent substeps.
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from sanctum.core.models import DetectionResult
+
+# Hard cap on direct-text endpoints — `/analyze` and `/anonymize` accept
+# the body inline, so an unchecked string can dominate server memory long
+# before Presidio sees it. Anything larger belongs in `/process-file`,
+# which streams from disk and is capped at MAX_INPUT_BYTES instead.
+MAX_TEXT_CHARS: Final[int] = 1_000_000
 
 
 class _Frozen(BaseModel):
@@ -48,7 +54,7 @@ class AnalyzeRequest(_StrictRequest):
     not second-guess it).
     """
 
-    text: str = Field(min_length=1)
+    text: str = Field(min_length=1, max_length=MAX_TEXT_CHARS)
     language: str = "en"
     entities: list[str] | None = None
     score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -72,7 +78,7 @@ class AnonymizeRequest(_StrictRequest):
     unrecoverable leak of originals.
     """
 
-    text: str = Field(min_length=1)
+    text: str = Field(min_length=1, max_length=MAX_TEXT_CHARS)
     language: str = "en"
     entities: list[str] | None = None
     score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -127,10 +133,21 @@ class UnlockMappingRequest(_StrictRequest):
     passphrase: str = Field(min_length=1)
 
 
-class MappingStatusResponse(_Frozen):
-    """Body for `POST /mapping/{unlock,lock}` — current store state."""
+class UnlockMappingResponse(_Frozen):
+    """Body for `POST /mapping/unlock` — the store is now unlocked."""
 
-    unlocked: bool
+    unlocked: Literal[True]
+    store_path: str
+
+
+class LockMappingResponse(_Frozen):
+    """Body for `POST /mapping/lock` — the store is now locked.
+
+    `store_path` is ``None`` only when `/lock` was a no-op (nothing was
+    unlocked to begin with); the idempotent-success payload.
+    """
+
+    unlocked: Literal[False]
     store_path: str | None
 
 

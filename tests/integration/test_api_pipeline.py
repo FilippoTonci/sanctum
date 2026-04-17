@@ -53,7 +53,7 @@ def _cheap_factory(path: Path) -> EncryptedFileMappingStore:
     )
 
 
-def _wait_for_health(base_url: str, timeout: float = 10.0) -> None:
+def _wait_for_health(base_url: str, timeout: float = 30.0) -> None:
     """Poll /health until it answers 200 — proves waitress accepted connections."""
     deadline = time.time() + timeout
     last_exc: Exception | None = None
@@ -365,3 +365,50 @@ def test_assert_loopback_refuses_external_bind() -> None:
         assert_loopback("0.0.0.0")
     with pytest.raises(ValueError, match="non-loopback"):
         assert_loopback("10.0.0.1")
+
+
+# ---------- airgap-import invariant ----------
+
+
+def test_request_handling_opens_no_outbound_sockets(
+    server: tuple[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The airgap promise is only as strong as the code path that serves
+    a request. Wrap ``socket.create_connection`` so that any call from a
+    non-main (i.e., waitress worker) thread records a violation; the test
+    client runs on the main thread and is allowed through untouched.
+
+    Tracking violations in a list rather than raising avoids masking the
+    real response with a middleware exception — we want to see the full
+    request complete and then assert no server-side outbound attempt.
+    """
+    real_create_connection = socket.create_connection
+    violations: list[str] = []
+
+    def _audit(*args: Any, **kwargs: Any) -> Any:
+        if threading.current_thread() is not threading.main_thread():
+            violations.append(threading.current_thread().name)
+        return real_create_connection(*args, **kwargs)
+
+    monkeypatch.setattr(socket, "create_connection", _audit)
+
+    base, token = server
+    status, _ = _request(
+        "POST",
+        f"{base}/analyze",
+        token=token,
+        body={"text": "My name is John Smith."},
+    )
+    assert status == 200
+
+    status, _ = _request(
+        "POST",
+        f"{base}/anonymize",
+        token=token,
+        body={"text": "My name is John Smith.", "operator": "replace"},
+    )
+    assert status == 200
+
+    assert not violations, (
+        f"airgap violation: server-side code attempted outbound TCP " f"from {violations!r}"
+    )

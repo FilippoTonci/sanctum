@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from flask import Flask
 from sanctum.api.auth import (
+    InsecureTokenFileError,
     ensure_token,
     generate_token,
     read_token,
@@ -51,7 +52,10 @@ def test_read_token_returns_none_when_absent(tmp_path: Path):
 
 def test_read_token_strips_trailing_newline(tmp_path: Path):
     path = tmp_path / "api-token"
-    path.write_text("raw-token\n", encoding="utf-8")
+    # write_token handles the trailing newline and applies 0600; going
+    # through it keeps this test decoupled from the on-disk format while
+    # satisfying the loose-perms refusal in read_token.
+    write_token("raw-token", path)
     assert read_token(path) == "raw-token"
 
 
@@ -221,3 +225,45 @@ def test_token_file_not_world_readable(tmp_path: Path):
         assert mode == 0o600
     finally:
         os.umask(old_umask)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits only")
+def test_write_token_tightens_preexisting_parent_dir_to_0700(tmp_path: Path):
+    """If ``~/.sanctum/`` pre-exists with looser perms (umask, old install),
+    the next write must re-tighten it — the dir's perms are part of the
+    token's authz boundary."""
+    parent = tmp_path / "sanctum_dir"
+    parent.mkdir(mode=0o755)
+    # Ensure the looser perms actually stuck (some filesystems ignore mode).
+    os.chmod(parent, 0o755)
+    assert stat.S_IMODE(parent.stat().st_mode) == 0o755
+
+    write_token("tok", parent / "api-token")
+
+    assert stat.S_IMODE(parent.stat().st_mode) == 0o700
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits only")
+def test_read_token_refuses_loose_perms(tmp_path: Path):
+    """A token file that has drifted to 0644 must not be trusted — an
+    attacker with the same UID as the user might have planted or altered
+    it. Raise so the operator fixes it instead of silently continuing."""
+    path = tmp_path / "api-token"
+    write_token("t", path)
+    os.chmod(path, 0o644)
+
+    with pytest.raises(InsecureTokenFileError):
+        read_token(path)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX mode bits only")
+def test_ensure_token_surfaces_loose_perms(tmp_path: Path):
+    """`ensure_token` must propagate the error rather than silently
+    rotating — a quiet rotation would leave the old loose-perm file
+    sitting on disk."""
+    path = tmp_path / "api-token"
+    write_token("t", path)
+    os.chmod(path, 0o644)
+
+    with pytest.raises(InsecureTokenFileError):
+        ensure_token(path)

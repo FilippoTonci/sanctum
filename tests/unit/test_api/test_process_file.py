@@ -354,6 +354,28 @@ def test_unsupported_format_path_uses_correct_status(tmp_path: Path):
     assert r.status_code == 415
 
 
+@pytest.mark.skipif(
+    __import__("os").name == "nt",
+    reason="POSIX symlink semantics",
+)
+def test_process_file_rejects_symlinked_input(tmp_path: Path):
+    """A symlink under a user-owned dir pointing at a network mount would
+    defeat the airgap — reject any path where realpath != abspath."""
+    real_src = tmp_path / "real.docx"
+    real_src.write_bytes(b"x")
+    link = tmp_path / "link.docx"
+    link.symlink_to(real_src)
+
+    client = _client(_engine([], _empty_result()))
+    r = client.post(
+        "/process-file",
+        headers={**LOOPBACK, **AUTH},
+        json={"input_path": str(link), "output_path": str(tmp_path / "out.docx")},
+    )
+    assert r.status_code == 400
+    assert "symlink" in r.get_json()["error"]
+
+
 def test_max_content_length_caps_body(tmp_path: Path):
     """A body bigger than MAX_INPUT_BYTES should be refused at the WSGI layer."""
     client = _client(_engine([], _empty_result()))

@@ -7,9 +7,6 @@ Responsibilities:
   remember a decorator.
 - Disable CORS entirely (the API is local-only; a browser has no legitimate
   reason to call it cross-origin).
-
-Routes land in subsequent substeps (WS4.4+). The factory returns an empty
-app with the guard wired up.
 """
 
 from __future__ import annotations
@@ -17,12 +14,13 @@ from __future__ import annotations
 import threading
 from typing import TYPE_CHECKING
 
-from flask import Flask, current_app, request
+from flask import Flask
 
-from sanctum.api.auth import _is_local_host_header, _is_local_origin
+from sanctum.api import MAX_INPUT_BYTES
+from sanctum.api._internal import check_local_request
 from sanctum.api.routes.health import health_bp
 from sanctum.api.routes.mapping import mapping_bp
-from sanctum.api.routes.pipeline import MAX_INPUT_BYTES, pipeline_bp
+from sanctum.api.routes.pipeline import pipeline_bp
 from sanctum.security import EncryptedFileMappingStore
 
 if TYPE_CHECKING:
@@ -84,14 +82,7 @@ def create_app(
 
     @app.before_request
     def _enforce_local_host() -> tuple[dict, int] | None:
-        allowed: set[str] = current_app.config.get("SANCTUM_ALLOWED_HOSTS", set())
-        host_header = request.headers.get("Host", "")
-        if not _is_local_host_header(host_header, allowed):
-            return {"error": "host not allowed"}, 403
-        origin = request.headers.get("Origin")
-        if origin is not None and not _is_local_origin(origin, allowed):
-            return {"error": "origin not allowed"}, 403
-        return None
+        return check_local_request()
 
     app.register_blueprint(health_bp)
     app.register_blueprint(pipeline_bp)

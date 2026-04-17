@@ -3,18 +3,17 @@
 Both routes are authenticated (bearer token) and run the same engine the
 CLI uses; they are effectively a JSON façade over `SanctumEngine.analyze`
 and `SanctumEngine.process`. The mapping-store-backed `pseudonymize`
-operator is rejected here until WS4.7 lands the unlock/lock routes —
-until then, the store has no way to be made available server-side.
+operator requires the store to be unlocked first via `/mapping/unlock`.
+Two distinct error responses tell the client whether they forgot to
+unlock (409) or whether the server has never had a store unlocked (400).
 """
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Final
+from flask import Blueprint, current_app
 
-from flask import Blueprint, current_app, request
-from pydantic import ValidationError
-
+from sanctum.api import MAX_INPUT_BYTES
+from sanctum.api._internal import parse_body, validate_local_path
 from sanctum.api.auth import require_bearer_token
 from sanctum.api.schemas import (
     AnalyzeRequest,
@@ -35,9 +34,12 @@ from sanctum.core.models import OperatorPolicy
 from sanctum.core.protocols import MappingStore
 from sanctum.documents import adapter_for
 
-pipeline_bp = Blueprint("pipeline", __name__)
+# Re-exported so legacy callers (including existing unit tests) that
+# imported `MAX_INPUT_BYTES` from the route module keep working. The
+# authoritative definition now lives in `sanctum.api.__init__`.
+__all__ = ["MAX_INPUT_BYTES", "pipeline_bp"]
 
-MAX_INPUT_BYTES: Final[int] = 50 * 1024 * 1024  # 50 MiB hard cap on document inputs.
+pipeline_bp = Blueprint("pipeline", __name__)
 
 
 def _get_engine() -> SanctumEngine | None:
@@ -64,29 +66,30 @@ def _build_pseudonymize_policies(store: MappingStore, language: str) -> dict[str
     }
 
 
-_PSEUDONYMIZE_LOCKED_ERROR: dict[str, str] = {
-    "error": (
-        "pseudonymize requires the encrypted mapping store; unlock it via /mapping/unlock first"
-    ),
-}
+def _pseudonymize_unavailable() -> tuple[dict, int]:
+    """Distinguish 'store is locked' (409) from 'no store ever unlocked' (400).
 
-
-def _parse_body(model_cls: type[Any]) -> tuple[Any, tuple[dict, int] | None]:
-    """Decode the JSON body into ``model_cls`` or return a 400 tuple.
-
-    ``force=False`` so a missing/wrong Content-Type still refuses politely
-    instead of trying to parse HTML forms.
+    409 Conflict signals "you probably forgot /mapping/unlock; retry after
+    unlocking"; 400 signals "server has no store configured for this session
+    — unlocking one is the caller's responsibility." Conflating the two was
+    the original reviewer complaint — a client couldn't decide whether to
+    prompt the user for a passphrase or to surface a permanent error.
     """
-    body = request.get_json(silent=True)
-    if not isinstance(body, dict):
-        return None, ({"error": "request body must be a JSON object"}, 400)
-    try:
-        return model_cls.model_validate(body), None
-    except ValidationError as exc:
-        # Trim pydantic's error objects to the bits a human (or GUI form)
-        # actually needs — no internal URLs, no raw input echoes.
-        details = [{"loc": err["loc"], "msg": err["msg"]} for err in exc.errors()]
-        return None, ({"error": "invalid request", "details": details}, 400)
+    raw = current_app.config.get("SANCTUM_MAPPING_STORE")
+    if raw is None:
+        current_app.logger.info(
+            "pseudonymize requested but no mapping store has been unlocked this session"
+        )
+        return {
+            "error": (
+                "pseudonymize requires an encrypted mapping store; none has been unlocked "
+                "this session. Call /mapping/unlock first."
+            )
+        }, 400
+    current_app.logger.info("pseudonymize requested but the mapping store is locked")
+    return {
+        "error": "the mapping store is currently locked; unlock it via /mapping/unlock first",
+    }, 409
 
 
 @pipeline_bp.post("/analyze")
@@ -94,9 +97,10 @@ def _parse_body(model_cls: type[Any]) -> tuple[Any, tuple[dict, int] | None]:
 def analyze() -> tuple[dict, int]:
     engine = _get_engine()
     if engine is None:
+        current_app.logger.error("/analyze called but SANCTUM_ENGINE is unconfigured")
         return {"error": "engine not configured"}, 503
 
-    req, err = _parse_body(AnalyzeRequest)
+    req, err = parse_body(AnalyzeRequest)
     if err is not None:
         return err
 
@@ -108,6 +112,7 @@ def analyze() -> tuple[dict, int]:
             score_threshold=req.score_threshold,
         )
     except AnalysisError as exc:
+        current_app.logger.exception("/analyze: analyzer raised AnalysisError")
         return {"error": f"analysis failed: {exc}"}, 500
 
     payload = AnalyzeResponse(detections=detections, count=len(detections))
@@ -119,9 +124,10 @@ def analyze() -> tuple[dict, int]:
 def anonymize() -> tuple[dict, int]:
     engine = _get_engine()
     if engine is None:
+        current_app.logger.error("/anonymize called but SANCTUM_ENGINE is unconfigured")
         return {"error": "engine not configured"}, 503
 
-    req, err = _parse_body(AnonymizeRequest)
+    req, err = parse_body(AnonymizeRequest)
     if err is not None:
         return err
 
@@ -129,7 +135,7 @@ def anonymize() -> tuple[dict, int]:
     if req.operator == "pseudonymize":
         store = _unlocked_store()
         if store is None:
-            return _PSEUDONYMIZE_LOCKED_ERROR, 400
+            return _pseudonymize_unavailable()
         operator_policies = _build_pseudonymize_policies(store, req.language)
     elif req.operator is not None:
         operator_policies = {"DEFAULT": OperatorPolicy(operator_name=req.operator)}
@@ -143,6 +149,7 @@ def anonymize() -> tuple[dict, int]:
             operator_policies=operator_policies,
         )
     except (AnalysisError, AnonymizationError) as exc:
+        current_app.logger.exception("/anonymize: pipeline raised %s", type(exc).__name__)
         return {"error": f"pipeline failed: {exc}"}, 500
 
     payload = AnonymizeResponse(
@@ -154,37 +161,15 @@ def anonymize() -> tuple[dict, int]:
     return payload.model_dump(), 200
 
 
-def _validate_local_path(value: str, *, must_exist: bool) -> tuple[Path | None, str | None]:
-    """Reject UNC paths and require absolute paths.
-
-    Returns ``(path, None)`` on success or ``(None, error_msg)`` on failure.
-    UNC paths — ``\\\\server\\share`` on Windows or ``//server/share`` as the
-    POSIX analog — point at network shares; honoring one would defeat the
-    airgap by reading or writing across the network. Refuse them outright.
-    Used by /process-file and the /mapping routes — both take server-side
-    paths from the client, both must defend the airgap boundary identically.
-    """
-    if not value:
-        return None, "path is empty"
-    # Catch UNC before constructing Path: pathlib normalizes some forms away.
-    if value.startswith("\\\\") or value.startswith("//"):
-        return None, "UNC paths are not allowed"
-    path = Path(value)
-    if not path.is_absolute():
-        return None, "path must be absolute"
-    if must_exist and not path.is_file():
-        return None, "path does not exist or is not a regular file"
-    return path, None
-
-
 @pipeline_bp.post("/process-file")
 @require_bearer_token
 def process_file() -> tuple[dict, int]:
     engine = _get_engine()
     if engine is None:
+        current_app.logger.error("/process-file called but SANCTUM_ENGINE is unconfigured")
         return {"error": "engine not configured"}, 503
 
-    req, err = _parse_body(ProcessFileRequest)
+    req, err = parse_body(ProcessFileRequest)
     if err is not None:
         return err
 
@@ -192,15 +177,15 @@ def process_file() -> tuple[dict, int]:
     if req.operator == "pseudonymize":
         store = _unlocked_store()
         if store is None:
-            return _PSEUDONYMIZE_LOCKED_ERROR, 400
+            return _pseudonymize_unavailable()
         operator_policies = _build_pseudonymize_policies(store, req.language)
     elif req.operator is not None:
         operator_policies = {"DEFAULT": OperatorPolicy(operator_name=req.operator)}
 
-    in_path, in_err = _validate_local_path(req.input_path, must_exist=True)
+    in_path, in_err = validate_local_path(req.input_path, must_exist=True)
     if in_err is not None:
         return {"error": f"input_path: {in_err}"}, 400
-    out_path, out_err = _validate_local_path(req.output_path, must_exist=False)
+    out_path, out_err = validate_local_path(req.output_path, must_exist=False)
     if out_err is not None:
         return {"error": f"output_path: {out_err}"}, 400
     assert in_path is not None and out_path is not None  # narrowed by err checks
@@ -228,8 +213,10 @@ def process_file() -> tuple[dict, int]:
             operator_policies=operator_policies,
         )
     except DocumentError as exc:
+        current_app.logger.exception("/process-file: DocumentError for %s", in_path)
         return {"error": f"document failure: {exc}"}, 500
     except (AnalysisError, AnonymizationError) as exc:
+        current_app.logger.exception("/process-file: pipeline raised %s", type(exc).__name__)
         return {"error": f"pipeline failed: {exc}"}, 500
 
     payload = ProcessFileResponse(

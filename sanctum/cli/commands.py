@@ -401,6 +401,8 @@ def mapping_rotate(store_path: Path, old_passphrase: str, new_passphrase: str) -
 )
 def serve(host: str, port: int, token_path: Path | None, threads: int) -> None:
     """Start the localhost API server."""
+    import signal
+
     from sanctum.api.app import create_app
     from sanctum.api.auth import DEFAULT_TOKEN_PATH, ensure_token
     from sanctum.api.server import assert_loopback, run
@@ -418,7 +420,27 @@ def serve(host: str, port: int, token_path: Path | None, threads: int) -> None:
         "[dim]Clients: "
         f'curl -H "Authorization: Bearer $(cat {path})" http://{host}:{port}/health[/dim]'
     )
-    run(app, host=host, port=port, threads=threads)
+
+    # Route SIGTERM through the default interrupt handler so waitress's
+    # blocking serve loop exits cleanly on `systemctl stop` / `docker stop`,
+    # not just on Ctrl-C. Without this, the process gets killed mid-request
+    # and any unlocked mapping store is left with its flock held.
+    signal.signal(signal.SIGTERM, signal.default_int_handler)
+    try:
+        run(app, host=host, port=port, threads=threads)
+    except KeyboardInterrupt:
+        console.print("[dim]Sanctum API shutting down...[/dim]")
+    finally:
+        # Best-effort flush of the encrypted mapping store on the way out.
+        # Any failure here is logged and swallowed — the process is exiting
+        # and there is nothing more we can do about a crashed write.
+        store = app.config.get("SANCTUM_MAPPING_STORE")
+        if store is not None and getattr(store, "is_unlocked", False):
+            try:
+                store.lock()
+                console.print("[dim]Mapping store locked on shutdown.[/dim]")
+            except Exception as exc:
+                console.print(f"[yellow]Failed to lock mapping store: {exc}[/yellow]")
 
 
 @cli.command()

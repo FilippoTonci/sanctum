@@ -58,8 +58,12 @@ def test_serve_writes_token_and_calls_run(runner: CliRunner, tmp_path: Path):
 
 def test_serve_reuses_existing_token(runner: CliRunner, tmp_path: Path):
     """Re-running `sanctum serve` should not rotate the token."""
+    from sanctum.api.auth import write_token
+
     token_path = tmp_path / "api-token"
-    token_path.write_text("preexisting-token\n", encoding="utf-8")
+    # Use write_token so the on-disk perms start at 0600 — ensure_token's
+    # loose-perms check would otherwise reject a plain write_text seed.
+    write_token("preexisting-token", token_path)
 
     with (
         patch("sanctum.cli.commands._create_engine"),
