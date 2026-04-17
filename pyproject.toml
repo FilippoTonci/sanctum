@@ -46,6 +46,12 @@ security = [
     "cryptography>=42",
     "argon2-cffi>=23",
 ]
+# Localhost API runtime deps (WS4). Flask for the app framework; waitress is
+# the production WSGI runner (Windows-friendly, pure-python, no libuv dep).
+api = [
+    "flask>=3",
+    "waitress>=3",
+]
 ci = [
     "pytest>=7.4",
     "pytest-cov>=4.1",
@@ -60,6 +66,8 @@ ci = [
     "sanctum[documents]",
     # Security deps pulled in so mapping-store tests run under the gate.
     "sanctum[security]",
+    # API deps pulled in so route tests run under the gate.
+    "sanctum[api]",
 ]
 
 [project.scripts]
@@ -153,6 +161,7 @@ module = [
     "spacy.*",
     "argon2.*",
     "cryptography.*",
+    "waitress.*",
 ]
 ignore_missing_imports = true
 

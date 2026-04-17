@@ -373,6 +373,77 @@ def mapping_rotate(store_path: Path, old_passphrase: str, new_passphrase: str) -
 
 
 @cli.command()
+@click.option(
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Loopback address to bind. Non-loopback hosts are refused at startup.",
+)
+@click.option(
+    "--port",
+    default=8765,
+    show_default=True,
+    type=int,
+    help="TCP port to listen on.",
+)
+@click.option(
+    "--token-path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help="Override the default ~/.sanctum/api-token location.",
+)
+@click.option(
+    "--threads",
+    default=4,
+    show_default=True,
+    type=int,
+    help="Waitress worker-thread count.",
+)
+def serve(host: str, port: int, token_path: Path | None, threads: int) -> None:
+    """Start the localhost API server."""
+    import signal
+
+    from sanctum.api.app import create_app
+    from sanctum.api.auth import DEFAULT_TOKEN_PATH, ensure_token
+    from sanctum.api.server import assert_loopback, run
+
+    assert_loopback(host)
+
+    path = token_path or DEFAULT_TOKEN_PATH
+    token = ensure_token(path)
+    engine = _create_engine()
+    app = create_app(token=token, host=host, port=port, engine=engine)
+
+    console.print(f"[green]Sanctum API listening on[/green] http://{host}:{port}")
+    console.print(f"[dim]Bearer token stored at {path} (0600)[/dim]")
+    console.print(
+        "[dim]Clients: "
+        f'curl -H "Authorization: Bearer $(cat {path})" http://{host}:{port}/health[/dim]'
+    )
+
+    # Route SIGTERM through the default interrupt handler so waitress's
+    # blocking serve loop exits cleanly on `systemctl stop` / `docker stop`,
+    # not just on Ctrl-C. Without this, the process gets killed mid-request
+    # and any unlocked mapping store is left with its flock held.
+    signal.signal(signal.SIGTERM, signal.default_int_handler)
+    try:
+        run(app, host=host, port=port, threads=threads)
+    except KeyboardInterrupt:
+        console.print("[dim]Sanctum API shutting down...[/dim]")
+    finally:
+        # Best-effort flush of the encrypted mapping store on the way out.
+        # Any failure here is logged and swallowed — the process is exiting
+        # and there is nothing more we can do about a crashed write.
+        store = app.config.get("SANCTUM_MAPPING_STORE")
+        if store is not None and getattr(store, "is_unlocked", False):
+            try:
+                store.lock()
+                console.print("[dim]Mapping store locked on shutdown.[/dim]")
+            except Exception as exc:
+                console.print(f"[yellow]Failed to lock mapping store: {exc}[/yellow]")
+
+
+@cli.command()
 def config() -> None:
     """Show current Sanctum configuration."""
     table = Table(title="Sanctum Configuration")
