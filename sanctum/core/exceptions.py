@@ -13,6 +13,17 @@ class AnonymizationError(SanctumError):
     """Raised when anonymization fails."""
 
 
+class InvalidOperatorParamsError(AnonymizationError):
+    """Raised when a Presidio operator is given malformed parameters.
+
+    Subclass of ``AnonymizationError`` so existing catch-all handlers
+    still see it, but exposed as a distinct type so the HTTP layer can
+    map a caller-supplied bad param (e.g. a too-short ``encrypt`` key,
+    or ``mask`` with a missing ``masking_char``) to a 400 Bad Request
+    instead of a 500 Internal Server Error.
+    """
+
+
 class ConfigurationError(SanctumError):
     """Raised for invalid configuration."""
 

@@ -28,6 +28,7 @@ from sanctum.core.exceptions import (
     AnalysisError,
     AnonymizationError,
     DocumentError,
+    InvalidOperatorParamsError,
     UnsupportedDocumentFormatError,
 )
 from sanctum.core.models import OperatorPolicy
@@ -138,7 +139,12 @@ def anonymize() -> tuple[dict, int]:
             return _pseudonymize_unavailable()
         operator_policies = _build_pseudonymize_policies(store, req.language)
     elif req.operator is not None:
-        operator_policies = {"DEFAULT": OperatorPolicy(operator_name=req.operator)}
+        operator_policies = {
+            "DEFAULT": OperatorPolicy(
+                operator_name=req.operator,
+                params=req.operator_params or {},
+            )
+        }
 
     try:
         result = engine.process(
@@ -148,6 +154,10 @@ def anonymize() -> tuple[dict, int]:
             score_threshold=req.score_threshold,
             operator_policies=operator_policies,
         )
+    except InvalidOperatorParamsError as exc:
+        # Bad caller input to mask/encrypt/etc. — a 400, not a 500.
+        current_app.logger.info("/anonymize: invalid operator params: %s", exc)
+        return {"error": f"invalid operator_params: {exc}"}, 400
     except (AnalysisError, AnonymizationError) as exc:
         current_app.logger.exception("/anonymize: pipeline raised %s", type(exc).__name__)
         return {"error": f"pipeline failed: {exc}"}, 500
@@ -180,7 +190,12 @@ def process_file() -> tuple[dict, int]:
             return _pseudonymize_unavailable()
         operator_policies = _build_pseudonymize_policies(store, req.language)
     elif req.operator is not None:
-        operator_policies = {"DEFAULT": OperatorPolicy(operator_name=req.operator)}
+        operator_policies = {
+            "DEFAULT": OperatorPolicy(
+                operator_name=req.operator,
+                params=req.operator_params or {},
+            )
+        }
 
     in_path, in_err = validate_local_path(req.input_path, must_exist=True)
     if in_err is not None:
@@ -215,6 +230,9 @@ def process_file() -> tuple[dict, int]:
     except DocumentError as exc:
         current_app.logger.exception("/process-file: DocumentError for %s", in_path)
         return {"error": f"document failure: {exc}"}, 500
+    except InvalidOperatorParamsError as exc:
+        current_app.logger.info("/process-file: invalid operator params: %s", exc)
+        return {"error": f"invalid operator_params: {exc}"}, 400
     except (AnalysisError, AnonymizationError) as exc:
         current_app.logger.exception("/process-file: pipeline raised %s", type(exc).__name__)
         return {"error": f"pipeline failed: {exc}"}, 500

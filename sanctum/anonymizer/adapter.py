@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from presidio_anonymizer import AnonymizerEngine
-from presidio_anonymizer.entities import OperatorConfig, RecognizerResult
+from presidio_anonymizer.entities import InvalidParamError, OperatorConfig, RecognizerResult
 from sanctum.anonymizer.operators.hips import HipsOperator
 from sanctum.anonymizer.operators.pseudonymize import PseudonymizeOperator
+from sanctum.core.exceptions import InvalidOperatorParamsError
 from sanctum.core.models import AnonymizationResult, DetectionResult, OperatorPolicy
 
 
@@ -43,11 +44,18 @@ class PresidioAnonymizer:
         else:
             operator_configs = {"DEFAULT": OperatorConfig(self._default_operator)}
 
-        result = self._engine.anonymize(
-            text=text,
-            analyzer_results=recognizer_results,
-            operators=operator_configs,
-        )
+        try:
+            result = self._engine.anonymize(
+                text=text,
+                analyzer_results=recognizer_results,
+                operators=operator_configs,
+            )
+        except InvalidParamError as exc:
+            # Presidio raises this for bad operator params — e.g. `mask`
+            # missing `masking_char`, `encrypt` with the wrong key length.
+            # Promote to our own subclass so the HTTP layer can map it to
+            # a 400 instead of the generic AnonymizationError → 500.
+            raise InvalidOperatorParamsError(str(exc)) from exc
 
         # When a caller passes a single `{"DEFAULT": ...}` policy (the shape
         # the HTTP routes use for a per-request `operator`), that policy is

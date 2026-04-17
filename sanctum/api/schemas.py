@@ -7,9 +7,9 @@ import. Models accumulate here as routes land in subsequent substeps.
 
 from __future__ import annotations
 
-from typing import Final, Literal
+from typing import Any, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from sanctum.core.models import DetectionResult
 
@@ -19,25 +19,20 @@ from sanctum.core.models import DetectionResult
 # which streams from disk and is capped at MAX_INPUT_BYTES instead.
 MAX_TEXT_CHARS: Final[int] = 1_000_000
 
-# Operators that exist in the Presidio/Sanctum catalogue but cannot be
-# reached over HTTP with the current schema:
-#   - `mask` needs `masking_char` / `chars_to_mask` / `from_end`
-#   - `encrypt` needs `key`
-#   - `custom` needs a callable in `params` — impossible to JSON-encode
-# Accepting them and forwarding to Presidio produces an opaque 500 from
-# deep inside the engine. Refuse them here so the caller gets a specific
-# 400 explaining why. Wiring `operator_params` through the schema is a
-# follow-up tracked in the issue — once that lands, `mask`/`encrypt` can
-# leave this set.
-API_REJECTED_OPERATORS: Final[frozenset[str]] = frozenset({"mask", "encrypt", "custom"})
+# `custom` takes a Python callable in `params` — no JSON encoding can
+# carry that, so it's permanently unreachable over HTTP regardless of
+# any future `operator_params` work. `mask` and `encrypt` used to be in
+# this set, but now accept their params via the `operator_params` field
+# on AnonymizeRequest / ProcessFileRequest.
+API_REJECTED_OPERATORS: Final[frozenset[str]] = frozenset({"custom"})
 
 
 def _reject_api_unsupported_operator(value: str | None) -> str | None:
     """Fail pydantic validation if `value` is an HTTP-unsupported operator."""
     if value is not None and value in API_REJECTED_OPERATORS:
         raise ValueError(
-            f"operator {value!r} cannot be used over HTTP yet — it requires parameters "
-            "that have no schema field. Use the CLI, or wait for operator_params support."
+            f"operator {value!r} cannot be used over HTTP — it requires a callable "
+            "parameter that cannot be JSON-encoded. Use the CLI for this operator."
         )
     return value
 
@@ -105,8 +100,15 @@ class AnonymizeRequest(_StrictRequest):
     entities: list[str] | None = None
     score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     operator: str | None = None
+    operator_params: dict[str, Any] | None = None
 
     _reject_api_unsupported_operator = field_validator("operator")(_reject_api_unsupported_operator)
+
+    @model_validator(mode="after")
+    def _operator_params_requires_operator(self) -> AnonymizeRequest:
+        if self.operator_params is not None and self.operator is None:
+            raise ValueError("operator_params requires operator to be set")
+        return self
 
 
 class AnonymizeResponse(_Frozen):
@@ -134,8 +136,15 @@ class ProcessFileRequest(_StrictRequest):
     entities: list[str] | None = None
     score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     operator: str | None = None
+    operator_params: dict[str, Any] | None = None
 
     _reject_api_unsupported_operator = field_validator("operator")(_reject_api_unsupported_operator)
+
+    @model_validator(mode="after")
+    def _operator_params_requires_operator(self) -> ProcessFileRequest:
+        if self.operator_params is not None and self.operator is None:
+            raise ValueError("operator_params requires operator to be set")
+        return self
 
 
 class ProcessFileResponse(_Frozen):

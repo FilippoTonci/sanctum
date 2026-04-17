@@ -59,6 +59,11 @@ class SanctumEngine:
             )
         except AnalysisError:
             raise
+        except AnonymizationError:
+            # Already in our exception taxonomy (including subclasses like
+            # InvalidOperatorParamsError) — let it through without the
+            # generic rewrap so the HTTP layer can distinguish.
+            raise
         except Exception as exc:
             raise AnonymizationError(f"Anonymization failed: {exc}") from exc
 
