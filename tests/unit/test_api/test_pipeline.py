@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from sanctum.api.app import create_app
 from sanctum.core.engine import SanctumEngine
-from sanctum.core.exceptions import AnalysisError, AnonymizationError
+from sanctum.core.exceptions import AnalysisError, AnonymizationError, InvalidOperatorParamsError
 from sanctum.core.models import AnonymizationResult, DetectionResult, OperatorPolicy
 
 LOOPBACK = {"Host": "127.0.0.1:8765"}
@@ -318,3 +318,76 @@ def test_anonymize_500_on_pipeline_errors(exc: Exception):
     r = client.post("/anonymize", headers={**LOOPBACK, **AUTH}, json={"text": "hi"})
     assert r.status_code == 500
     assert "pipeline failed" in r.get_json()["error"]
+
+
+def test_anonymize_400_on_api_unsupported_operator():
+    """`custom` takes a Python callable in `params` — permanently unreachable over HTTP.
+
+    `mask`/`encrypt` used to be in this set but now accept their params
+    via the `operator_params` field, so only `custom` remains.
+    """
+    engine, *_ = _engine()
+    client = _client(engine)
+    r = client.post(
+        "/anonymize",
+        headers={**LOOPBACK, **AUTH},
+        json={"text": "hi", "operator": "custom"},
+    )
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["error"] == "invalid request"
+    assert any("operator" in d["loc"] for d in body["details"])
+    assert any("custom" in d["msg"] for d in body["details"])
+
+
+def test_anonymize_operator_params_threaded_into_policy():
+    """`operator_params` is plumbed verbatim into the DEFAULT policy."""
+    result = AnonymizationResult(
+        original_text="hi", anonymized_text="hi", detections=[], operators_applied={}
+    )
+    engine, _, anonymizer = _engine(result=result)
+    client = _client(engine)
+    r = client.post(
+        "/anonymize",
+        headers={**LOOPBACK, **AUTH},
+        json={
+            "text": "hi",
+            "operator": "mask",
+            "operator_params": {"masking_char": "*", "chars_to_mask": 3, "from_end": False},
+        },
+    )
+    assert r.status_code == 200, r.get_json()
+    policies = anonymizer.calls[0]["operator_policies"]
+    assert policies["DEFAULT"].operator_name == "mask"
+    assert policies["DEFAULT"].params == {
+        "masking_char": "*",
+        "chars_to_mask": 3,
+        "from_end": False,
+    }
+
+
+def test_anonymize_400_when_operator_params_without_operator():
+    """`operator_params` alone is a caller mistake — reject at validation."""
+    engine, *_ = _engine()
+    client = _client(engine)
+    r = client.post(
+        "/anonymize",
+        headers={**LOOPBACK, **AUTH},
+        json={"text": "hi", "operator_params": {"masking_char": "*"}},
+    )
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["error"] == "invalid request"
+
+
+def test_anonymize_400_on_invalid_operator_params():
+    """Presidio's `InvalidParamError` surfaces as a 400, not a 500."""
+    engine, *_ = _engine(result=InvalidOperatorParamsError("bad mask config"))
+    client = _client(engine)
+    r = client.post(
+        "/anonymize",
+        headers={**LOOPBACK, **AUTH},
+        json={"text": "hi", "operator": "mask", "operator_params": {"chars_to_mask": -1}},
+    )
+    assert r.status_code == 400
+    assert "invalid operator_params" in r.get_json()["error"]

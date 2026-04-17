@@ -44,6 +44,24 @@ def test_anonymize_pseudonymize_session_only_passes_policies(runner: CliRunner):
     assert "store" in policy.params
 
 
+def test_anonymize_plain_operator_threaded_into_default_policy(runner: CliRunner):
+    """Non-pseudonymize `--operator` values must reach the engine.
+
+    The previous `else` branch called `engine.process` without any
+    `operator_policies`, so `sanctum anonymize --operator redact` silently
+    fell back to the configured default. Assert the CLI now wraps the
+    flag in a DEFAULT policy just like the HTTP route does.
+    """
+    with patch("sanctum.cli.commands._create_engine") as mock_engine:
+        mock_engine.return_value.process.return_value = _anon_result("Alice", "")
+        result = runner.invoke(cli, ["anonymize", "Alice went home.", "--operator", "redact"])
+
+    assert result.exit_code == 0, result.output
+    call = mock_engine.return_value.process.call_args
+    policies = call.kwargs["operator_policies"]
+    assert policies["DEFAULT"].operator_name == "redact"
+
+
 def test_anonymize_pseudonymize_with_store_requires_passphrase(runner: CliRunner, tmp_path: Path):
     store = tmp_path / "store.sanctum"
     with patch("sanctum.cli.commands._create_engine"):

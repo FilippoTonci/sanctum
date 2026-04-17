@@ -196,10 +196,16 @@ def anonymize(
                     operator_policies=_pseudonymize_policies(store, language),
                 )
         else:
+            # Wire `--operator` through as a DEFAULT policy so the choice
+            # actually reaches the engine. Without this, the CLI silently
+            # fell back to the configured default operator and the flag
+            # was a no-op for anything other than pseudonymize.
+            policies = {"DEFAULT": OperatorPolicy(operator_name=operator)}
             result = engine.process(
                 text,
                 language=language,
                 score_threshold=threshold,
+                operator_policies=policies,
             )
 
         console.print(f"\n[bold]Anonymized text:[/bold]\n{result.anonymized_text}\n")
@@ -291,6 +297,10 @@ def process_file(
                     operator_policies=_pseudonymize_policies(store, language),
                 )
         else:
+            # Mirror the `anonymize` command: when `--operator` is set,
+            # wrap it in a DEFAULT policy so the engine actually applies
+            # it. `None` preserves the engine's configured default.
+            policies = {"DEFAULT": OperatorPolicy(operator_name=operator)} if operator else None
             results = engine.process_document(
                 reader,
                 writer,
@@ -299,6 +309,7 @@ def process_file(
                 language=language,
                 score_threshold=threshold,
                 entities=entity_list,
+                operator_policies=policies,
             )
 
         total = sum(len(r.detections) for r in results)

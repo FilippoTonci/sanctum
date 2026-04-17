@@ -12,6 +12,7 @@ from sanctum.api.routes.pipeline import MAX_INPUT_BYTES
 from sanctum.core.engine import SanctumEngine
 from sanctum.core.exceptions import (
     AnonymizationError,
+    InvalidOperatorParamsError,
     UnsupportedDocumentFormatError,
 )
 from sanctum.core.models import (
@@ -387,3 +388,72 @@ def test_max_content_length_caps_body(tmp_path: Path):
     )
     # Werkzeug returns 413 for over-cap bodies.
     assert r.status_code == 413
+
+
+def test_process_file_400_on_api_unsupported_operator(tmp_path: Path):
+    """Same schema-level rejection applies to /process-file — `custom` only."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+    out = tmp_path / "out.docx"
+    client = _client(_engine([], _empty_result()))
+    r = client.post(
+        "/process-file",
+        headers={**LOOPBACK, **AUTH},
+        json={"input_path": str(src), "output_path": str(out), "operator": "custom"},
+    )
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["error"] == "invalid request"
+    assert any("operator" in d["loc"] for d in body["details"])
+
+
+def test_process_file_400_when_operator_params_without_operator(tmp_path: Path):
+    """`operator_params` without `operator` is rejected at validation."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+    client = _client(_engine([], _empty_result()))
+    r = client.post(
+        "/process-file",
+        headers={**LOOPBACK, **AUTH},
+        json={
+            "input_path": str(src),
+            "output_path": str(tmp_path / "out.docx"),
+            "operator_params": {"masking_char": "*"},
+        },
+    )
+    assert r.status_code == 400
+    assert r.get_json()["error"] == "invalid request"
+
+
+def test_process_file_400_on_invalid_operator_params(tmp_path: Path):
+    """InvalidOperatorParamsError from the pipeline → 400, not 500."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+
+    detection = DetectionResult(entity_type="PERSON", start=0, end=5, score=0.99, text_span="Alice")
+
+    class _BadParamAnonymizer:
+        def anonymize(self, *_a: Any, **_k: Any) -> AnonymizationResult:
+            raise InvalidOperatorParamsError("masking_char must be a single char")
+
+    engine = SanctumEngine(
+        analyzer=_FakeAnalyzer([detection]),  # type: ignore[arg-type]
+        anonymizer=_BadParamAnonymizer(),  # type: ignore[arg-type]
+    )
+    with patch(
+        "sanctum.api.routes.pipeline.adapter_for",
+        return_value=(_StubReader(_doc(tmp_path)), _StubWriter()),
+    ):
+        client = _client(engine)
+        r = client.post(
+            "/process-file",
+            headers={**LOOPBACK, **AUTH},
+            json={
+                "input_path": str(src),
+                "output_path": str(tmp_path / "out.docx"),
+                "operator": "mask",
+                "operator_params": {"chars_to_mask": -1},
+            },
+        )
+    assert r.status_code == 400
+    assert "invalid operator_params" in r.get_json()["error"]
