@@ -88,3 +88,53 @@ class TestPresidioAnonymizer:
         assert "EMAIL_ADDRESS" in operators
         assert operators["EMAIL_ADDRESS"].operator_name == "mask"
         assert "DEFAULT" not in operators
+
+    def test_operators_applied_reflects_default_policy(
+        self, adapter: object, mock_presidio_engine: MagicMock, sample_detections: list
+    ) -> None:
+        """When a caller passes `{"DEFAULT": OperatorPolicy(...)}`, the
+        telemetry must report that operator — not `self._default_operator`.
+
+        Guards against the bug where `/anonymize?operator=redact` returned
+        `operators_applied={"PERSON":"replace", ...}` because the adapter
+        only looked up entity-type keys, missed `DEFAULT`, and fell back
+        to the constructor default.
+        """
+        policies = {"DEFAULT": OperatorPolicy(operator_name="hash")}
+        result = adapter.anonymize(
+            "John Smith says john@example.com",
+            detections=sample_detections,
+            operator_policies=policies,
+        )
+        assert result.operators_applied == {"PERSON": "hash", "EMAIL_ADDRESS": "hash"}
+
+    def test_default_policy_coexists_with_per_entity_override(
+        self, adapter: object, mock_presidio_engine: MagicMock, sample_detections: list
+    ) -> None:
+        """Per-entity policy wins over the DEFAULT for its own type."""
+        policies = {
+            "DEFAULT": OperatorPolicy(operator_name="hash"),
+            "PERSON": OperatorPolicy(operator_name="replace"),
+        }
+        result = adapter.anonymize(
+            "John Smith says john@example.com",
+            detections=sample_detections,
+            operator_policies=policies,
+        )
+        assert result.operators_applied == {"PERSON": "replace", "EMAIL_ADDRESS": "hash"}
+
+    def test_hips_operator_is_registered(self) -> None:
+        """HipsOperator must be added to the engine at construction time.
+
+        Without this registration, `operator="hips"` returns a 500 from
+        Presidio with `Invalid operator class 'hips'`. Check by name so
+        the test stays stable if AnonymizerEngine's internals move.
+        """
+        from sanctum.anonymizer.adapter import PresidioAnonymizer
+
+        adapter = PresidioAnonymizer()
+        # Presidio stores registered custom operators on OperatorsFactory;
+        # the public-ish `get_anonymizers` returns {name: class}.
+        registered = adapter._engine.get_anonymizers()
+        assert "hips" in registered
+        assert "pseudonymize" in registered

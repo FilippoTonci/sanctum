@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from sanctum.core.models import DetectionResult
 
@@ -18,6 +18,28 @@ from sanctum.core.models import DetectionResult
 # before Presidio sees it. Anything larger belongs in `/process-file`,
 # which streams from disk and is capped at MAX_INPUT_BYTES instead.
 MAX_TEXT_CHARS: Final[int] = 1_000_000
+
+# Operators that exist in the Presidio/Sanctum catalogue but cannot be
+# reached over HTTP with the current schema:
+#   - `mask` needs `masking_char` / `chars_to_mask` / `from_end`
+#   - `encrypt` needs `key`
+#   - `custom` needs a callable in `params` — impossible to JSON-encode
+# Accepting them and forwarding to Presidio produces an opaque 500 from
+# deep inside the engine. Refuse them here so the caller gets a specific
+# 400 explaining why. Wiring `operator_params` through the schema is a
+# follow-up tracked in the issue — once that lands, `mask`/`encrypt` can
+# leave this set.
+API_REJECTED_OPERATORS: Final[frozenset[str]] = frozenset({"mask", "encrypt", "custom"})
+
+
+def _reject_api_unsupported_operator(value: str | None) -> str | None:
+    """Fail pydantic validation if `value` is an HTTP-unsupported operator."""
+    if value is not None and value in API_REJECTED_OPERATORS:
+        raise ValueError(
+            f"operator {value!r} cannot be used over HTTP yet — it requires parameters "
+            "that have no schema field. Use the CLI, or wait for operator_params support."
+        )
+    return value
 
 
 class _Frozen(BaseModel):
@@ -84,6 +106,8 @@ class AnonymizeRequest(_StrictRequest):
     score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     operator: str | None = None
 
+    _reject_api_unsupported_operator = field_validator("operator")(_reject_api_unsupported_operator)
+
 
 class AnonymizeResponse(_Frozen):
     """Body for `POST /anonymize` — full engine result, wire-friendly."""
@@ -110,6 +134,8 @@ class ProcessFileRequest(_StrictRequest):
     entities: list[str] | None = None
     score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     operator: str | None = None
+
+    _reject_api_unsupported_operator = field_validator("operator")(_reject_api_unsupported_operator)
 
 
 class ProcessFileResponse(_Frozen):

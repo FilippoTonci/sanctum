@@ -318,3 +318,25 @@ def test_anonymize_500_on_pipeline_errors(exc: Exception):
     r = client.post("/anonymize", headers={**LOOPBACK, **AUTH}, json={"text": "hi"})
     assert r.status_code == 500
     assert "pipeline failed" in r.get_json()["error"]
+
+
+@pytest.mark.parametrize("operator", ["mask", "encrypt", "custom"])
+def test_anonymize_400_on_api_unsupported_operator(operator: str):
+    """mask/encrypt/custom require params the HTTP schema cannot carry.
+
+    Refuse them with a specific 400 at validation time so the caller does
+    not see an opaque 500 bubbling up from deep inside Presidio.
+    """
+    engine, *_ = _engine()
+    client = _client(engine)
+    r = client.post(
+        "/anonymize",
+        headers={**LOOPBACK, **AUTH},
+        json={"text": "hi", "operator": operator},
+    )
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["error"] == "invalid request"
+    assert any("operator" in d["loc"] for d in body["details"])
+    # The validator's message identifies the offending operator by name.
+    assert any(operator in d["msg"] for d in body["details"])

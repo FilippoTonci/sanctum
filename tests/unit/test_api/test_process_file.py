@@ -387,3 +387,21 @@ def test_max_content_length_caps_body(tmp_path: Path):
     )
     # Werkzeug returns 413 for over-cap bodies.
     assert r.status_code == 413
+
+
+@pytest.mark.parametrize("operator", ["mask", "encrypt", "custom"])
+def test_process_file_400_on_api_unsupported_operator(tmp_path: Path, operator: str):
+    """Same schema-level rejection applies to /process-file."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+    out = tmp_path / "out.docx"
+    client = _client(_engine([], _empty_result()))
+    r = client.post(
+        "/process-file",
+        headers={**LOOPBACK, **AUTH},
+        json={"input_path": str(src), "output_path": str(out), "operator": operator},
+    )
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["error"] == "invalid request"
+    assert any("operator" in d["loc"] for d in body["details"])
