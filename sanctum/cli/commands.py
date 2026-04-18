@@ -62,9 +62,16 @@ def _pseudonymize_policies(store: MappingStore, language: str) -> dict[str, Oper
 def _create_engine() -> SanctumEngine:
     """Composition root: wire concrete adapters into the engine."""
     from sanctum.analyzer.adapter import PresidioAnalyzer
+    from sanctum.analyzer.nlp_config import create_nlp_engine
     from sanctum.anonymizer.adapter import PresidioAnonymizer
 
+    # Build the NLP engine explicitly so (a) we keep ORGANIZATION on
+    # (Presidio's default config drops it as too noisy) and (b) we never
+    # fall through to the default loader, which can call
+    # `spacy.cli.download()` and break the air-gap.
+    nlp_engine = create_nlp_engine(model_name=settings.nlp.spacy_model)
     analyzer = PresidioAnalyzer(
+        nlp_engine=nlp_engine,
         default_score_threshold=settings.analyzer.default_score_threshold,
         default_language=settings.analyzer.default_language,
     )
