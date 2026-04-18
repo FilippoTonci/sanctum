@@ -4,14 +4,19 @@ from pathlib import Path
 
 import pytest
 from sanctum.analyzer.adapter import PresidioAnalyzer
+from sanctum.analyzer.nlp_config import create_nlp_engine
+from sanctum.config.settings import settings
 from tests.evaluation.scorer import EntityScorer, ScoringReport
 
 pytestmark = pytest.mark.evaluation
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def analyzer() -> PresidioAnalyzer:
-    return PresidioAnalyzer()
+    # Match the production composition root in `sanctum.cli.commands`:
+    # an explicit NLP engine is what enables ORGANIZATION detection.
+    nlp_engine = create_nlp_engine(model_name=settings.nlp.spacy_model)
+    return PresidioAnalyzer(nlp_engine=nlp_engine)
 
 
 class TestCorpusScoring:
@@ -81,8 +86,10 @@ class TestZeroPii:
         results = analyzer.analyze(text)
 
         # Allow a tolerance for false positives — Presidio's NER may flag
-        # technical terms (e.g. "asyncio" as LOCATION, "loop.run" as URL).
-        assert len(results) <= 6, (
+        # technical terms (e.g. "asyncio" as LOCATION, "loop.run" as URL,
+        # "Python"/"CPU" as ORGANIZATION). Recall over precision is the
+        # right tradeoff for this product.
+        assert len(results) <= 12, (
             f"Expected very few detections on PII-free text, got {len(results)}: "
             f"{[(r.entity_type, r.text_span) for r in results]}"
         )
