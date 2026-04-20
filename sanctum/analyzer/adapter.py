@@ -15,13 +15,29 @@ class PresidioAnalyzer:
         registry: Any = None,
         default_score_threshold: float = 0.35,
         default_language: str = "en",
+        extra_recognizers: list[Any] | None = None,
+        remove_recognizer_names: list[str] | None = None,
     ) -> None:
+        """Build an `AnalyzerEngine` and optionally reshape its recognizer registry.
+
+        `extra_recognizers` are appended post-construction so they share the
+        same registry as the predefined set. `remove_recognizer_names` drops
+        recognizers by their registered `name` — the intended use is pairing
+        a GLiNER recognizer with `["SpacyRecognizer"]` to make GLiNER the
+        default NER while leaving every pattern/context recognizer in place.
+        """
         kwargs: dict = {}
         if nlp_engine is not None:
             kwargs["nlp_engine"] = nlp_engine
         if registry is not None:
             kwargs["registry"] = registry
         self._engine = AnalyzerEngine(**kwargs)
+
+        for recognizer in extra_recognizers or []:
+            self._engine.registry.add_recognizer(recognizer)
+        for name in remove_recognizer_names or []:
+            self._engine.registry.remove_recognizer(name)
+
         self._default_threshold = default_score_threshold
         self._default_language = default_language
 
