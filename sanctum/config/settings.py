@@ -1,15 +1,31 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class NlpSettings(BaseSettings):
-    """SpaCy / NLP model configuration."""
+    """SpaCy / NLP model configuration.
+
+    `ner_backend` selects which recognizer drives PERSON / LOCATION /
+    ORGANIZATION detection. `"spacy"` (default) uses Presidio's stock
+    `SpacyRecognizer` on top of `spacy_model`; `"gliner"` swaps that out
+    for a `GLiNERRecognizer`, keeping spaCy loaded as a tokenizer only
+    so context-dependent pattern recognizers still work.
+
+    GLiNER weights are fetched from HuggingFace on first load and cached
+    under `~/.cache/huggingface/`. Treat that fetch as install-time, the
+    same posture as `en_core_web_lg`; set `HF_HUB_OFFLINE=1` in airgapped
+    environments to fail fast instead of attempting a network call.
+    """
 
     spacy_model: str = "en_core_web_sm"
+    ner_backend: Literal["spacy", "gliner"] = "spacy"
+    gliner_model: str = "urchade/gliner_medium-v2.1"
+    gliner_threshold: float = 0.4
 
 
 class AnalyzerSettings(BaseSettings):

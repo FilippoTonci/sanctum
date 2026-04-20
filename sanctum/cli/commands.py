@@ -471,6 +471,9 @@ def config() -> None:
 
     # NLP settings
     table.add_row("nlp", "spacy_model", settings.nlp.spacy_model)
+    table.add_row("nlp", "ner_backend", settings.nlp.ner_backend)
+    table.add_row("nlp", "gliner_model", settings.nlp.gliner_model)
+    table.add_row("nlp", "gliner_threshold", str(settings.nlp.gliner_threshold))
 
     # Analyzer settings
     threshold = str(settings.analyzer.default_score_threshold)
