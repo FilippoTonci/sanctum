@@ -50,6 +50,14 @@ is missing it will call `spacy.cli.download()` — breaking the airgap. The fix
 is to wire `sanctum/analyzer/nlp_config.py::create_nlp_engine` into the
 default path. Do not add code that silently downloads models.
 
+**GLiNER (Professional tier)**: `nlp.ner_backend = "gliner"` swaps the stock
+`SpacyRecognizer` for `GLiNERRecognizer` (default model
+`urchade/gliner_medium-v2.1`, ~820 MB). GLiNER loads weights via
+`GLiNER.from_pretrained()` which hits the HuggingFace hub on first run. Treat
+that fetch as install-time (same posture as `en_core_web_lg`) and cache under
+`~/.cache/huggingface/`. In airgapped environments, set `HF_HUB_OFFLINE=1` so
+a missing cache fails fast instead of attempting a network call.
+
 See `resources/presidio-architecture.md` for the full network-call audit and
 Presidio component breakdown — read it before touching the analyzer layer.
 
