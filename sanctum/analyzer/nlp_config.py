@@ -83,6 +83,18 @@ def create_gliner_recognizer(
     except ImportError as exc:  # pragma: no cover — presidio always ships the class
         raise ImportError("GLiNERRecognizer not available in this presidio-analyzer build") from exc
 
+    # Presidio's GLiNERRecognizer makes gliner an optional import but calls
+    # load() eagerly during AnalyzerEngine construction, which surfaces a
+    # generic "GLiNER is not installed" deep in the stack. Pre-check here
+    # so users get a clear pointer to the extra they need.
+    try:
+        import gliner  # type: ignore[import-not-found]  # noqa: F401
+    except ImportError as exc:
+        raise ImportError(
+            "ner_backend='gliner' requires the gliner package. "
+            "Install it with: pip install 'sanctum[gliner]'"
+        ) from exc
+
     return GLiNERRecognizer(
         model_name=model_name,
         entity_mapping=_GLINER_ENTITY_MAPPING,

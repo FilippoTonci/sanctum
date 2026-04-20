@@ -186,7 +186,7 @@ the fixture corpus and cuts false positives by ~3×.
 pip install -e ".[gliner]"
 
 # Enable the backend via env var
-export SANCTUM__NLP__NER_BACKEND=gliner
+export SANCTUM_NLP__NER_BACKEND=gliner
 ```
 
 First `sanctum analyze` call downloads the GLiNER weights (~820 MB) into
