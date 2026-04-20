@@ -60,7 +60,13 @@ def _pseudonymize_policies(store: MappingStore, language: str) -> dict[str, Oper
 
 
 def _create_engine() -> SanctumEngine:
-    """Composition root: wire concrete adapters into the engine."""
+    """Composition root: wire concrete adapters into the engine.
+
+    When `nlp.ner_backend == "gliner"`, a GLiNER recognizer is added and
+    Presidio's stock `SpacyRecognizer` is removed — GLiNER becomes the
+    default NER while spaCy stays loaded for tokenization (pattern
+    recognizers with context words still fire).
+    """
     from sanctum.analyzer.adapter import PresidioAnalyzer
     from sanctum.analyzer.nlp_config import create_nlp_engine
     from sanctum.anonymizer.adapter import PresidioAnonymizer
@@ -70,10 +76,26 @@ def _create_engine() -> SanctumEngine:
     # fall through to the default loader, which can call
     # `spacy.cli.download()` and break the air-gap.
     nlp_engine = create_nlp_engine(model_name=settings.nlp.spacy_model)
+
+    extra_recognizers: list = []
+    remove_names: list[str] = []
+    if settings.nlp.ner_backend == "gliner":
+        from sanctum.analyzer.nlp_config import create_gliner_recognizer
+
+        extra_recognizers.append(
+            create_gliner_recognizer(
+                model_name=settings.nlp.gliner_model,
+                threshold=settings.nlp.gliner_threshold,
+            )
+        )
+        remove_names.append("SpacyRecognizer")
+
     analyzer = PresidioAnalyzer(
         nlp_engine=nlp_engine,
         default_score_threshold=settings.analyzer.default_score_threshold,
         default_language=settings.analyzer.default_language,
+        extra_recognizers=extra_recognizers,
+        remove_recognizer_names=remove_names,
     )
     anonymizer = PresidioAnonymizer(
         default_operator=settings.anonymizer.default_operator,
@@ -471,6 +493,9 @@ def config() -> None:
 
     # NLP settings
     table.add_row("nlp", "spacy_model", settings.nlp.spacy_model)
+    table.add_row("nlp", "ner_backend", settings.nlp.ner_backend)
+    table.add_row("nlp", "gliner_model", settings.nlp.gliner_model)
+    table.add_row("nlp", "gliner_threshold", str(settings.nlp.gliner_threshold))
 
     # Analyzer settings
     threshold = str(settings.analyzer.default_score_threshold)

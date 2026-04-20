@@ -72,3 +72,24 @@ class TestPresidioAnalyzer:
 
         call_kwargs = mock_presidio_engine.analyze.call_args[1]
         assert call_kwargs["score_threshold"] == 0.8
+
+    def test_extra_recognizers_added_to_registry(self, mock_presidio_engine: MagicMock) -> None:
+        extra = MagicMock(name="fake_gliner_recognizer")
+        with patch("sanctum.analyzer.adapter.AnalyzerEngine", return_value=mock_presidio_engine):
+            from sanctum.analyzer.adapter import PresidioAnalyzer
+
+            PresidioAnalyzer(extra_recognizers=[extra])
+
+        mock_presidio_engine.registry.add_recognizer.assert_called_once_with(extra)
+        mock_presidio_engine.registry.remove_recognizer.assert_not_called()
+
+    def test_remove_recognizer_names_forwarded_to_registry(
+        self, mock_presidio_engine: MagicMock
+    ) -> None:
+        with patch("sanctum.analyzer.adapter.AnalyzerEngine", return_value=mock_presidio_engine):
+            from sanctum.analyzer.adapter import PresidioAnalyzer
+
+            PresidioAnalyzer(remove_recognizer_names=["SpacyRecognizer"])
+
+        mock_presidio_engine.registry.remove_recognizer.assert_called_once_with("SpacyRecognizer")
+        mock_presidio_engine.registry.add_recognizer.assert_not_called()

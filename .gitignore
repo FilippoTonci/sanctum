@@ -51,6 +51,8 @@ nosetests.xml
 .ropeproject
 .DS_Store
 .venv
+.venv-bench
+notebooks/
 
 # IDE
 *.sw[po]

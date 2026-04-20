@@ -52,6 +52,14 @@ api = [
     "flask>=3",
     "waitress>=3",
 ]
+# GLiNER NER backend (WS5 Professional tier). Opt-in because torch pulls in
+# a ~800 MB wheel even on CPU; the default spacy backend stays fully usable
+# without this extra. Install with `pip install sanctum[gliner]`, then set
+# SANCTUM_NLP__NER_BACKEND=gliner (or nlp.ner_backend in settings) to enable.
+gliner = [
+    "gliner>=0.2.13",
+    "torch>=2.0",
+]
 ci = [
     "pytest>=7.4",
     "pytest-cov>=4.1",

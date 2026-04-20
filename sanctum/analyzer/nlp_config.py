@@ -24,6 +24,26 @@ DEFAULT_LABELS_TO_IGNORE: tuple[str, ...] = (
     "WORK_OF_ART",
 )
 
+# Natural-language GLiNER prompts → Sanctum taxonomy. GLiNER scores
+# lowercase prompts higher than uppercase enum-style labels (confirmed in
+# the sanctum-research benchmark), so the mapping is prompt → Sanctum
+# entity and kept symmetric with Presidio's stock taxonomy.
+_GLINER_ENTITY_MAPPING: dict[str, str] = {
+    "person": "PERSON",
+    "location": "LOCATION",
+    "organization": "ORGANIZATION",
+    "date": "DATE_TIME",
+    "email address": "EMAIL_ADDRESS",
+    "phone number": "PHONE_NUMBER",
+    "url": "URL",
+    "ip address": "IP_ADDRESS",
+    "iban": "IBAN_CODE",
+    "social security number": "US_SSN",
+    "driver license number": "US_DRIVER_LICENSE",
+    "bank account number": "US_BANK_NUMBER",
+    "credit card number": "CREDIT_CARD",
+}
+
 
 def create_nlp_engine(
     model_name: str = "en_core_web_lg",
@@ -45,3 +65,41 @@ def create_nlp_engine(
         }
     )
     return provider.create_engine()
+
+
+def create_gliner_recognizer(
+    model_name: str = "urchade/gliner_medium-v2.1",
+    threshold: float = 0.4,
+) -> Any:
+    """Build a Presidio `GLiNERRecognizer` wired to Sanctum's taxonomy.
+
+    Imports the recognizer lazily so the `gliner` extra stays optional —
+    callers that never hit this path (e.g. spaCy-only installs) don't pay
+    the torch import cost. Raises a clear `ImportError` pointing to the
+    extra if gliner isn't installed.
+    """
+    try:
+        from presidio_analyzer.predefined_recognizers import GLiNERRecognizer
+    except ImportError as exc:  # pragma: no cover — presidio always ships the class
+        raise ImportError("GLiNERRecognizer not available in this presidio-analyzer build") from exc
+
+    # Presidio's GLiNERRecognizer makes gliner an optional import but calls
+    # load() eagerly during AnalyzerEngine construction, which surfaces a
+    # generic "GLiNER is not installed" deep in the stack. Pre-check here
+    # so users get a clear pointer to the extra they need.
+    try:
+        import gliner  # type: ignore[import-not-found]  # noqa: F401
+    except ImportError as exc:
+        raise ImportError(
+            "ner_backend='gliner' requires the gliner package. "
+            "Install it with: pip install 'sanctum[gliner]'"
+        ) from exc
+
+    return GLiNERRecognizer(
+        model_name=model_name,
+        entity_mapping=_GLINER_ENTITY_MAPPING,
+        threshold=threshold,
+        flat_ner=True,
+        multi_label=False,
+        map_location="cpu",
+    )

@@ -174,6 +174,26 @@ pip install -e ".[dev]"
 python -m spacy download en_core_web_sm
 ```
 
+### Professional-tier NER (optional)
+
+The default Standard tier uses Presidio's spaCy recognizer (fast, CPU-only,
+no extra weights). The Professional tier swaps in **GLiNER-medium v2.1**,
+which in `sanctum-research` benchmarks lifts macro-F1 from 0.61 to 0.78 on
+the fixture corpus and cuts false positives by ~3×.
+
+```bash
+# Install the GLiNER extra (pulls in torch CPU wheel + gliner; ~900 MB)
+pip install -e ".[gliner]"
+
+# Enable the backend via env var
+export SANCTUM_NLP__NER_BACKEND=gliner
+```
+
+First `sanctum analyze` call downloads the GLiNER weights (~820 MB) into
+`~/.cache/huggingface/`. For airgapped environments, pre-populate that
+cache and set `HF_HUB_OFFLINE=1` so the process fails fast if weights are
+missing instead of attempting a network call.
+
 ### CLI Usage
 
 ```bash
@@ -249,8 +269,7 @@ Sanctum is designed to help professionals meet the requirements of:
 - [x] CI/CD pipeline + pre-commit hooks + linter enforcement
 - [x] Flask localhost API (`/analyze`, `/anonymize`, `/process-file`, `/mapping/*`) served via waitress — background service for future GUI
 - [x] HTTP-reachable `mask` and `encrypt` operators via `operator_params`
-- [ ] Custom legal-domain recognizers (case numbers, bar IDs, Bates numbers)
-- [ ] Transformer-based NER (Professional tier)
+- [x] Transformer-based NER (Professional tier) — GLiNER-medium v2.1 via `sanctum[gliner]`, +0.17 macro-F1 over the spaCy baseline on the fixture corpus
 
 ### Phase 2 — Intelligence & Compliance
 - [ ] HIPAA entity recognizer mode (18 safe harbor identifiers)
@@ -276,6 +295,7 @@ Sanctum is designed to help professionals meet the requirements of:
 ### Future Extensions *(post-GA)*
 - [ ] **Microsoft Word Ribbon Add-in** — anonymize without leaving Word
 - [ ] Track Changes integration for PII redlines within Word
+- [ ] Custom legal-domain recognizers (case numbers, bar IDs, Bates numbers)
 
 ---
 
