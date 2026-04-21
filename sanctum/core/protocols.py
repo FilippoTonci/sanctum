@@ -8,7 +8,6 @@ from sanctum.core.models import (
     AnonymizationResult,
     DetectionResult,
     OperatorPolicy,
-    ReviewComment,
     ReviewDecision,
     StructuredDocument,
 )
@@ -78,13 +77,21 @@ class ReviewEmittingWriter(Protocol):
     against adapters that have not yet been wired. Once all four formats
     support review this split becomes redundant — but it keeps the
     rollout graph clean.
+
+    ``doc`` carries segments whose text is already anonymized;
+    ``results_by_segment`` maps ``segment.id`` to the originating
+    ``AnonymizationResult`` so the adapter can emit a native comment per
+    detection without re-deriving replacement offsets. The adapter is
+    responsible for building ``ReviewComment`` values (via
+    ``sanctum.documents.review``) and attaching them at format-native
+    anchors.
     """
 
     def emit_review(
         self,
         doc: StructuredDocument,
         path: Path,
-        comments: list[ReviewComment],
+        results_by_segment: dict[str, AnonymizationResult],
     ) -> None: ...
 
 
