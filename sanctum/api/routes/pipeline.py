@@ -20,6 +20,8 @@ from sanctum.api.schemas import (
     AnalyzeResponse,
     AnonymizeRequest,
     AnonymizeResponse,
+    CommitReviewRequest,
+    CommitReviewResponse,
     ProcessFileRequest,
     ProcessFileResponse,
 )
@@ -226,6 +228,7 @@ def process_file() -> tuple[dict, int]:
             entities=req.entities,
             score_threshold=req.score_threshold,
             operator_policies=operator_policies,
+            review=req.review,
         )
     except DocumentError as exc:
         current_app.logger.exception("/process-file: DocumentError for %s", in_path)
@@ -233,6 +236,13 @@ def process_file() -> tuple[dict, int]:
     except InvalidOperatorParamsError as exc:
         current_app.logger.info("/process-file: invalid operator params: %s", exc)
         return {"error": f"invalid operator_params: {exc}"}, 400
+    except NotImplementedError as exc:
+        # review=True against an adapter that hasn't wired emit_review yet.
+        # 501 maps to "server understands the request but hasn't
+        # implemented it," which is the right signal for a Phase 1.5
+        # rollout window where callers can retry once WS2-5 lands.
+        current_app.logger.info("/process-file: review not yet supported: %s", exc)
+        return {"error": f"review not yet supported: {exc}"}, 501
     except (AnalysisError, AnonymizationError) as exc:
         current_app.logger.exception("/process-file: pipeline raised %s", type(exc).__name__)
         return {"error": f"pipeline failed: {exc}"}, 500
@@ -241,5 +251,68 @@ def process_file() -> tuple[dict, int]:
         output_path=str(out_path),
         segments_changed=len(results),
         entities_replaced=sum(len(r.detections) for r in results),
+    )
+    return payload.model_dump(), 200
+
+
+@pipeline_bp.post("/commit-review")
+@require_bearer_token
+def commit_review() -> tuple[dict, int]:
+    engine = _get_engine()
+    if engine is None:
+        current_app.logger.error("/commit-review called but SANCTUM_ENGINE is unconfigured")
+        return {"error": "engine not configured"}, 503
+
+    req, err = parse_body(CommitReviewRequest)
+    if err is not None:
+        return err
+
+    if not req.attested:
+        # API cannot prompt; the CLI can. If the caller hasn't explicitly
+        # asserted a human has reviewed the file, refuse rather than
+        # silently writing accepted pseudonyms to persistent state.
+        return {
+            "error": (
+                "commit-review requires attested=true; the API cannot prompt, "
+                "so the caller must assert human review before accepted "
+                "pseudonyms are persisted."
+            )
+        }, 400
+
+    store = _unlocked_store()
+    if store is None:
+        return _pseudonymize_unavailable()
+
+    in_path, in_err = validate_local_path(req.input_path, must_exist=True)
+    if in_err is not None:
+        return {"error": f"input_path: {in_err}"}, 400
+    out_path, out_err = validate_local_path(req.output_path, must_exist=False)
+    if out_err is not None:
+        return {"error": f"output_path: {out_err}"}, 400
+    assert in_path is not None and out_path is not None
+
+    try:
+        reader, writer = adapter_for(in_path)
+    except UnsupportedDocumentFormatError as exc:
+        return {"error": str(exc)}, 415
+
+    try:
+        engine.commit_review(reader, writer, in_path, out_path, store)
+    except NotImplementedError as exc:
+        # WS1 always takes this path; WS6 turns it into a real success.
+        current_app.logger.info("/commit-review: not yet implemented: %s", exc)
+        return {"error": f"commit-review not yet implemented: {exc}"}, 501
+    except DocumentError as exc:
+        current_app.logger.exception("/commit-review: DocumentError for %s", in_path)
+        return {"error": f"document failure: {exc}"}, 500
+
+    # WS1 never reaches this — engine raises NotImplementedError. WS6
+    # wires real counters. Response shape pinned here so clients can
+    # already bind to it.
+    payload = CommitReviewResponse(
+        output_path=str(out_path),
+        accepted=0,
+        rejected=0,
+        user_added=0,
     )
     return payload.model_dump(), 200

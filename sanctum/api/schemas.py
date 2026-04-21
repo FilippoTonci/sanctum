@@ -128,6 +128,11 @@ class ProcessFileRequest(_StrictRequest):
     so a malicious client can't coerce the server into reading from or
     writing to a network share — that would defeat the airgap by smuggling
     data across the network mount.
+
+    ``review`` defaults to False during Phase 1.5 WS1-5: the CLI flips its
+    user-facing default in WS6 once every adapter implements emit_review.
+    Clients that want review emission must opt in explicitly; until the
+    relevant adapter lands, the route returns 501.
     """
 
     input_path: str
@@ -137,6 +142,7 @@ class ProcessFileRequest(_StrictRequest):
     score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
     operator: str | None = None
     operator_params: dict[str, Any] | None = None
+    review: bool = False
 
     _reject_api_unsupported_operator = field_validator("operator")(_reject_api_unsupported_operator)
 
@@ -153,6 +159,34 @@ class ProcessFileResponse(_Frozen):
     output_path: str
     segments_changed: int
     entities_replaced: int
+
+
+class CommitReviewRequest(_StrictRequest):
+    """Body for `POST /commit-review`.
+
+    Reconciles a reviewed pseudonymize file into the mapping store and
+    emits a shareable copy with all ``sanctum:`` trailers stripped. Same
+    server-side path rules as /process-file.
+
+    ``attested`` is a hard gate because the API cannot prompt for
+    confirmation the way the CLI can: the caller must assert, on the
+    record, that a human has reviewed the file before accepted
+    pseudonyms are written to persistent state. Requests with
+    ``attested=false`` (or omitted) return 400.
+    """
+
+    input_path: str
+    output_path: str
+    attested: bool = False
+
+
+class CommitReviewResponse(_Frozen):
+    """Body for `POST /commit-review` — summary of what the commit step did."""
+
+    output_path: str
+    accepted: int
+    rejected: int
+    user_added: int
 
 
 class UnlockMappingRequest(_StrictRequest):
