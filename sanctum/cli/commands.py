@@ -297,6 +297,18 @@ def anonymize(
     default=None,
     help="Passphrase for the mapping store. Prefer the SANCTUM_PASSPHRASE env var.",
 )
+@click.option(
+    "--review/--no-review",
+    "review",
+    default=False,
+    show_default=True,
+    help=(
+        "Emit the output as a review file with native comments documenting each "
+        "change. Review support lands per-format across Phase 1.5 WS2-5; until "
+        "then --review raises a clear 'not yet supported' error. The default "
+        "flips to --review in WS6."
+    ),
+)
 def process_file(
     input_path: Path,
     output_path: Path,
@@ -306,6 +318,7 @@ def process_file(
     operator: str | None,
     store_path: Path | None,
     passphrase: str | None,
+    review: bool,
 ) -> None:
     """Anonymize a structured office document (.docx/.xlsx/.pdf/.pptx)."""
     try:
@@ -324,6 +337,7 @@ def process_file(
                     score_threshold=threshold,
                     entities=entity_list,
                     operator_policies=_pseudonymize_policies(store, language),
+                    review=review,
                 )
         else:
             # Mirror the `anonymize` command: when `--operator` is set,
@@ -339,6 +353,7 @@ def process_file(
                 score_threshold=threshold,
                 entities=entity_list,
                 operator_policies=policies,
+                review=review,
             )
 
         total = sum(len(r.detections) for r in results)
@@ -346,6 +361,60 @@ def process_file(
             f"[green]Wrote anonymized document to {output_path}[/green] "
             f"({len(results)} segments changed, {total} entities replaced)."
         )
+    except NotImplementedError as e:
+        # The engine raises NotImplementedError when review=True is used
+        # against an adapter that hasn't wired emit_review yet. Treat it as
+        # a user-facing error (not a crash) so the Phase 1.5 rollout window
+        # gives a clean message instead of a traceback.
+        console.print(f"[yellow]Not yet supported: {e}[/yellow]")
+        raise SystemExit(2) from e
+    except SanctumError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1) from e
+
+
+@cli.command("commit-review")
+@click.argument("input_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
+@click.argument("output_path", type=click.Path(dir_okay=False, path_type=Path))
+@click.option(
+    "--store",
+    "store_path",
+    required=True,
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="Path to the encrypted mapping store to reconcile accepted pseudonyms into.",
+)
+@click.option(
+    "--passphrase",
+    envvar="SANCTUM_PASSPHRASE",
+    default=None,
+    help="Passphrase for the mapping store. Prefer the SANCTUM_PASSPHRASE env var.",
+)
+def commit_review(
+    input_path: Path,
+    output_path: Path,
+    store_path: Path,
+    passphrase: str | None,
+) -> None:
+    """Reconcile a reviewed pseudonymize file into the mapping store.
+
+    Reads the reviewer's accepted / rejected / user-added decisions out of
+    ``INPUT_PATH``, writes accepted entries to the encrypted store, and
+    emits a shareable copy to ``OUTPUT_PATH`` with every ``sanctum:``
+    trailer stripped.
+
+    Phase 1.5 WS1 only wires the subcommand; the store-write reconciliation
+    lands in WS6. Running this today yields a clear NotImplementedError
+    so users see a consistent message across CLI and API surfaces.
+    """
+    try:
+        reader, writer = adapter_for(input_path)
+        engine = _create_engine()
+        with _mapping_store(store_path, passphrase) as store:
+            engine.commit_review(reader, writer, input_path, output_path, store)
+        console.print(f"[green]Committed review to {output_path}[/green]")
+    except NotImplementedError as e:
+        console.print(f"[yellow]Not yet supported: {e}[/yellow]")
+        raise SystemExit(2) from e
     except SanctumError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise SystemExit(1) from e
