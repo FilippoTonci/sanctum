@@ -123,3 +123,36 @@ class StagedMapping(BaseModel):
     entity_type: str
     original: str
     pseudonym: str
+
+
+ReviewDecisionKind = Literal["accepted", "rejected", "user_added"]
+
+
+class ReviewDecision(BaseModel):
+    """One outcome extracted from a reviewed document.
+
+    The three kinds correspond to the reconciliation states described in
+    the Phase 1.5 plan:
+
+    - ``accepted``: Sanctum's trailer is present *and* the replacement
+      text still occupies the span — the reviewer left the change alone.
+      ``staged`` carries the parsed trailer.
+    - ``rejected``: Sanctum's trailer is present but the replacement text
+      has been restored to the original — the reviewer undid the change.
+      ``staged`` still carries the trailer so the engine knows what *not*
+      to commit.
+    - ``user_added``: a reviewer-authored comment with no Sanctum trailer.
+      ``user_comment_body`` and ``user_anchor_text`` describe the span
+      the reviewer flagged so ``commit-review`` can prompt for / generate
+      a pseudonym.
+
+    Kept as a tagged union with optional fields rather than separate
+    classes so adapters can emit one flat list.
+    """
+
+    model_config = {"frozen": True}
+
+    kind: ReviewDecisionKind
+    staged: ReviewComment | None = None
+    user_comment_body: str | None = None
+    user_anchor_text: str | None = None
