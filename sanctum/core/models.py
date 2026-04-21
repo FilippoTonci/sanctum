@@ -72,3 +72,54 @@ class StructuredDocument(BaseModel):
     format: DocumentFormat
     segments: list[TextSegment]
     raw_handle: Any = Field(default=None, exclude=True)
+
+
+# Phase 1.5 — review workflow. The trailer version is embedded in every
+# `sanctum:` comment so future schema changes can be migrated or rejected
+# cleanly rather than silently misparsed.
+REVIEW_TRAILER_VERSION = 1
+
+
+class ReviewComment(BaseModel):
+    """Metadata for one detection emitted into a review file's comment.
+
+    Carries everything a reviewer (and, for pseudonymize, ``commit-review``)
+    needs to understand what Sanctum did and reverse it: entity type,
+    confidence, the original text, and the replacement that now sits in
+    the document. Serialized into the ``<!-- sanctum:... -->`` trailer at
+    the end of each review comment.
+
+    ``detection_id`` is a stable content-addressed hash so copy-paste in
+    Word (which renumbers comment ids) does not break reconciliation.
+    """
+
+    model_config = {"frozen": True}
+
+    detection_id: str
+    entity_type: str
+    score: float
+    original: str
+    replacement: str
+    operator: str
+
+
+class StagedMapping(BaseModel):
+    """A pseudonymize mapping staged pending human approval.
+
+    Pseudonymize's pass 1 emits these into the review file's comment
+    trailers *without* writing to the encrypted mapping store. The
+    ``commit-review`` step reads them back, reconciles against the
+    reviewed document's current state (accepted / rejected / user-added),
+    and only then persists to the store.
+
+    This is the one piece of Sanctum state that deliberately lives in the
+    user-facing review file before being committed — which is why trailer
+    stripping on commit is a first-order correctness requirement.
+    """
+
+    model_config = {"frozen": True}
+
+    detection_id: str
+    entity_type: str
+    original: str
+    pseudonym: str
