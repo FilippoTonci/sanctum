@@ -116,3 +116,63 @@ def test_process_file_forwards_entities_flag(runner: CliRunner, tmp_path: Path) 
     call = mock_engine.return_value.process_document.call_args
     assert call.kwargs["entities"] == ["PERSON", "EMAIL_ADDRESS"]
     assert call.kwargs["score_threshold"] == 0.7
+
+
+def test_process_file_forwards_review_flag(runner: CliRunner, tmp_path: Path) -> None:
+    """--review must propagate to engine.process_document(review=True)."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+    out = tmp_path / "out.docx"
+
+    fake_reader, fake_writer = Mock(), Mock()
+    with (
+        patch("sanctum.cli.commands.adapter_for", return_value=(fake_reader, fake_writer)),
+        patch("sanctum.cli.commands._create_engine") as mock_engine,
+    ):
+        mock_engine.return_value.process_document.return_value = []
+        result = runner.invoke(cli, ["process-file", str(src), str(out), "--review"])
+
+    assert result.exit_code == 0, result.output
+    call = mock_engine.return_value.process_document.call_args
+    assert call.kwargs["review"] is True
+
+
+def test_process_file_default_is_no_review(runner: CliRunner, tmp_path: Path) -> None:
+    """WS1 keeps default review=False to avoid breaking adapters that
+    don't yet implement emit_review; WS6 flips this."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+    out = tmp_path / "out.docx"
+
+    fake_reader, fake_writer = Mock(), Mock()
+    with (
+        patch("sanctum.cli.commands.adapter_for", return_value=(fake_reader, fake_writer)),
+        patch("sanctum.cli.commands._create_engine") as mock_engine,
+    ):
+        mock_engine.return_value.process_document.return_value = []
+        runner.invoke(cli, ["process-file", str(src), str(out)])
+
+    call = mock_engine.return_value.process_document.call_args
+    assert call.kwargs["review"] is False
+
+
+def test_process_file_review_not_yet_supported_exits_2(runner: CliRunner, tmp_path: Path) -> None:
+    """When engine raises NotImplementedError (WS1 adapters don't support
+    review), CLI should exit 2 with a user-facing 'not yet supported'
+    message rather than a traceback."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+    out = tmp_path / "out.docx"
+
+    fake_reader, fake_writer = Mock(), Mock()
+    with (
+        patch("sanctum.cli.commands.adapter_for", return_value=(fake_reader, fake_writer)),
+        patch("sanctum.cli.commands._create_engine") as mock_engine,
+    ):
+        mock_engine.return_value.process_document.side_effect = NotImplementedError(
+            "adapter does not yet implement emit_review"
+        )
+        result = runner.invoke(cli, ["process-file", str(src), str(out), "--review"])
+
+    assert result.exit_code == 2, result.output
+    assert "Not yet supported" in result.output

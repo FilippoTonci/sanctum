@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
-from sanctum.core.models import AnonymizationResult, DetectionResult, OperatorPolicy
+from sanctum.core.models import (
+    AnonymizationResult,
+    DetectionResult,
+    OperatorPolicy,
+    ReviewComment,
+    ReviewDecision,
+)
 
 
 class TestDetectionResult:
@@ -101,3 +107,39 @@ class TestAnonymizationResult:
         data = result.model_dump()
         restored = AnonymizationResult.model_validate(data)
         assert restored == result
+
+
+class TestReviewDecision:
+    def _staged(self) -> ReviewComment:
+        return ReviewComment(
+            detection_id="abcdef012345",
+            entity_type="PERSON",
+            score=0.9,
+            original="Alice",
+            replacement="[PERSON_1]",
+            operator="replace",
+        )
+
+    def test_accepted_carries_staged_trailer(self) -> None:
+        decision = ReviewDecision(kind="accepted", staged=self._staged())
+        assert decision.kind == "accepted"
+        assert decision.staged is not None
+        assert decision.user_comment_body is None
+
+    def test_user_added_carries_body_and_anchor(self) -> None:
+        decision = ReviewDecision(
+            kind="user_added",
+            user_comment_body="#PERSON reviewer flag",
+            user_anchor_text="Priya Patel",
+        )
+        assert decision.staged is None
+        assert decision.user_anchor_text == "Priya Patel"
+
+    def test_frozen_rejects_attribute_assignment(self) -> None:
+        decision = ReviewDecision(kind="rejected", staged=self._staged())
+        with pytest.raises(ValidationError):
+            decision.kind = "accepted"
+
+    def test_rejects_invalid_kind(self) -> None:
+        with pytest.raises(ValidationError):
+            ReviewDecision(kind="maybe")  # type: ignore[arg-type]

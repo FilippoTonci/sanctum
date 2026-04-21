@@ -425,6 +425,31 @@ def test_process_file_400_when_operator_params_without_operator(tmp_path: Path):
     assert r.get_json()["error"] == "invalid request"
 
 
+def test_process_file_review_true_returns_501_when_unsupported(tmp_path: Path):
+    """WS1 ships /process-file's review flag, but no adapter implements
+    emit_review yet — that path must surface a 501 instead of 500."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+    out = tmp_path / "out.docx"
+
+    with patch(
+        "sanctum.api.routes.pipeline.adapter_for",
+        return_value=(_StubReader(_doc(tmp_path)), _StubWriter()),
+    ):
+        client = _client(_engine([], _empty_result()))
+        r = client.post(
+            "/process-file",
+            headers={**LOOPBACK, **AUTH},
+            json={
+                "input_path": str(src),
+                "output_path": str(out),
+                "review": True,
+            },
+        )
+    assert r.status_code == 501, r.get_json()
+    assert "review not yet supported" in r.get_json()["error"]
+
+
 def test_process_file_400_on_invalid_operator_params(tmp_path: Path):
     """InvalidOperatorParamsError from the pipeline → 400, not 500."""
     src = tmp_path / "in.docx"

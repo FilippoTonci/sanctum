@@ -69,3 +69,38 @@ class IncorrectPassphraseError(MappingStoreError):
 
 class MappingStoreLockedError(MappingStoreError):
     """Raised when a locked store is asked to read, write, or mutate."""
+
+
+class ReviewError(SanctumError):
+    """Base for review-workflow failures (Phase 1.5)."""
+
+
+class StagedMappingParseError(ReviewError):
+    """Raised when a Sanctum trailer in a review file is malformed.
+
+    The trailer is the single source of truth for staged mappings; a parse
+    failure means the reviewed file cannot be safely committed and the
+    caller needs to re-emit it rather than ship with a partially-parsed
+    mapping set.
+    """
+
+
+class CommitReviewOperatorMismatchError(ReviewError):
+    """Raised when `commit-review` runs on a file not staged by pseudonymize.
+
+    `commit-review` only makes sense for the pseudonymize operator — it is
+    the one operator whose output includes local persistent state that
+    must be committed post-review. Running it against a file staged by
+    `replace`/`redact`/etc. is a user mistake; we fail loudly rather than
+    silently writing nothing.
+    """
+
+
+class AlreadyCommittedError(ReviewError):
+    """Raised when `commit-review` runs on a file that was already committed.
+
+    The commit step strips all `sanctum:` trailers from the final file as
+    it writes. A second run against the same file therefore finds no
+    trailers and would silently do nothing — which looks like success but
+    is almost always user error (wrong file, wrong store). Raise instead.
+    """

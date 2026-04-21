@@ -271,6 +271,15 @@ Sanctum is designed to help professionals meet the requirements of:
 - [x] HTTP-reachable `mask` and `encrypt` operators via `operator_params`
 - [x] Transformer-based NER (Professional tier) — GLiNER-medium v2.1 via `sanctum[gliner]`, +0.17 macro-F1 over the spaCy baseline on the fixture corpus
 
+### Phase 1.5 — Human-in-the-loop Review Workflow
+- [ ] **Review-mode default** — `sanctum process-file` emits an already-anonymized file with native comments documenting each change, so the reviewer verifies in Word/Excel/PowerPoint/PDF using tools they already know. `--no-review` escape hatch preserves fire-and-forget behaviour for automation.
+- [ ] `ReviewWriter` contract + trailer helpers (WS1 — foundation)
+- [ ] DOCX review emission via python-docx comments + OOXML fallback (WS2)
+- [ ] XLSX review emission via `Cell.comment` (WS3)
+- [ ] PPTX review emission via OOXML comment parts (WS4 — python-pptx has no first-class API)
+- [ ] PDF review emission via pypdf free-text annotations (WS5 — degraded reviewer UX acknowledged)
+- [ ] `sanctum commit-review` for pseudonymize — staged mappings only persist to the encrypted store after human approval; trailer stripped from final file (WS6)
+
 ### Phase 2 — Intelligence & Compliance
 - [ ] HIPAA entity recognizer mode (18 safe harbor identifiers)
 - [ ] Risk scoring — post-anonymization residual identifiability metric
@@ -281,7 +290,7 @@ Sanctum is designed to help professionals meet the requirements of:
 ### Phase 3 — Desktop GUI & Packaging
 - [ ] Standalone desktop GUI (Electron or native wrapper around Python core)
 - [ ] Drag-and-drop document import (`.docx`, `.pdf`, `.xlsx`)
-- [ ] Selective redaction by entity type with human-in-the-loop review
+- [ ] Selective redaction by entity type in the GUI (the comment-based v1 of human-in-the-loop review lands in Phase 1.5)
 - [ ] `.pdf` burn-in redaction (structural removal, not just visual)
 - [ ] Packaged installers for Windows (`.exe`) and macOS (`.dmg`)
 
@@ -294,7 +303,7 @@ Sanctum is designed to help professionals meet the requirements of:
 
 ### Future Extensions *(post-GA)*
 - [ ] **Microsoft Word Ribbon Add-in** — anonymize without leaving Word
-- [ ] Track Changes integration for PII redlines within Word
+- [ ] Track Changes integration for PII redlines within Word (stronger-enforcement alternative to Phase 1.5's comment-based review; see issue #12)
 - [ ] Custom legal-domain recognizers (case numbers, bar IDs, Bates numbers)
 
 ---
