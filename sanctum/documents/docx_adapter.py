@@ -21,9 +21,11 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from docx import Document
+from docx.oxml.ns import qn
 
-from sanctum.core.models import ReviewComment
-from sanctum.documents.review import format_comment_body, make_detection_id
+from sanctum.core.exceptions import StagedMappingParseError
+from sanctum.core.models import ReviewComment, ReviewDecision
+from sanctum.documents.review import format_comment_body, make_detection_id, parse_trailers
 from sanctum.documents.structured import build_document, build_segment
 
 if TYPE_CHECKING:
@@ -37,6 +39,33 @@ if TYPE_CHECKING:
 def _iter_paragraph_runs(paragraph: Paragraph, prefix: str) -> list[tuple[str, Run]]:
     """Return ``[(segment_id, run), ...]`` for every run in ``paragraph``."""
     return [(f"{prefix}/r{j}", run) for j, run in enumerate(paragraph.runs)]
+
+
+def _collect_anchor_texts(handle: DocxDocument) -> dict[int, str]:
+    """Map ``comment_id`` → concatenated text anchored inside its range.
+
+    Walks ``<w:body>`` in document order, tracking every ``commentRangeStart``
+    / ``commentRangeEnd`` pair and accumulating ``<w:t>`` text that sits
+    between them. Tables are traversed too because they live inside the
+    body element. Ranges nest and span paragraphs, so each open range gets
+    its own accumulator keyed by ``w:id``.
+    """
+    body = handle.element.body
+    open_ranges: dict[int, list[str]] = {}
+    anchor_texts: dict[int, str] = {}
+    for elem in body.iter():
+        tag = elem.tag
+        if tag == qn("w:commentRangeStart"):
+            cid = int(elem.get(qn("w:id")))
+            open_ranges[cid] = []
+        elif tag == qn("w:commentRangeEnd"):
+            cid = int(elem.get(qn("w:id")))
+            anchor_texts[cid] = "".join(open_ranges.pop(cid, []))
+        elif tag == qn("w:t"):
+            chunk = elem.text or ""
+            for acc in open_ranges.values():
+                acc.append(chunk)
+    return anchor_texts
 
 
 class Reader:
@@ -64,6 +93,57 @@ class Reader:
             segments=segments,
             raw_handle=doc,
         )
+
+    def read_review_decisions(self, path: Path) -> list[ReviewDecision]:
+        """Classify every Word comment as accepted / rejected / user-added.
+
+        For each comment:
+
+        - Parse its body for ``<!-- sanctum:v=1 ... -->`` trailers.
+        - If any trailer's ``replacement`` still appears in the anchored run
+          text, the reviewer left Sanctum's change alone → ``accepted``.
+        - If a trailer is present but its ``replacement`` is gone, the
+          reviewer restored the original text → ``rejected`` (the trailer is
+          kept on the decision so commit-review knows what *not* to stage).
+        - A comment with no trailer is a reviewer-authored span flag →
+          ``user_added``.
+
+        Comments the reviewer deleted entirely produce no decision — and
+        commit-review takes no action for unreconciled detections, which is
+        the correct conservative default. Malformed trailers fall back to
+        ``user_added`` rather than raising so a single broken comment can't
+        block the whole commit.
+        """
+        handle: DocxDocument = Document(str(path))
+        anchor_texts = _collect_anchor_texts(handle)
+        decisions: list[ReviewDecision] = []
+
+        for comment in sorted(handle.comments, key=lambda c: c.comment_id):
+            body = comment.text
+            anchor = anchor_texts.get(comment.comment_id, "")
+            try:
+                trailers = parse_trailers(body)
+            except StagedMappingParseError:
+                trailers = []
+            if not trailers:
+                decisions.append(
+                    ReviewDecision(
+                        kind="user_added",
+                        user_comment_body=body,
+                        user_anchor_text=anchor,
+                    )
+                )
+                continue
+            for trailer in trailers:
+                kind = "accepted" if trailer.replacement in anchor else "rejected"
+                decisions.append(
+                    ReviewDecision(
+                        kind=kind,
+                        staged=trailer,
+                    )
+                )
+
+        return decisions
 
 
 class Writer:

@@ -22,25 +22,8 @@ from typing import ClassVar
 
 from faker import Faker
 from presidio_anonymizer.operators import Operator, OperatorType
+from sanctum.anonymizer.pseudonyms import resolve_locale
 from sanctum.core.protocols import MappingStore
-
-_LANGUAGE_TO_LOCALE: dict[str, str] = {
-    "en": "en_US",
-    "it": "it_IT",
-    "fr": "fr_FR",
-    "de": "de_DE",
-    "es": "es_ES",
-    "pt": "pt_PT",
-    "nl": "nl_NL",
-}
-
-
-def _resolve_locale(language: str | None) -> str:
-    if language is None:
-        return "en_US"
-    if "_" in language:
-        return language  # already a Faker locale like "en_GB"
-    return _LANGUAGE_TO_LOCALE.get(language, "en_US")
 
 
 class PseudonymizeOperator(Operator):
@@ -75,7 +58,7 @@ class PseudonymizeOperator(Operator):
         entity_type = params.get("entity_type")
         if not entity_type:
             raise ValueError("pseudonymize operator requires an `entity_type` param")
-        locale = _resolve_locale(params.get("language"))
+        locale = resolve_locale(params.get("language"))
         fake = self._faker(locale)
         generator = self._ENTITY_GENERATORS.get(entity_type)
 

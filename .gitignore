@@ -70,3 +70,4 @@ tests/fixtures/office/public/
 # Coverage outputs produced by the new CI gate.
 coverage.xml
 htmlcov/
+.codex

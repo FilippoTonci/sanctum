@@ -225,3 +225,55 @@ def test_detection_id_is_stable_for_same_input(tmp_path: Path) -> None:
     Writer().emit_review(mutated2, out2, {segment2.id: result})
 
     assert _extract_id(out1) == _extract_id(out2)
+
+
+def test_read_review_decisions_classifies_word_comments(tmp_path: Path) -> None:
+    src = tmp_path / "review.docx"
+    doc = Document()
+    para = doc.add_paragraph("")
+    sanctum_run = para.add_run("[PERSON_1]")
+    reviewer_run = para.add_run(" Bob")
+    doc.add_comment(
+        [sanctum_run],
+        text=(
+            "Sanctum applied 'pseudonymize' to PERSON.\n"
+            "<!-- sanctum:v=1 detection_id=abcdef012345 entity=PERSON "
+            'score=0.9000 original="Alice" replacement="[PERSON_1]" '
+            "operator=pseudonymize -->"
+        ),
+        author="Sanctum",
+        initials="S",
+    )
+    doc.add_comment([reviewer_run], text="#PERSON missed", author="Jane", initials="J")
+    doc.save(str(src))
+
+    decisions = Reader().read_review_decisions(src)
+
+    assert [d.kind for d in decisions] == ["accepted", "user_added"]
+    assert decisions[0].staged is not None
+    assert decisions[0].staged.original == "Alice"
+    assert decisions[1].user_comment_body == "#PERSON missed"
+    assert decisions[1].user_anchor_text == " Bob"
+
+
+def test_read_review_decisions_marks_restored_text_as_rejected(tmp_path: Path) -> None:
+    src = tmp_path / "review.docx"
+    doc = Document()
+    para = doc.add_paragraph("")
+    run = para.add_run("Alice")
+    doc.add_comment(
+        [run],
+        text=(
+            "Sanctum applied 'pseudonymize' to PERSON.\n"
+            "<!-- sanctum:v=1 detection_id=abcdef012345 entity=PERSON "
+            'score=0.9000 original="Alice" replacement="[PERSON_1]" '
+            "operator=pseudonymize -->"
+        ),
+        author="Sanctum",
+        initials="S",
+    )
+    doc.save(str(src))
+
+    decisions = Reader().read_review_decisions(src)
+
+    assert [d.kind for d in decisions] == ["rejected"]
