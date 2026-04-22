@@ -93,3 +93,48 @@ class TestPresidioAnalyzer:
 
         mock_presidio_engine.registry.remove_recognizer.assert_called_once_with("SpacyRecognizer")
         mock_presidio_engine.registry.add_recognizer.assert_not_called()
+
+    def test_keeps_enclosing_span_when_one_detection_contains_another(
+        self, adapter: object, mock_presidio_engine: MagicMock
+    ) -> None:
+        text = "alice@example.org"
+        mock_presidio_engine.analyze.return_value = [
+            self._make_recognizer_result("EMAIL_ADDRESS", 0, 17, 0.9, "EmailRecognizer"),
+            self._make_recognizer_result("URL", 6, 17, 0.8, "UrlRecognizer"),
+        ]
+
+        results = adapter.analyze(text)
+
+        assert [(r.entity_type, r.start, r.end) for r in results] == [("EMAIL_ADDRESS", 0, 17)]
+
+    def test_partial_overlap_trims_smaller_span(
+        self, adapter: object, mock_presidio_engine: MagicMock
+    ) -> None:
+        text = "ABCDEFGHIJKLMNO"
+        mock_presidio_engine.analyze.return_value = [
+            self._make_recognizer_result("PERSON", 0, 6, 0.8, "LeftRecognizer"),
+            self._make_recognizer_result("LOCATION", 4, 14, 0.9, "RightRecognizer"),
+        ]
+
+        results = adapter.analyze(text)
+
+        assert [(r.entity_type, r.start, r.end, r.text_span) for r in results] == [
+            ("PERSON", 0, 4, "ABCD"),
+            ("LOCATION", 4, 14, "EFGHIJKLMN"),
+        ]
+
+    def test_non_overlapping_results_are_preserved(
+        self, adapter: object, mock_presidio_engine: MagicMock
+    ) -> None:
+        text = "alice@example.org and https://example.org"
+        mock_presidio_engine.analyze.return_value = [
+            self._make_recognizer_result("EMAIL_ADDRESS", 0, 17, 0.9, "EmailRecognizer"),
+            self._make_recognizer_result("URL", 22, 41, 0.8, "UrlRecognizer"),
+        ]
+
+        results = adapter.analyze(text)
+
+        assert [(r.entity_type, r.start, r.end) for r in results] == [
+            ("EMAIL_ADDRESS", 0, 17),
+            ("URL", 22, 41),
+        ]

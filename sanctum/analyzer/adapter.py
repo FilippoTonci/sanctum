@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 
 from presidio_analyzer import AnalyzerEngine
@@ -48,7 +49,7 @@ class PresidioAnalyzer:
         entities: list[str] | None = None,
         score_threshold: float | None = None,
     ) -> list[DetectionResult]:
-        results = self._engine.analyze(
+        raw_results = self._engine.analyze(
             text=text,
             language=language,
             entities=entities,
@@ -56,7 +57,7 @@ class PresidioAnalyzer:
         )
 
         detections: list[DetectionResult] = []
-        for r in results:
+        for r in raw_results:
             text_span = text[r.start : r.end]
             ctx_start = max(0, r.start - 40)
             ctx_end = min(len(text), r.end + 40)
@@ -75,4 +76,105 @@ class PresidioAnalyzer:
                 )
             )
 
-        return detections
+        return self._normalize_overlaps(detections, text)
+
+    @staticmethod
+    def _normalize_overlaps(
+        detections: Sequence[DetectionResult],
+        text: str,
+    ) -> list[DetectionResult]:
+        """Resolve overlaps so downstream anonymization sees disjoint spans.
+
+        If one detection fully contains another, keep only the enclosing span.
+        Otherwise, assign the overlapping region to the larger span and trim
+        the smaller one so the final list is non-overlapping.
+        """
+        normalized = sorted(detections, key=lambda d: (d.start, d.end, -d.score))
+
+        changed = True
+        while changed:
+            changed = False
+            for i in range(len(normalized)):
+                for j in range(i + 1, len(normalized)):
+                    first = normalized[i]
+                    second = normalized[j]
+                    if first.end <= second.start:
+                        break
+                    if not PresidioAnalyzer._overlaps(first, second):
+                        continue
+
+                    replacement = PresidioAnalyzer._resolve_overlap(first, second, text)
+                    normalized[i : j + 1] = replacement
+                    normalized.sort(key=lambda d: (d.start, d.end, -d.score))
+                    changed = True
+                    break
+                if changed:
+                    break
+
+        return normalized
+
+    @staticmethod
+    def _overlaps(first: DetectionResult, second: DetectionResult) -> bool:
+        return first.start < second.end and second.start < first.end
+
+    @staticmethod
+    def _resolve_overlap(
+        first: DetectionResult,
+        second: DetectionResult,
+        text: str,
+    ) -> list[DetectionResult]:
+        if PresidioAnalyzer._contains(first, second):
+            return [first]
+        if PresidioAnalyzer._contains(second, first):
+            return [second]
+
+        winner, loser = PresidioAnalyzer._pick_winner(first, second)
+        trimmed_loser = PresidioAnalyzer._trim_overlap(loser, winner, text)
+        if trimmed_loser is None:
+            return [winner]
+        return sorted([winner, trimmed_loser], key=lambda d: (d.start, d.end, -d.score))
+
+    @staticmethod
+    def _contains(container: DetectionResult, containee: DetectionResult) -> bool:
+        return container.start <= containee.start and containee.end <= container.end
+
+    @staticmethod
+    def _pick_winner(
+        first: DetectionResult,
+        second: DetectionResult,
+    ) -> tuple[DetectionResult, DetectionResult]:
+        first_span = first.end - first.start
+        second_span = second.end - second.start
+        if first_span != second_span:
+            return (first, second) if first_span > second_span else (second, first)
+        if first.score != second.score:
+            return (first, second) if first.score >= second.score else (second, first)
+        return (first, second) if first.start <= second.start else (second, first)
+
+    @staticmethod
+    def _trim_overlap(
+        loser: DetectionResult,
+        winner: DetectionResult,
+        text: str,
+    ) -> DetectionResult | None:
+        if loser.start < winner.start:
+            new_start = loser.start
+            new_end = winner.start
+        else:
+            new_start = winner.end
+            new_end = loser.end
+
+        if new_start >= new_end:
+            return None
+
+        ctx_start = max(0, new_start - 40)
+        ctx_end = min(len(text), new_end + 40)
+        return DetectionResult(
+            entity_type=loser.entity_type,
+            start=new_start,
+            end=new_end,
+            score=loser.score,
+            text_span=text[new_start:new_end],
+            context=text[ctx_start:ctx_end],
+            recognizer_name=loser.recognizer_name,
+        )
