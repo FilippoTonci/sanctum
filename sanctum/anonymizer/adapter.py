@@ -79,4 +79,37 @@ class PresidioAnonymizer:
             anonymized_text=result.text,
             detections=detections,
             operators_applied=operators_applied,
+            per_detection_replacements=self._replacements_for(detections, result),
         )
+
+    @staticmethod
+    def _replacements_for(
+        detections: list[DetectionResult],
+        engine_result: object,
+    ) -> list[str] | None:
+        """Line up Presidio's per-item replacement text with the input detections.
+
+        Presidio processes detections right-to-left (end of text first) and
+        returns ``EngineResult.items`` in that same reverse-start order, one
+        entry per input detection. Sorting the original detections by
+        ``start`` descending and zipping gives us the correct pairing back —
+        which is what review-mode writers need to build a per-detection
+        trailer.
+
+        Returns ``None`` if the engine result doesn't expose an iterable
+        ``items`` of the right length; the only caller (review emission)
+        treats that as "refuse to emit" rather than guessing replacements.
+        """
+        raw_items = getattr(engine_result, "items", None)
+        try:
+            items = list(raw_items) if raw_items is not None else []
+        except TypeError:
+            return None
+        if len(items) != len(detections):
+            return None
+
+        sorted_idx = sorted(range(len(detections)), key=lambda i: detections[i].start, reverse=True)
+        replacements: list[str] = [""] * len(detections)
+        for k, item in enumerate(items):
+            replacements[sorted_idx[k]] = getattr(item, "text", "")
+        return replacements

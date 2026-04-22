@@ -117,6 +117,31 @@ class TestAnonymizationResult:
         restored = AnonymizationResult.model_validate(data)
         assert restored == result
 
+    def test_per_detection_replacements_defaults_to_none(self) -> None:
+        """Phase 1.5 WS2 — review emission requires per-detection replacements;
+        callers that don't set them get None and review mode refuses."""
+        result = AnonymizationResult(
+            original_text="x",
+            anonymized_text="x",
+            detections=[],
+            operators_applied={},
+        )
+        assert result.per_detection_replacements is None
+
+    def test_per_detection_replacements_round_trip(self) -> None:
+        detection = DetectionResult(
+            entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice"
+        )
+        result = AnonymizationResult(
+            original_text="Alice",
+            anonymized_text="<PERSON>",
+            detections=[detection],
+            operators_applied={"PERSON": "replace"},
+            per_detection_replacements=["<PERSON>"],
+        )
+        restored = AnonymizationResult.model_validate(result.model_dump())
+        assert restored.per_detection_replacements == ["<PERSON>"]
+
 
 def _proposal(**overrides: object) -> ReviewProposal:
     defaults: dict[str, object] = {
