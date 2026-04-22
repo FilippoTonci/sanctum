@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING
 
 from docx import Document
 
+from sanctum.core.models import ReviewComment
+from sanctum.documents.review import format_comment_body, make_detection_id
 from sanctum.documents.structured import build_document, build_segment
 
 if TYPE_CHECKING:
@@ -29,7 +31,7 @@ if TYPE_CHECKING:
     from docx.text.paragraph import Paragraph
     from docx.text.run import Run
 
-    from sanctum.core.models import StructuredDocument, TextSegment
+    from sanctum.core.models import AnonymizationResult, StructuredDocument, TextSegment
 
 
 def _iter_paragraph_runs(paragraph: Paragraph, prefix: str) -> list[tuple[str, Run]]:
@@ -86,6 +88,80 @@ class Writer:
             if run is None:
                 continue
             run.text = segment.text
+
+        handle.save(str(path))
+
+    def emit_review(
+        self,
+        doc: StructuredDocument,
+        path: Path,
+        results_by_segment: dict[str, AnonymizationResult],
+    ) -> None:
+        """Write the document + one Word comment per detection.
+
+        Mutates the raw handle in the same way as :meth:`write` — anonymized
+        text replaces each run — then attaches a native Word comment to the
+        owning run for every detection in ``results_by_segment``. Existing
+        comments on the input document pass through unmodified because we
+        only ever add, never walk/rewrite the input's comments collection.
+
+        Each emitted comment body is:
+
+            Sanctum applied 'replace' to PERSON (score 0.92):
+            "John Smith" → "[PERSON_1]".
+            To reject: restore the original text and delete this comment.
+            <!-- sanctum:v=1 detection_id=... -->
+
+        The trailer is what ``commit-review`` parses back via
+        :meth:`Reader.read_review_decisions`. ``detection_id`` is a content
+        hash of ``(entity_type, original, "<segment_id>:<i>")`` — stable
+        across re-runs on the same input so copy-paste in Word doesn't
+        break reconciliation.
+
+        Raises ``ValueError`` if the engine handed us a result without
+        ``per_detection_replacements`` populated — we refuse to guess the
+        replacement text rather than emit a misleading trailer.
+        """
+        handle: DocxDocument | None = doc.raw_handle
+        if handle is None:
+            raise ValueError(
+                "DocxWriter requires the StructuredDocument.raw_handle from DocxReader"
+            )
+
+        run_index = self._build_run_index(handle)
+        for segment in doc.segments:
+            run = run_index.get(segment.id)
+            if run is None:
+                continue
+            run.text = segment.text
+
+        for segment_id, result in results_by_segment.items():
+            run = run_index.get(segment_id)
+            if run is None or not result.detections:
+                continue
+            replacements = result.per_detection_replacements
+            if replacements is None or len(replacements) != len(result.detections):
+                raise ValueError(
+                    f"emit_review requires per_detection_replacements aligned with "
+                    f"detections for segment {segment_id!r}; got {replacements!r}"
+                )
+            for i, detection in enumerate(result.detections):
+                comment = ReviewComment(
+                    detection_id=make_detection_id(
+                        detection.entity_type, detection.text_span, f"{segment_id}:{i}"
+                    ),
+                    entity_type=detection.entity_type,
+                    score=detection.score,
+                    original=detection.text_span,
+                    replacement=replacements[i],
+                    operator=result.operators_applied.get(detection.entity_type, ""),
+                )
+                handle.add_comment(
+                    [run],
+                    text=format_comment_body(comment),
+                    author="Sanctum",
+                    initials="S",
+                )
 
         handle.save(str(path))
 
