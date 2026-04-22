@@ -40,6 +40,14 @@ class AnonymizationResult(BaseModel):
     anonymized_text: str
     detections: list[DetectionResult]
     operators_applied: dict[str, str]
+    # Per-detection replacement strings, aligned 1:1 with ``detections``.
+    # The adapter populates this when it has visibility into the operator
+    # output (Presidio's ``EngineResult.items`` carries per-item text);
+    # review-emitting writers (Phase 1.5 WS2+) use it to build the
+    # ``<!-- sanctum: -->`` trailer for each detection. ``None`` means
+    # the adapter couldn't recover per-detection replacements — review
+    # mode must refuse to emit against such a result.
+    per_detection_replacements: list[str] | None = None
 
 
 DocumentFormat = Literal["docx", "xlsx", "pdf", "pptx"]
