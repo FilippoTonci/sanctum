@@ -18,9 +18,11 @@ from sanctum.core.exceptions import (
 from sanctum.core.models import (
     AnonymizationResult,
     DetectionResult,
+    ReviewSession,
     StructuredDocument,
     TextSegment,
 )
+from sanctum.core.review.store import SessionStore
 
 LOOPBACK = {"Host": "127.0.0.1:8765"}
 AUTH = {"Authorization": "Bearer t"}
@@ -425,29 +427,141 @@ def test_process_file_400_when_operator_params_without_operator(tmp_path: Path):
     assert r.get_json()["error"] == "invalid request"
 
 
-def test_process_file_review_true_returns_501_when_unsupported(tmp_path: Path):
-    """WS1 ships /process-file's review flag, but no adapter implements
-    emit_review yet — that path must surface a 501 instead of 500."""
+def test_process_file_review_true_creates_session(tmp_path: Path):
+    """review=true → 201 + {session_id, review_url}; no file is written."""
     src = tmp_path / "in.docx"
     src.write_bytes(b"x")
-    out = tmp_path / "out.docx"
+    sessions_root = tmp_path / "sessions"
 
+    engine = _engine([], _empty_result())
+    writer = _StubWriter()
     with patch(
         "sanctum.api.routes.pipeline.adapter_for",
-        return_value=(_StubReader(_doc(tmp_path)), _StubWriter()),
+        return_value=(_StubReader(_doc(tmp_path)), writer),
     ):
-        client = _client(_engine([], _empty_result()))
-        r = client.post(
+        app = create_app(
+            token="t",
+            host="127.0.0.1",
+            port=8765,
+            engine=engine,
+            session_store=SessionStore(root=sessions_root),
+        )
+        r = app.test_client().post(
             "/process-file",
             headers={**LOOPBACK, **AUTH},
             json={
                 "input_path": str(src),
-                "output_path": str(out),
                 "review": True,
+                "operator": "replace",
             },
         )
-    assert r.status_code == 501, r.get_json()
-    assert "review not yet supported" in r.get_json()["error"]
+
+    assert r.status_code == 201, r.get_json()
+    body = r.get_json()
+    assert "session_id" in body
+    assert body["review_url"] == f"http://127.0.0.1:8765/review/{body['session_id']}"
+    # No inline write.
+    assert writer.written is None
+    # Session dir persisted on disk under the injected root.
+    assert (sessions_root / body["session_id"]).is_dir()
+
+
+def test_process_file_review_uses_default_operator_when_unset(tmp_path: Path):
+    """Omitting `operator` under --review seeds the session with the
+    configured default (hips today)."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+    sessions_root = tmp_path / "sessions"
+
+    captured: dict[str, Any] = {}
+
+    class _CapturingEngine(SanctumEngine):
+        def create_review_session(self, **kwargs: Any) -> ReviewSession:  # type: ignore[override]
+            captured.update(kwargs)
+            return super().create_review_session(**kwargs)
+
+    engine = _CapturingEngine(
+        analyzer=_FakeAnalyzer([]),  # type: ignore[arg-type]
+        anonymizer=_FakeAnonymizer(_empty_result()),  # type: ignore[arg-type]
+    )
+    with patch(
+        "sanctum.api.routes.pipeline.adapter_for",
+        return_value=(_StubReader(_doc(tmp_path)), _StubWriter()),
+    ):
+        app = create_app(
+            token="t",
+            host="127.0.0.1",
+            port=8765,
+            engine=engine,
+            session_store=SessionStore(root=sessions_root),
+        )
+        r = app.test_client().post(
+            "/process-file",
+            headers={**LOOPBACK, **AUTH},
+            json={"input_path": str(src), "review": True},
+        )
+
+    assert r.status_code == 201, r.get_json()
+    # Seeded from settings.anonymizer.default_operator — pinned to hips today.
+    assert captured["default_operator"] == "hips"
+
+
+def test_process_file_review_400_when_output_path_present(tmp_path: Path):
+    """Under review=true the final file is produced later at commit time —
+    supplying output_path on the request is a client bug."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+    client = _client(_engine([], _empty_result()))
+    r = client.post(
+        "/process-file",
+        headers={**LOOPBACK, **AUTH},
+        json={
+            "input_path": str(src),
+            "output_path": str(tmp_path / "out.docx"),
+            "review": True,
+        },
+    )
+    assert r.status_code == 400
+    assert r.get_json()["error"] == "invalid request"
+
+
+def test_process_file_400_when_output_path_missing_without_review(tmp_path: Path):
+    """Fire-and-forget mode demands output_path — otherwise there's no
+    place for the route to write."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+    client = _client(_engine([], _empty_result()))
+    r = client.post(
+        "/process-file",
+        headers={**LOOPBACK, **AUTH},
+        json={"input_path": str(src)},
+    )
+    assert r.status_code == 400
+    assert r.get_json()["error"] == "invalid request"
+
+
+def test_process_file_review_415_on_unsupported_format(tmp_path: Path):
+    """The unsupported-format guard fires on the review path too."""
+    src = tmp_path / "in.weird"
+    src.write_bytes(b"x")
+
+    def _raise(_: Path) -> None:
+        raise UnsupportedDocumentFormatError("no go")
+
+    with patch("sanctum.api.routes.pipeline.adapter_for", side_effect=_raise):
+        app = create_app(
+            token="t",
+            host="127.0.0.1",
+            port=8765,
+            engine=_engine([], _empty_result()),
+            session_store=SessionStore(root=tmp_path / "sessions"),
+        )
+        r = app.test_client().post(
+            "/process-file",
+            headers={**LOOPBACK, **AUTH},
+            json={"input_path": str(src), "review": True},
+        )
+    assert r.status_code == 415
 
 
 def test_process_file_400_on_invalid_operator_params(tmp_path: Path):

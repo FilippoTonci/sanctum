@@ -10,7 +10,12 @@ unlock (409) or whether the server has never had a store unlocked (400).
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from flask import Blueprint, current_app
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 from sanctum.api import MAX_INPUT_BYTES
 from sanctum.api._internal import parse_body, validate_local_path
@@ -24,7 +29,9 @@ from sanctum.api.schemas import (
     CommitReviewResponse,
     ProcessFileRequest,
     ProcessFileResponse,
+    ProcessFileReviewResponse,
 )
+from sanctum.config.settings import settings
 from sanctum.core.engine import SanctumEngine
 from sanctum.core.exceptions import (
     AnalysisError,
@@ -35,6 +42,7 @@ from sanctum.core.exceptions import (
 )
 from sanctum.core.models import OperatorPolicy
 from sanctum.core.protocols import MappingStore
+from sanctum.core.review.store import SessionStore
 from sanctum.documents import adapter_for
 
 # Re-exported so legacy callers (including existing unit tests) that
@@ -185,6 +193,26 @@ def process_file() -> tuple[dict, int]:
     if err is not None:
         return err
 
+    in_path, in_err = validate_local_path(req.input_path, must_exist=True)
+    if in_err is not None:
+        return {"error": f"input_path: {in_err}"}, 400
+    assert in_path is not None
+
+    size = in_path.stat().st_size
+    if size > MAX_INPUT_BYTES:
+        return {
+            "error": f"input file exceeds {MAX_INPUT_BYTES} bytes (got {size})",
+        }, 413
+
+    if req.review:
+        return _process_file_review(engine, req, in_path)
+    return _process_file_inline(engine, req, in_path)
+
+
+def _process_file_inline(
+    engine: SanctumEngine, req: ProcessFileRequest, in_path: Path
+) -> tuple[dict, int]:
+    """Fire-and-forget path: analyze + anonymize + write in one shot."""
     operator_policies: dict[str, OperatorPolicy] | None = None
     if req.operator == "pseudonymize":
         store = _unlocked_store()
@@ -199,19 +227,12 @@ def process_file() -> tuple[dict, int]:
             )
         }
 
-    in_path, in_err = validate_local_path(req.input_path, must_exist=True)
-    if in_err is not None:
-        return {"error": f"input_path: {in_err}"}, 400
+    # Schema validator guarantees output_path is set when review=false.
+    assert req.output_path is not None
     out_path, out_err = validate_local_path(req.output_path, must_exist=False)
     if out_err is not None:
         return {"error": f"output_path: {out_err}"}, 400
-    assert in_path is not None and out_path is not None  # narrowed by err checks
-
-    size = in_path.stat().st_size
-    if size > MAX_INPUT_BYTES:
-        return {
-            "error": f"input file exceeds {MAX_INPUT_BYTES} bytes (got {size})",
-        }, 413
+    assert out_path is not None
 
     try:
         reader, writer = adapter_for(in_path)
@@ -228,7 +249,6 @@ def process_file() -> tuple[dict, int]:
             entities=req.entities,
             score_threshold=req.score_threshold,
             operator_policies=operator_policies,
-            review=req.review,
         )
     except DocumentError as exc:
         current_app.logger.exception("/process-file: DocumentError for %s", in_path)
@@ -236,13 +256,6 @@ def process_file() -> tuple[dict, int]:
     except InvalidOperatorParamsError as exc:
         current_app.logger.info("/process-file: invalid operator params: %s", exc)
         return {"error": f"invalid operator_params: {exc}"}, 400
-    except NotImplementedError as exc:
-        # review=True against an adapter that hasn't wired emit_review yet.
-        # 501 maps to "server understands the request but hasn't
-        # implemented it," which is the right signal for a Phase 1.5
-        # rollout window where callers can retry once WS2-5 lands.
-        current_app.logger.info("/process-file: review not yet supported: %s", exc)
-        return {"error": f"review not yet supported: {exc}"}, 501
     except (AnalysisError, AnonymizationError) as exc:
         current_app.logger.exception("/process-file: pipeline raised %s", type(exc).__name__)
         return {"error": f"pipeline failed: {exc}"}, 500
@@ -253,6 +266,61 @@ def process_file() -> tuple[dict, int]:
         entities_replaced=sum(len(r.detections) for r in results),
     )
     return payload.model_dump(), 200
+
+
+def _process_file_review(
+    engine: SanctumEngine, req: ProcessFileRequest, in_path: Path
+) -> tuple[dict, int]:
+    """Flow B: stage the review session and hand the caller a URL into it.
+
+    Analyzes only — no anonymization, no file write. The final document
+    is produced later by ``POST /review-sessions/{id}/commit`` once the
+    reviewer has worked through the proposals.
+    """
+    session_store = current_app.config.get("SANCTUM_SESSION_STORE")
+    if not isinstance(session_store, SessionStore):
+        current_app.logger.error(
+            "/process-file review=true called but SANCTUM_SESSION_STORE is unconfigured"
+        )
+        return {"error": "session store not configured"}, 503
+
+    try:
+        reader, _writer = adapter_for(in_path)
+    except UnsupportedDocumentFormatError as exc:
+        return {"error": str(exc)}, 415
+
+    # ``operator`` on the request doubles as the session's default_operator
+    # under Flow B (the reviewer may override per-decision later). Falling
+    # back to the configured default matches the CLI's behaviour so the
+    # two surfaces agree.
+    default_operator = req.operator or settings.anonymizer.default_operator
+
+    try:
+        session = engine.create_review_session(
+            reader=reader,
+            input_path=in_path,
+            default_operator=default_operator,
+            session_store=session_store,
+            default_operator_params=req.operator_params,
+            language=req.language,
+            entities=req.entities,
+            score_threshold=req.score_threshold,
+        )
+    except DocumentError as exc:
+        current_app.logger.exception("/process-file review: DocumentError for %s", in_path)
+        return {"error": f"document failure: {exc}"}, 500
+    except AnalysisError as exc:
+        current_app.logger.exception("/process-file review: analysis failed")
+        return {"error": f"analysis failed: {exc}"}, 500
+
+    host = current_app.config.get("SANCTUM_HOST", "127.0.0.1")
+    port = current_app.config.get("SANCTUM_PORT", 8765)
+    # WS3 will mount /review/<id>; for now the URL is a template the
+    # caller can hold and the session id is the load-bearing handle.
+    review_url = f"http://{host}:{port}/review/{session.id}"
+
+    payload = ProcessFileReviewResponse(session_id=session.id, review_url=review_url)
+    return payload.model_dump(), 201
 
 
 @pipeline_bp.post("/commit-review")

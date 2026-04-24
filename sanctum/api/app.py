@@ -21,6 +21,8 @@ from sanctum.api._internal import check_local_request
 from sanctum.api.routes.health import health_bp
 from sanctum.api.routes.mapping import mapping_bp
 from sanctum.api.routes.pipeline import pipeline_bp
+from sanctum.api.routes.review_sessions import review_sessions_bp
+from sanctum.core.review.store import SessionStore
 from sanctum.security import EncryptedFileMappingStore
 
 if TYPE_CHECKING:
@@ -33,6 +35,11 @@ if TYPE_CHECKING:
 def _default_mapping_store_factory(path: Path) -> EncryptedFileMappingStore:
     """Production factory — uses keyring's RFC-9106 default KDF params."""
     return EncryptedFileMappingStore(path)
+
+
+def _default_session_store_factory() -> SessionStore:
+    """Production factory — sessions under ``~/.sanctum/sessions``."""
+    return SessionStore()
 
 
 def _build_allowed_hosts(host: str, port: int) -> set[str]:
@@ -52,6 +59,7 @@ def create_app(
     port: int,
     engine: SanctumEngine | None = None,
     mapping_store_factory: Callable[[Path], EncryptedFileMappingStore] | None = None,
+    session_store: SessionStore | None = None,
 ) -> Flask:
     """Build a configured Flask app, ready to hand to the waitress runner.
 
@@ -62,15 +70,26 @@ def create_app(
     `mapping_store_factory` lets tests substitute an `EncryptedFileMappingStore`
     built with cheap KDF params — production callers should leave it as the
     default so RFC-9106 settings stick.
+
+    ``session_store`` is injectable so tests can point at a ``tmp_path``
+    root instead of ``~/.sanctum/sessions``. Defaults to a production
+    ``SessionStore()`` rooted under the user's home.
     """
     app = Flask("sanctum.api")
     app.config["SANCTUM_API_TOKEN"] = token
     app.config["SANCTUM_ALLOWED_HOSTS"] = _build_allowed_hosts(host, port)
+    # Kept alongside ALLOWED_HOSTS so routes can render absolute URLs that
+    # point back at this server — e.g. /process-file --review builds a
+    # review_url template using these. The host/port pair is already the
+    # source of truth for the bind address; no reason to recompute it.
+    app.config["SANCTUM_HOST"] = host
+    app.config["SANCTUM_PORT"] = port
     app.config["SANCTUM_ENGINE"] = engine
     app.config["SANCTUM_MAPPING_STORE"] = None
     app.config["SANCTUM_MAPPING_STORE_FACTORY"] = (
         mapping_store_factory or _default_mapping_store_factory
     )
+    app.config["SANCTUM_SESSION_STORE"] = session_store or _default_session_store_factory()
     # Serializes /mapping/{unlock,lock,rotate-key} so two waitress worker
     # threads can't race the unlocked-store config slot. Reads through
     # /mapping/reverse rely on the store's own internal RLock instead.
@@ -87,5 +106,6 @@ def create_app(
     app.register_blueprint(health_bp)
     app.register_blueprint(pipeline_bp)
     app.register_blueprint(mapping_bp)
+    app.register_blueprint(review_sessions_bp)
 
     return app

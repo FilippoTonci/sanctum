@@ -82,7 +82,7 @@ class ReviewEmittingWriter(Protocol):
     ``results_by_segment`` maps ``segment.id`` to the originating
     ``AnonymizationResult`` so the adapter can emit a native comment per
     detection without re-deriving replacement offsets. The adapter is
-    responsible for building ``ReviewComment`` values (via
+    responsible for building ``ReviewProposal`` values (via
     ``sanctum.documents.review``) and attaching them at format-native
     anchors.
     """

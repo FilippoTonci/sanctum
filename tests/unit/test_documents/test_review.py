@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import pytest
 from sanctum.core.exceptions import StagedMappingParseError
-from sanctum.core.models import REVIEW_TRAILER_VERSION, ReviewComment
+from sanctum.core.models import REVIEW_TRAILER_VERSION
 from sanctum.documents.review import (
+    CommentTrailer,
     format_comment_body,
     make_detection_id,
     parse_trailer,
@@ -15,7 +16,7 @@ from sanctum.documents.review import (
 )
 
 
-def _comment(**overrides: object) -> ReviewComment:
+def _proposal(**overrides: object) -> CommentTrailer:
     defaults = {
         "detection_id": "abcdef012345",
         "entity_type": "PERSON",
@@ -25,7 +26,7 @@ def _comment(**overrides: object) -> ReviewComment:
         "operator": "replace",
     }
     defaults.update(overrides)
-    return ReviewComment(**defaults)  # type: ignore[arg-type]
+    return CommentTrailer(**defaults)  # type: ignore[arg-type]
 
 
 # --- detection id ---------------------------------------------------------
@@ -62,7 +63,7 @@ def test_detection_id_accepts_string_position():
 
 
 def test_trailer_round_trip_basic():
-    comment = _comment()
+    comment = _proposal()
     parsed = parse_trailer(serialize_trailer(comment))
     # score is serialized with 4 decimal places — compare with tolerance.
     assert parsed.detection_id == comment.detection_id
@@ -75,20 +76,20 @@ def test_trailer_round_trip_basic():
 
 def test_trailer_round_trip_with_quote_in_name():
     """O'Brien-class: apostrophes need no escape; double-quotes do."""
-    comment = _comment(original='He said "hi".', replacement="[PERSON_1]")
+    comment = _proposal(original='He said "hi".', replacement="[PERSON_1]")
     parsed = parse_trailer(serialize_trailer(comment))
     assert parsed.original == 'He said "hi".'
 
 
 def test_trailer_round_trip_with_backslash():
-    comment = _comment(original=r"path\to\file", replacement="[REDACTED]")
+    comment = _proposal(original=r"path\to\file", replacement="[REDACTED]")
     parsed = parse_trailer(serialize_trailer(comment))
     assert parsed.original == r"path\to\file"
 
 
 def test_trailer_round_trip_with_newlines():
     """Original may contain newlines — trailer must stay single-line."""
-    comment = _comment(original="line1\nline2", replacement="[REDACTED]")
+    comment = _proposal(original="line1\nline2", replacement="[REDACTED]")
     trailer = serialize_trailer(comment)
     assert "\n" not in trailer
     parsed = parse_trailer(trailer)
@@ -97,7 +98,7 @@ def test_trailer_round_trip_with_newlines():
 
 def test_trailer_round_trip_with_cr_and_tab():
     """CR + tab get C-style escapes so the trailer stays single-line."""
-    comment = _comment(original="col1\tcol2\rend", replacement="[REDACTED]")
+    comment = _proposal(original="col1\tcol2\rend", replacement="[REDACTED]")
     trailer = serialize_trailer(comment)
     assert "\n" not in trailer and "\r" not in trailer and "\t" not in trailer
     parsed = parse_trailer(trailer)
@@ -106,7 +107,7 @@ def test_trailer_round_trip_with_cr_and_tab():
 
 def test_trailer_round_trip_with_unicode():
     """Non-ASCII encodes as \\uXXXX so the trailer stays ASCII-only."""
-    comment = _comment(original="Zoë Müller", replacement="[PERSON_1]")
+    comment = _proposal(original="Zoë Müller", replacement="[PERSON_1]")
     trailer = serialize_trailer(comment)
     assert trailer.isascii()
     parsed = parse_trailer(trailer)
@@ -114,7 +115,7 @@ def test_trailer_round_trip_with_unicode():
 
 
 def test_trailer_embeds_configured_version():
-    trailer = serialize_trailer(_comment())
+    trailer = serialize_trailer(_proposal())
     assert f"v={REVIEW_TRAILER_VERSION}" in trailer
 
 
@@ -139,7 +140,7 @@ def test_parse_trailer_raises_when_empty():
 
 
 def test_parse_trailer_raises_when_multiple():
-    text = "\n".join([serialize_trailer(_comment()), serialize_trailer(_comment())])
+    text = "\n".join([serialize_trailer(_proposal()), serialize_trailer(_proposal())])
     with pytest.raises(StagedMappingParseError, match="Expected exactly one"):
         parse_trailer(text)
 
@@ -150,8 +151,8 @@ def test_parse_trailers_returns_empty_on_plain_text():
 
 def test_parse_trailers_extracts_multiple_from_one_block():
     """XLSX packs all detections for a cell into one comment body."""
-    a = _comment(detection_id="aaaaaaaaaaaa", original="Alice")
-    b = _comment(detection_id="bbbbbbbbbbbb", original="Bob", entity_type="PERSON")
+    a = _proposal(detection_id="aaaaaaaaaaaa", original="Alice")
+    b = _proposal(detection_id="bbbbbbbbbbbb", original="Bob", entity_type="PERSON")
     block = f"Some prose.\n{serialize_trailer(a)}\n\nMore prose.\n{serialize_trailer(b)}"
     parsed = parse_trailers(block)
     assert [p.detection_id for p in parsed] == [a.detection_id, b.detection_id]
@@ -161,7 +162,7 @@ def test_parse_trailers_extracts_multiple_from_one_block():
 
 
 def test_format_comment_body_includes_human_text_and_trailer():
-    comment = _comment()
+    comment = _proposal()
     body = format_comment_body(comment)
     assert comment.entity_type in body
     assert comment.original in body
@@ -176,7 +177,7 @@ def test_format_comment_body_includes_human_text_and_trailer():
 
 
 def test_strip_removes_trailer_and_nothing_else():
-    body = format_comment_body(_comment())
+    body = format_comment_body(_proposal())
     stripped = strip_trailers(body)
     assert "sanctum:" not in stripped
     assert "Sanctum applied" in stripped
@@ -186,7 +187,7 @@ def test_strip_preserves_non_sanctum_html_comments():
     """Reviewer-authored comments with HTML-comment-like content stay intact."""
     text = (
         "Reviewer note: <!-- this is not a sanctum marker -->\n"
-        f"{serialize_trailer(_comment())}\n"
+        f"{serialize_trailer(_proposal())}\n"
         "<!-- another reviewer note -->"
     )
     stripped = strip_trailers(text)
@@ -202,7 +203,7 @@ def test_strip_handles_future_schema_trailer():
 
 
 def test_strip_is_idempotent():
-    body = format_comment_body(_comment())
+    body = format_comment_body(_proposal())
     once = strip_trailers(body)
     twice = strip_trailers(once)
     assert once == twice
