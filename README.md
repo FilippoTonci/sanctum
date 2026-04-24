@@ -272,13 +272,13 @@ Sanctum is designed to help professionals meet the requirements of:
 - [x] Transformer-based NER (Professional tier) — GLiNER-medium v2.1 via `sanctum[gliner]`, +0.17 macro-F1 over the spaCy baseline on the fixture corpus
 
 ### Phase 1.5 — Human-in-the-loop Review Workflow
-- [ ] **Review-mode default** — `sanctum process-file` emits an already-anonymized file with native comments documenting each change, so the reviewer verifies in Word/Excel/PowerPoint/PDF using tools they already know. `--no-review` escape hatch preserves fire-and-forget behaviour for automation.
-- [ ] `ReviewWriter` contract + trailer helpers (WS1 — foundation)
-- [ ] DOCX review emission via python-docx comments + OOXML fallback (WS2)
-- [ ] XLSX review emission via `Cell.comment` (WS3)
-- [ ] PPTX review emission via OOXML comment parts (WS4 — python-pptx has no first-class API)
-- [ ] PDF review emission via pypdf free-text annotations (WS5 — degraded reviewer UX acknowledged)
-- [ ] `sanctum commit-review` for pseudonymize — staged mappings only persist to the encrypted store after human approval; trailer stripped from final file (WS6)
+*Reframed in issue #16: canonical review surface is a Sanctum-owned UI backed by the localhost API. Native Office comments are demoted to a one-way export / interop path.*
+- [x] `ReviewWriter` contract, review-domain models, per-detection replacements, CLI/API scaffolding (WS1 — foundation, shipped)
+- [ ] Server-side review sessions — proposals, decisions, staged pseudonym mappings, `POST /review-sessions` + commit endpoint; `process-file --review` returns a session URL (WS2)
+- [ ] Minimal keyboard-first review UI — in-context segment view, accept / reject / edit / mark-missed shortcuts; served by the same localhost API (WS3)
+- [ ] Pseudonymize commit via session — staged mappings only persist to the encrypted store after human approval; committed output is trailer-free (WS4)
+- [ ] DOCX native-comment export (`sanctum export-review --format docx-comments`) for interchange with Word-based reviewers (WS5)
+- [ ] `--no-review` escape hatch preserves Phase 1 fire-and-forget behaviour for automation
 
 ### Phase 2 — Intelligence & Compliance
 - [ ] HIPAA entity recognizer mode (18 safe harbor identifiers)
@@ -290,7 +290,7 @@ Sanctum is designed to help professionals meet the requirements of:
 ### Phase 3 — Desktop GUI & Packaging
 - [ ] Standalone desktop GUI (Electron or native wrapper around Python core)
 - [ ] Drag-and-drop document import (`.docx`, `.pdf`, `.xlsx`)
-- [ ] Selective redaction by entity type in the GUI (the comment-based v1 of human-in-the-loop review lands in Phase 1.5)
+- [ ] Selective redaction by entity type in the GUI (v1 of human-in-the-loop review ships in Phase 1.5 as a minimal localhost-served UI; Phase 3 promotes it to a full desktop experience)
 - [ ] `.pdf` burn-in redaction (structural removal, not just visual)
 - [ ] Packaged installers for Windows (`.exe`) and macOS (`.dmg`)
 
@@ -303,7 +303,7 @@ Sanctum is designed to help professionals meet the requirements of:
 
 ### Future Extensions *(post-GA)*
 - [ ] **Microsoft Word Ribbon Add-in** — anonymize without leaving Word
-- [ ] Track Changes integration for PII redlines within Word (stronger-enforcement alternative to Phase 1.5's comment-based review; see issue #12)
+- [ ] Track Changes integration for PII redlines within Word — an enhancement to the Phase 1.5 DOCX export path for teams that prefer reviewing inside Word (see issue #12)
 - [ ] Custom legal-domain recognizers (case numbers, bar IDs, Bates numbers)
 
 ---
