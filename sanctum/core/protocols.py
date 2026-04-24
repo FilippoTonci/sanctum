@@ -8,7 +8,6 @@ from sanctum.core.models import (
     AnonymizationResult,
     DetectionResult,
     OperatorPolicy,
-    ReviewDecision,
     StructuredDocument,
 )
 
@@ -64,47 +63,6 @@ class StructuredDocumentWriter(Protocol):
     """Projects a (possibly mutated) StructuredDocument back to disk."""
 
     def write(self, doc: StructuredDocument, path: Path) -> None: ...
-
-
-@runtime_checkable
-class ReviewEmittingWriter(Protocol):
-    """A writer that can emit a review-mode document with native comments.
-
-    Intentionally separate from ``StructuredDocumentWriter`` rather than a
-    second method on it: per-format support for review emission lands
-    incrementally across Phase 1.5 WS2-5, and splitting the protocol lets
-    the engine detect support with ``isinstance`` and raise a crisp error
-    against adapters that have not yet been wired. Once all four formats
-    support review this split becomes redundant — but it keeps the
-    rollout graph clean.
-
-    ``doc`` carries segments whose text is already anonymized;
-    ``results_by_segment`` maps ``segment.id`` to the originating
-    ``AnonymizationResult`` so the adapter can emit a native comment per
-    detection without re-deriving replacement offsets. The adapter is
-    responsible for building ``ReviewProposal`` values (via
-    ``sanctum.documents.review``) and attaching them at format-native
-    anchors.
-    """
-
-    def emit_review(
-        self,
-        doc: StructuredDocument,
-        path: Path,
-        results_by_segment: dict[str, AnonymizationResult],
-    ) -> None: ...
-
-
-@runtime_checkable
-class ReviewParsingReader(Protocol):
-    """A reader that can parse review decisions out of a reviewed file.
-
-    Mirrors ``ReviewEmittingWriter`` for the commit-review direction.
-    Returns a flat list of decisions in document order; the engine's
-    ``commit_review`` pass reconciles them against the mapping store.
-    """
-
-    def read_review_decisions(self, path: Path) -> list[ReviewDecision]: ...
 
 
 @runtime_checkable

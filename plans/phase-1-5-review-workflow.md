@@ -16,16 +16,24 @@
 >
 > **New direction.** Phase 1.5 is now organized around a **Sanctum-owned
 > review surface backed by the localhost API**. The API server owns review
-> state (sessions, proposals, decisions, staged pseudonym mappings); a
-> minimal keyboard-first UI projects that state. Native Office comments
-> become a *fallback / export / interop* path, not the workflow.
+> state (sessions, proposals, decisions); a minimal keyboard-first UI
+> projects that state. Native Office comments are not shipping at all —
+> not as the canonical workflow, not as a fallback, not as a one-way export.
 >
-> What survives from the old plan: the review-domain models, per-detection
-> replacement metadata, trailer helpers, the DOCX comment emit/read work
-> (now a one-way export adapter), and the `--no-review` escape hatch.
-> What's demoted: comment-first review as the canonical UX, `commit-review`
-> via edited-Office-file parsing, and the per-format native-comment
-> matrix (WS3-WS5 of the old plan).
+> What survives from the old plan: the review-domain models used by the
+> session surface (`ReviewProposal`, `ProposalDecision`, `UserAddedDecision`,
+> `ReviewSession`), and the `--no-review` escape hatch that preserves the
+> Phase 1 fire-and-forget pipeline. What's gone: comment-first review as
+> the canonical UX, `commit-review` via edited-Office-file parsing, the
+> per-format native-comment matrix (WS3-WS5 of the old plan), the trailer
+> serialize/parse helpers, `ReviewEmittingWriter` / `ReviewParsingReader`
+> protocols, `ReviewDecision`, and the file-scoped `commit_review` engine
+> path.
+>
+> **WS5 is dropped (2026-04-24).** The demoted "native-comment export" WS
+> described below for historical context was never started as an export;
+> the WS1/WS2 stubs that would have fed it are removed in the WS5 cleanup
+> PR. Only WS3 (minimal review UI) remains outstanding from the reframe.
 
 > **UX reframe (2026-04-24, "Flow B").** The server-backed plan above still
 > applies — native comments out, Sanctum-owned UI in — but *when*
@@ -136,7 +144,7 @@ All Phase 1 guardrails apply — hexagonal purity, air-gap, round-trip fidelity,
 - **Committed output is leakage-free.** The file written by `POST /commit` must contain zero Sanctum metadata — no trailers, no hidden comments, no residual annotations. Integration test greps for `sanctum:` and fails on any hit.
 - **Single-commit semantics.** Each session commits exactly once. A second commit on the same session returns 409 Conflict with a clear error.
 - **UI is a reference implementation.** The API contract is the committed surface; the bundled UI is a minimal reference client (keyboard-first, zero-dependency-ish) so the project isn't blocked on a larger frontend workstream to ship HITL review.
-- **Comment export is one-way.** `export-review` emits Office comments for interchange; there is no supported path to re-ingest an edited Office file back into a session.
+- **No native-comment surface.** Sanctum does not emit review comments into Word/Excel/PowerPoint/PDF files, and there is no path to re-ingest an edited Office file back into a session. The review surface is the API + UI; the final file leaves Sanctum with no review metadata attached.
 
 ---
 
@@ -144,21 +152,21 @@ All Phase 1 guardrails apply — hexagonal purity, air-gap, round-trip fidelity,
 
 *Status: merged in PR #13. Retained as-is; its outputs are the substrate the reframed workstreams build on.*
 
-Format-agnostic plumbing. Shipped the `ReviewWriter` protocol (`emit_review` method on `StructuredDocumentWriter`), the `ReviewComment` and `StagedMapping` models, per-detection replacements threaded through `AnonymizationResult`, the `commit_review` engine method skeleton, the CLI `--review` flag, and the `/commit-review` API endpoint.
+Format-agnostic plumbing. Shipped the review-domain models, the CLI `--review` flag, and the session-bootstrap shape the API surface extends.
 
 ### What stays load-bearing after the reframes
 - `ReviewComment` → `ReviewProposal` rename (substep 1 of the new WS2) — still correct, though the field set is now narrower under Flow B.
-- Trailer serialize / parse helpers (`sanctum/documents/review.py`) — scoped to the native-comment export path (see WS5); not used on the server-backed review surface.
 - Detection-id hashing — reused unchanged as the stable proposal id (now lives in `sanctum/core/review/identifiers.py`).
+- CLI `--no-review` / `--review` flags — unchanged shape; semantics are now "create a review session" instead of "emit a comment-stamped file."
 
 ### What gets re-scoped by later workstreams
 - `commit_review()` engine method — re-shaped in WS4 to consume a session id instead of a reviewed file path. Operator-mismatch and attestation semantics carry over.
-- `/commit-review` API endpoint — folded into `/review-sessions/{id}/commit` in WS2 (keep the old path as a thin alias that 308-redirects through one release cycle if any caller depends on it).
-- CLI `--no-review` / `--review` flags — unchanged.
 
-### What gets dropped under Flow B
+### What gets dropped under Flow B + WS5 cleanup
 - `StagedMapping` model — dead; pseudonymize writes to `MappingStore` at commit time directly via `get_or_create`.
 - `AnonymizationResult.per_detection_replacements` (cherry-picked during WS2 substep 1.5) — not needed by the Flow B session path, and `--no-review` uses `anonymized_text` directly.
+- `ReviewEmittingWriter` / `ReviewParsingReader` protocols, `sanctum/documents/review.py` trailer helpers, `ReviewDecision` model, `REVIEW_TRAILER_VERSION` — removed in the WS5 cleanup PR; they only served the native-comment export that is no longer shipping.
+- File-scoped `SanctumEngine.commit_review`, `POST /commit-review` route, Click `commit-review <input> <output>` — same cleanup PR. The session-scoped equivalents (`commit_review_session` / `POST /review-sessions/{id}/commit` / `sanctum commit-review-session`) are the supported surface.
 
 ---
 
@@ -317,67 +325,61 @@ Under Flow A this was a substantial workstream that managed `staged_mappings`, a
 
 ---
 
-## Workstream 5 — Native-comment export *(demoted interop path)*
+## Workstream 5 — Drop native-comment substrate *(cleanup, not a feature)*
 
-Repurposes the DOCX comment emit/read work (partial in PR #14) as a **one-way export** for interchange with reviewers who want to stay in Word, and for archival. Not the canonical review surface.
+**Scope flipped (2026-04-24).** The reframe above kept a demoted "one-way DOCX comment export" path alive as WS5. That is no longer shipping — the Sanctum-owned UI (WS3) is the only HITL surface; Word comments are not a fallback, not an interop format, not archival. WS5 is now a cleanup PR that deletes every piece of the native-comment machinery still sitting in the tree.
 
-### Files
-- `sanctum/documents/docx_adapter.py` — keep `DocxWriter.emit_review`. **Remove** `DocxReader.read_review_decisions` (and its planned XLSX/PPTX/PDF siblings) — there is no supported path to re-ingest an edited Office file.
-- `sanctum/cli/commands.py` — `sanctum export-review <session-id> --format docx-comments --out <path>` subcommand. Reads the committed session's final document + decisions and emits the native-comment view for the supported formats.
-- `sanctum/api/routes/review_sessions.py` — `GET /review-sessions/{id}/export?format=docx-comments` (post-commit only).
+### Files removed
+- `sanctum/documents/review.py` — trailer serialize/parse helpers.
+- `sanctum/core/models.py` — `REVIEW_TRAILER_VERSION`, `ReviewDecision`, `ReviewDecisionKind`.
+- `sanctum/core/protocols.py` — `ReviewEmittingWriter`, `ReviewParsingReader`.
+- `sanctum/core/engine.py` — `SanctumEngine.commit_review` shim, `process_document(review=True)` branch.
+- `sanctum/api/routes/pipeline.py` — `POST /commit-review` route.
+- `sanctum/api/schemas.py` — `CommitReviewRequest`, `CommitReviewResponse`.
+- `sanctum/cli/commands.py` — Click `commit-review <input> <output>` subcommand (the session-scoped `commit-review-session` stays).
+- `tests/unit/test_api/test_commit_review.py`, `tests/unit/test_cli/test_commit_review.py`, `tests/unit/test_documents/test_review.py`, plus pruning of the native-comment tests in `test_engine_process_document.py`, `test_engine.py`, `test_models.py`.
 
 ### Approach
-- **Supported formats on day one.** DOCX only (WS2 of the old plan shipped most of the code). XLSX/PPTX/PDF native-comment export is **deferred** — their value post-reframe is lower, and the OOXML / annotation complexity in the old WS4/WS5 is no longer worth paying before a user actually asks for it.
-- **Export is derivative.** Export never mutates the committed file; it writes a new artifact at `--out`. No in-place edits.
-- **Trailer format retained** for the export view (so an external tool *could* parse an exported DOCX's comments if needed), but Sanctum itself does not round-trip from an edited export.
+- Each removal is trivially safe: every dropped endpoint was 501, every dropped CLI subcommand raised `NotImplementedError`, every dropped protocol had zero producers. Nothing user-visible regresses.
+- Plan + README + CLAUDE.md updated in the same PR so future readers can't follow a pointer into a defunct export path.
 
 ### Tests
-- `tests/integration/test_docx_comment_export.py` — committed session → `export-review --format docx-comments` → Word-openable file with one comment per accepted/edited decision, anonymized body.
-- The existing DOCX review unit tests from PR #14 migrate to the `export` namespace; rejection-parse and user-added-parse tests are removed (no re-ingest path).
-
-### Troubleshooting hotspots
-- **PR #14 in flight.** Close out PR #14's remaining substeps by re-scoping them as export (not review): keep emit, drop parse. Migrate tests. Update PR title and body.
-- **Existing Word comments on input** — export must still pass them through unmodified.
+- Unit suite stays green after the removals. No new tests needed — the session-scoped path is already covered.
 
 ### Verification
-- `sanctum export-review <id> --format docx-comments --out /tmp/out.docx` → opens in Word; anonymized text + one Sanctum comment per decision; any existing Word comments preserved.
-- XLSX/PPTX/PDF export returns a clear `UnsupportedExportFormatError` pointing to the roadmap.
+- `pytest -m "not integration"` — green.
+- `pre-commit run --all-files` — green.
+- `grep -r "emit_review\|ReviewEmittingWriter\|ReviewParsingReader\|REVIEW_TRAILER_VERSION\|ReviewDecision\b\|sanctum.documents.review\|engine\.commit_review\b" sanctum/ tests/` — zero hits.
 
 ---
 
 ## Critical Files Being Modified (summary)
 
-- `sanctum/core/models.py` — `ReviewProposal` (pure detection), `ReviewSession` (with `default_operator`, `default_operator_params`, `preview_cache`), `ProposalDecision` / `UserAddedDecision` (with `operator` / `operator_params` / `custom_replacement`). **Remove** `StagedMapping` (WS2 Flow B rework).
-- `sanctum/core/review/` — NEW package: `identifiers.py`, `session.py`, `proposals.py`, `previews.py`, `store.py` (WS2).
-- `sanctum/core/engine.py` — `create_review_session`, `commit_review_session` (WS2 substep 5 + WS4); keep/wrap `commit_review` one release.
+- `sanctum/core/models.py` — `ReviewProposal` (pure detection), `ReviewSession` (with `default_operator`, `default_operator_params`), `ProposalDecision` / `UserAddedDecision` (with `operator` / `operator_params` / `custom_replacement`). **Remove** `StagedMapping` (WS2 Flow B rework), `REVIEW_TRAILER_VERSION` / `ReviewDecision` (WS5 cleanup).
+- `sanctum/core/review/` — NEW package: `identifiers.py`, `session.py`, `proposals.py`, `previews.py`, `preview_store.py`, `store.py` (WS2 + WS4).
+- `sanctum/core/engine.py` — `create_review_session`, `commit_review_session` (WS2 substep 5 + WS4). `commit_review` and the `process_document(review=...)` kwarg are removed (WS5 cleanup).
 - `sanctum/core/exceptions.py` — new session errors (WS2).
+- `sanctum/core/protocols.py` — `MappingStore.peek` added (WS4). `ReviewEmittingWriter` / `ReviewParsingReader` removed (WS5 cleanup).
 - `sanctum/anonymizer/adapter.py` — **revert** the per-detection-replacements field (cherry-pick from closed WS2 branch), no longer needed under Flow B.
-- `sanctum/api/routes/review_sessions.py` — NEW endpoint family (WS2); export route (WS5).
+- `sanctum/anonymizer/operators/pseudonymize.py` — deterministic per-call Faker seed so preview and commit agree (WS4).
+- `sanctum/api/routes/review_sessions.py` — NEW endpoint family (WS2). `POST /commit-review` in `pipeline.py` is removed (WS5 cleanup).
 - `sanctum/api/routes/process_file.py` — review-on default returns session id + URL (WS2).
-- `sanctum/api/routes/review_ui.py` + `sanctum/api/static/review/` — reference UI (WS3).
-- `sanctum/anonymizer/operators/pseudonymize.py` — session-scoped staging (WS4).
-- `sanctum/documents/docx_adapter.py` — keep `emit_review`, drop `read_review_decisions` (WS5).
-- `sanctum/documents/review.py` — trailer helpers now scoped to export only (WS5).
-- `sanctum/cli/commands.py` — `--review`/`--no-review` (kept), `--open`, `commit-review` session-scoped, new `export-review`, deprecation shim for file-scoped commit (WS2, WS3, WS4, WS5).
+- `sanctum/cli/commands.py` — `--review`/`--no-review` (kept), `commit-review-session` (WS4). Old file-scoped `commit-review` removed (WS5 cleanup).
 - `README.md` — Phase 1.5 roadmap rewritten (separate commit).
-- `tests/integration/test_api_review_sessions.py`, `test_review_ui.py`, `test_pseudonymize_session_commit.py`, `test_docx_comment_export.py`.
+- `tests/integration/test_api_review_sessions.py`, `test_pseudonymize_session_commit.py`.
 
 ---
 
 ## Order of Execution & Milestones *(revised)*
 
 1. **M0 — Foundation *(shipped)*.** WS1 — protocol, models, engine scaffolding, CLI/API plumbing, per-detection replacements. Merged in PR #13.
-2. **M1 — WS2 rescope.** Before writing new code:
-   - Close out **PR #14** by re-scoping it: keep `DocxWriter.emit_review`; drop `DocxReader.read_review_decisions` and the round-trip parse tests. Update PR title/body to "DOCX native-comment export (Phase 1.5 WS5)". Land it.
-   - Rename `ReviewComment` → `ReviewProposal`.
-3. **M2 — Review-session domain + API (WS2 new).** Ship session lifecycle, endpoints, persistence, `process-file` integration. Unblocks UI + commit.
-4. ~~**M3 — Minimal UI (WS3).** Ship the reference client.~~ *Skipped (2026-04-24) — superseded by Phase 3 Electron app (separate repo). See WS3 scope notice above.*
-5. **M4 — Pseudonymize commit (WS4).** Wire session commit to `MappingStore` + user-added pseudonym generation.
-6. **M5 — DOCX comment export (WS5).** Expose the preserved emit path via `export-review`.
+2. **M1 — WS2 rescope *(shipped)*.** Rename `ReviewComment` → `ReviewProposal`; reshape models to Flow B; drop `StagedMapping`.
+3. **M2 — Review-session domain + API (WS2 new) *(shipped)*.** Session lifecycle, endpoints, persistence, `process-file` integration. Merged in PR #18.
+4. ~~**M3 — Minimal UI (WS3).** Ship the reference client.~~ *Skipped (2026-04-24) — will be delivered by the Sanctum Electron app in a later phase, not by a bundled HTML/JS reference client.*
+5. **M4 — Pseudonymize commit (WS4) *(shipped)*.** Wire session commit to `MappingStore`; non-minting preview; user-added pseudonym generation. Merged in PR #22.
+6. ~~**M5 — DOCX comment export.**~~ *Dropped (2026-04-24) — replaced by the WS5 cleanup PR (#23). Native-comment export is not shipping at all.*
 
 Each milestone closes with: updated README roadmap checkboxes, a CHANGELOG entry, and an evaluation-harness run to confirm no regression on the Phase 1 corpus.
-
-Deferred (out of Phase 1.5 unless a user asks): XLSX / PPTX / PDF native-comment export. PPTX was already the highest-risk item in the old plan (no python-pptx comment API, OOXML work); pausing it here is consistent.
 
 ---
 
@@ -386,14 +388,13 @@ Deferred (out of Phase 1.5 unless a user asks): XLSX / PPTX / PDF native-comment
 1. `pip install -e ".[documents,security,api,ci]"` — clean install, no new extras introduced.
 2. `pytest` — unit + integration green; coverage ≥ gate.
 3. `pytest tests/evaluation/ -m evaluation` — no regression vs Phase 1 baseline.
-4. **Session happy path (replace):** `sanctum process-file fixtures/sample.docx /tmp/out.docx --operator replace --review --open` → browser opens to review URL → accept all → commit → `/tmp/out.docx` is anonymized and trailer-free.
-5. **Session pseudonymize round-trip:** same, `--operator pseudonymize --store /tmp/map.sanctum`. Before commit: store unchanged. After commit: store populated; `sanctum mapping reverse <pseudonym>` returns original.
-6. **Reject path:** reject a proposal in the UI → commit → final file keeps the original text at that detection; no mapping recorded.
-7. **User-added span:** mark a missed name as `PERSON` in the UI → commit → pseudonymize sessions record the user-added mapping; non-persistent operators just apply the chosen replacement.
-8. **Escape hatch:** `--no-review` produces byte-equivalent output to Phase 1 WS2 on the existing fixtures.
+4. **Session happy path (replace):** `sanctum process-file fixtures/sample.docx --operator replace --review` → session id printed → drive decisions via `/review-sessions/*` → `sanctum commit-review-session <id> /tmp/out.docx` → `/tmp/out.docx` is anonymized.
+5. **Session pseudonymize round-trip:** same, `--operator pseudonymize`; unlock mapping store before commit. Before commit: store unchanged. After commit: store populated; `sanctum mapping reverse <pseudonym>` returns original.
+6. **Reject path:** reject a proposal → commit → final file keeps the original text at that detection; no mapping recorded.
+7. **User-added span:** mark a missed name as `PERSON` → commit → pseudonymize sessions record the user-added mapping; non-persistent operators just apply the chosen replacement.
+8. **Escape hatch:** `--no-review` produces byte-equivalent output to Phase 1 on the existing fixtures.
 9. **Leakage check:** grep the final committed file for `sanctum:` — zero matches. Integration test enforces.
 10. **Air-gap check:** full Phase 1.5 pipeline runs with network disabled.
-11. **Comment export:** post-commit `sanctum export-review <id> --format docx-comments --out /tmp/reviewed.docx` opens in Word with one comment per accepted decision; original input comments preserved.
 
 ---
 
@@ -401,7 +402,7 @@ Deferred (out of Phase 1.5 unless a user asks): XLSX / PPTX / PDF native-comment
 
 - **Phase 1 WS2 (Document Adapters)** is the contract Phase 1.5 extends. Parsing stays authoritative; review doesn't re-implement segment walking.
 - **Phase 1 WS3 (Mapping Store)** is written to at session commit. No store schema changes expected.
-- **Phase 1 WS4 (Flask API)** hosts the new session endpoints and the reference UI static files.
+- **Phase 1 WS4 (Flask API)** hosts the session endpoints.
 - **Issue #11** — overall Phase 1.5 workstream.
 - **Issue #16** — the reframe (this plan). Lands as part of the WS2-new commit that renames `ReviewComment → ReviewProposal`.
-- **Issue #12** (Track Changes for DOCX) — was justified primarily to compensate for comment-rejection ergonomics. The reframed UI removes that pressure; #12 remains a future enhancement to the *export* path, lower priority than originally scoped.
+- **Issue #12** (Track Changes for DOCX) — was justified primarily to compensate for comment-rejection ergonomics. With native comments fully dropped, #12 is closed as out of scope.

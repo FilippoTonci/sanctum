@@ -10,7 +10,6 @@ from sanctum.core.models import (
     DetectionResult,
     OperatorPolicy,
     ProposalDecision,
-    ReviewDecision,
     ReviewProposal,
     ReviewSession,
     SessionDecision,
@@ -147,34 +146,6 @@ class TestReviewProposal:
         proposal = _proposal()
         with pytest.raises(ValidationError):
             proposal.entity_type = "ORG"
-
-
-class TestReviewDecision:
-    """Legacy comment-parse decision shape (retained for WS5 export path)."""
-
-    def test_accepted_carries_staged_trailer(self) -> None:
-        decision = ReviewDecision(kind="accepted", staged=_proposal())
-        assert decision.kind == "accepted"
-        assert decision.staged is not None
-        assert decision.user_comment_body is None
-
-    def test_user_added_carries_body_and_anchor(self) -> None:
-        decision = ReviewDecision(
-            kind="user_added",
-            user_comment_body="#PERSON reviewer flag",
-            user_anchor_text="Priya Patel",
-        )
-        assert decision.staged is None
-        assert decision.user_anchor_text == "Priya Patel"
-
-    def test_frozen_rejects_attribute_assignment(self) -> None:
-        decision = ReviewDecision(kind="rejected", staged=_proposal())
-        with pytest.raises(ValidationError):
-            decision.kind = "accepted"
-
-    def test_rejects_invalid_kind(self) -> None:
-        with pytest.raises(ValidationError):
-            ReviewDecision(kind="maybe")  # type: ignore[arg-type]
 
 
 class TestProposalDecision:

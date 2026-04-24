@@ -272,19 +272,19 @@ Sanctum is designed to help professionals meet the requirements of:
 - [x] Transformer-based NER (Professional tier) — GLiNER-medium v2.1 via `sanctum[gliner]`, +0.17 macro-F1 over the spaCy baseline on the fixture corpus
 
 ### Phase 1.5 — Human-in-the-loop Review Workflow
-*Reframed in issue #16: canonical review surface is a Sanctum-owned UI backed by the localhost API. Native Office comments are demoted to a one-way export / interop path.*
-- [x] `ReviewWriter` contract, review-domain models, per-detection replacements, CLI/API scaffolding (WS1 — foundation, shipped)
-- [ ] Server-side review sessions — proposals, decisions, staged pseudonym mappings, `POST /review-sessions` + commit endpoint; `process-file --review` returns a session URL (WS2)
-- [ ] ~~Minimal keyboard-first review UI — in-context segment view, accept / reject / edit / mark-missed shortcuts; served by the same localhost API (WS3)~~ *— skipped (2026-04-24); superseded by the Phase 3 Electron app (see roadmap MVP note below)*
-- [ ] Pseudonymize commit via session — staged mappings only persist to the encrypted store after human approval; committed output is trailer-free (WS4)
-- [ ] DOCX native-comment export (`sanctum export-review --format docx-comments`) for interchange with Word-based reviewers (WS5)
-- [ ] `--no-review` escape hatch preserves Phase 1 fire-and-forget behaviour for automation
+*Reframed in issue #16: the canonical review surface is a Sanctum-owned API, driven by the Phase 3 desktop app. Native Office comments were briefly kept as a one-way export path and have since been dropped entirely (2026-04-24).*
+- [x] Review-domain models + CLI/API scaffolding (WS1 — foundation, shipped)
+- [x] Server-side review sessions — proposals, decisions, `POST /review-sessions` + commit endpoint; `process-file --review` returns a session URL (WS2, shipped in PR #18)
+- [ ] ~~Minimal keyboard-first review UI served by the localhost API (WS3)~~ *— skipped (2026-04-24); the Phase 3 Electron app consumes the `/review-sessions` API directly*
+- [x] Pseudonymize commit via session — mappings persist to the encrypted store at commit; committed output is trailer-free (WS4, shipped in PR #22)
+- [x] ~~DOCX native-comment export (WS5)~~ *— dropped (2026-04-24); the native-comment substrate is removed entirely in PR #23*
+- [x] `--no-review` escape hatch preserves Phase 1 fire-and-forget behaviour for automation
 
 ---
 
 > **MVP scope (2026-04-24).** The minimum shippable product is **Phase 1.5
-> (WS4 + WS5, with WS3 skipped) + Phase 3 (Electron desktop GUI, separate
-> `sanctum-desktop` repo)**. Phase 2 is deferred to post-MVP — its items
+> (WS4 shipped; WS3 and WS5 dropped) + Phase 3 (Electron desktop GUI,
+> separate `sanctum-desktop` repo)**. Phase 2 is deferred to post-MVP — its items
 > (HIPAA recognizer, risk scoring, audit trail, locale recognizers) are
 > pure additions that layer on top of a working MVP without blocking it.
 > Phase numbers are kept stable for citation; execution order is **1.5 → 3

@@ -1,16 +1,11 @@
 """Stable, content-addressed ids for detections inside a review session.
 
-Both code paths that need a proposal id — the session surface
-(``sanctum.core.review.proposals``) and the native-comment export
-(``sanctum.documents.review``) — derive it the same way, so a document
-reviewed via the UI and later exported to Word carries matching ids on
-both sides.
-
 Hashing ``entity_type + original + position`` rather than using a
-sequence number means the id survives Word's comment-id renumbering on
-copy-paste — the same detection in the same segment produces the same
-id on every run. 12 hex chars gives ~48 bits of collision resistance,
-which is plenty for the ~hundreds-of-detections-per-doc regime.
+sequence number makes the id reproducible: the same detection in the
+same segment produces the same id on every run, so a reviewer action
+(PATCH by id) keeps resolving against the same proposal across session
+reloads. 12 hex chars gives ~48 bits of collision resistance, which
+is plenty for the ~hundreds-of-detections-per-doc regime.
 """
 
 from __future__ import annotations
