@@ -73,6 +73,15 @@ the break.
   Electron sidecar lifecycle to keep the token off disk and out of
   process lists. (Phase 3 WS1 substep 4.)
 
+- `scripts/check_api_compat.py`: compares a baseline OpenAPI spec
+  against the current one and exits non-zero on any break (removed
+  route, removed schema, removed property, newly-required request
+  field). CI runs this against `origin/<base_ref>:schema/openapi.json`
+  on every PR; passes silently when the contract is unchanged or
+  strictly extended. Additive changes (new routes, new optional
+  fields, new response fields) are allowed without fanfare.
+  (Phase 3 WS1 substep 6.)
+
 ### Fixed
 
 - `sanctum serve` now has integration-test coverage for SIGTERM:
