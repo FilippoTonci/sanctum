@@ -224,7 +224,22 @@ Each lands as one commit; draft PR #18 opens at substep 1.
 
 ---
 
-## Workstream 3 — Minimal review UI
+## Workstream 3 — Minimal review UI *(skipped — superseded by Phase 3 Electron app)*
+
+> **Scope notice (2026-04-24).** WS3 was scoped as a minimal keyboard-first
+> reference UI served by the Flask app — an *interim* surface until Phase 3
+> shipped the full desktop GUI. That interim is being skipped: Phase 3
+> (Electron, separate `sanctum-desktop` repo) starts in parallel with WS4
+> / WS5 and consumes the `/review-sessions` API directly. The reference
+> UI's only remaining value was smoke-testing the API end-to-end before
+> Electron lands — `curl` (see `resources/review-session-manual-test.md`)
+> plus the integration suite at `tests/integration/test_api_review_sessions.py`
+> cover that ground today. Phase 1.5's definition of done becomes **WS4 +
+> WS5**; Phase 2 is deferred post-MVP (see README roadmap MVP note).
+>
+> The section below is preserved as historical scope — if a future
+> contributor wants a lightweight localhost UI before the Electron app is
+> ready, the design still holds.
 
 The keyboard-first reference client. Deliberately minimal — shipping HITL review must not be blocked on a larger frontend workstream.
 
@@ -356,7 +371,7 @@ Repurposes the DOCX comment emit/read work (partial in PR #14) as a **one-way ex
    - Close out **PR #14** by re-scoping it: keep `DocxWriter.emit_review`; drop `DocxReader.read_review_decisions` and the round-trip parse tests. Update PR title/body to "DOCX native-comment export (Phase 1.5 WS5)". Land it.
    - Rename `ReviewComment` → `ReviewProposal`.
 3. **M2 — Review-session domain + API (WS2 new).** Ship session lifecycle, endpoints, persistence, `process-file` integration. Unblocks UI + commit.
-4. **M3 — Minimal UI (WS3).** Ship the reference client. Once this lands the primary review UX is usable.
+4. ~~**M3 — Minimal UI (WS3).** Ship the reference client.~~ *Skipped (2026-04-24) — superseded by Phase 3 Electron app (separate repo). See WS3 scope notice above.*
 5. **M4 — Pseudonymize commit (WS4).** Wire session commit to `MappingStore` + user-added pseudonym generation.
 6. **M5 — DOCX comment export (WS5).** Expose the preserved emit path via `export-review`.
 
