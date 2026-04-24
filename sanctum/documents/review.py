@@ -20,24 +20,25 @@ last-line defensive sweep during ``commit-review`` finalization.
 
 from __future__ import annotations
 
-import hashlib
 import re
 
 from sanctum.core.exceptions import StagedMappingParseError
 from sanctum.core.models import REVIEW_TRAILER_VERSION, ReviewProposal
 
+# Re-exported for callers that historically imported it from here (tests,
+# and future WS5 comment emission). The canonical home is
+# ``sanctum.core.review.identifiers`` so the session surface can reach it
+# without the adapter layer crossing into core.
+from sanctum.core.review.identifiers import make_detection_id
 
-def make_detection_id(entity_type: str, original: str, position: str | int) -> str:
-    """Stable, content-addressed id for a detection.
-
-    Hashing ``entity_type + original + position`` rather than using a
-    sequence number means an id survives Word's comment-id renumbering on
-    copy-paste — the same detection in the same segment produces the same
-    id on every run. 12 hex chars gives ~48 bits of collision resistance,
-    which is plenty for the ~hundreds-of-detections-per-doc regime.
-    """
-    payload = f"{entity_type}\x00{original}\x00{position}".encode()
-    return hashlib.sha1(payload).hexdigest()[:12]
+__all__ = [
+    "format_comment_body",
+    "make_detection_id",
+    "parse_trailer",
+    "parse_trailers",
+    "serialize_trailer",
+    "strip_trailers",
+]
 
 
 _ENTITY_RE = r"[A-Z][A-Z0-9_]*"

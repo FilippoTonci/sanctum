@@ -104,3 +104,31 @@ class AlreadyCommittedError(ReviewError):
     trailers and would silently do nothing — which looks like success but
     is almost always user error (wrong file, wrong store). Raise instead.
     """
+
+
+class ReviewSessionNotFoundError(ReviewError):
+    """Raised when a session id does not resolve to an on-disk session.
+
+    Covers both "session was never created" and "session was deleted or
+    abandoned" — the session store does not distinguish, because the API
+    layer maps both to 404.
+    """
+
+
+class ReviewSessionAlreadyCommittedError(ReviewError):
+    """Raised when a mutation is attempted on a non-open session.
+
+    Applies to both ``committed`` and ``abandoned`` states: the state
+    machine treats them as equivalent terminal conditions — any further
+    mutation (add decision, commit, abandon) is a programming error.
+    """
+
+
+class ReviewSessionInvalidDecisionError(ReviewError):
+    """Raised when a decision references an unknown proposal id.
+
+    ``ProposalDecision.proposal_id`` must match the ``detection_id`` of a
+    proposal on the same session. A mismatch usually means the UI is
+    stale (the session was rebuilt underneath it) — fail loudly so the
+    caller refetches.
+    """
