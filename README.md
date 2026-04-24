@@ -200,7 +200,7 @@ missing instead of attempting a network call.
 # Detect PII in text
 sanctum analyze "Call John Smith at 555-0123 about case #2024-CV-1234"
 
-# Anonymize with default operator (replace)
+# Anonymize with default operator (hips — synthetic replacement)
 sanctum anonymize "John Smith, SSN 123-45-6789"
 
 # Process a structured document end-to-end (.docx / .xlsx / .pdf / .pptx)

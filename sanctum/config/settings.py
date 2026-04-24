@@ -40,9 +40,16 @@ class AnonymizerSettings(BaseSettings):
 
     Valid values for `default_operator` are listed with descriptions in
     `sanctum.anonymizer.operators.BUILTIN_OPERATOR_NAMES`.
+
+    `hips` is the default: synthetic Faker-backed names preserve document
+    readability ("Alice Smith" → "Madison Perez") which is the
+    legal/consulting-reviewer's default ask. Users who want tagged
+    placeholders instead can set `SANCTUM_ANONYMIZER__DEFAULT_OPERATOR=replace`
+    (which produces `<PERSON>` etc.); numbered `<PERSON_1>` / `<PERSON_2>`
+    placeholders are tracked in issue #19.
     """
 
-    default_operator: str = "replace"
+    default_operator: str = "hips"
 
 
 class SecuritySettings(BaseSettings):

@@ -11,7 +11,7 @@ from sanctum.core.models import AnonymizationResult, DetectionResult, OperatorPo
 class PresidioAnonymizer:
     """Wraps presidio-anonymizer's AnonymizerEngine for PII redaction."""
 
-    def __init__(self, default_operator: str = "replace") -> None:
+    def __init__(self, default_operator: str = "hips") -> None:
         self._engine = AnonymizerEngine()
         # Register every Sanctum-custom operator up front. Forgetting one
         # here surfaces as an "Invalid operator class" 500 only when a
@@ -61,7 +61,7 @@ class PresidioAnonymizer:
         # the HTTP routes use for a per-request `operator`), that policy is
         # what Presidio actually applies to every detection. Treat it as the
         # effective default for telemetry — otherwise `operators_applied`
-        # would keep reporting `self._default_operator` (usually "replace")
+        # would keep reporting `self._default_operator` (usually "hips")
         # and lie about what the engine just did.
         effective_default = self._default_operator
         if operator_policies is not None and "DEFAULT" in operator_policies:
