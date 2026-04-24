@@ -73,6 +73,14 @@ the break.
   Electron sidecar lifecycle to keep the token off disk and out of
   process lists. (Phase 3 WS1 substep 4.)
 
+### Fixed
+
+- `sanctum serve` now has integration-test coverage for SIGTERM:
+  the server exits cleanly within 10 s, releases its bound socket,
+  and runs the `finally` block that locks any unlocked mapping
+  store. Regression safety net for the WS1 refactor to
+  `waitress.server.create_server + server.run()`. (Phase 3 WS1 substep 5.)
+
 ### Changed
 
 - `sanctum.api.server.run()` now accepts an `on_ready` callback that
