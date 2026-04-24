@@ -14,7 +14,6 @@ from sanctum.core.models import (
     ReviewProposal,
     ReviewSession,
     SessionDecision,
-    StagedMapping,
     TextSegment,
     UserAddedDecision,
 )
@@ -124,14 +123,18 @@ def _proposal(**overrides: object) -> ReviewProposal:
         "entity_type": "PERSON",
         "score": 0.9,
         "original": "Alice",
-        "replacement": "[PERSON_1]",
-        "operator": "replace",
     }
     defaults.update(overrides)
     return ReviewProposal(**defaults)  # type: ignore[arg-type]
 
 
 class TestReviewProposal:
+    def test_is_pure_detection(self) -> None:
+        """Flow B: proposals carry no replacement or operator."""
+        proposal = _proposal()
+        assert not hasattr(proposal, "replacement")
+        assert not hasattr(proposal, "operator")
+
     def test_segment_anchor_defaults_to_none(self) -> None:
         proposal = _proposal()
         assert proposal.segment_anchor is None
@@ -175,26 +178,39 @@ class TestReviewDecision:
 
 
 class TestProposalDecision:
-    def test_accept_does_not_require_edited_replacement(self) -> None:
+    def test_accept_default_operator_fields_none(self) -> None:
         decision = ProposalDecision(proposal_id="abc123", status="accept")
         assert decision.kind == "proposal"
-        assert decision.edited_replacement is None
+        assert decision.operator is None
+        assert decision.operator_params is None
+        assert decision.custom_replacement is None
 
-    def test_reject_does_not_require_edited_replacement(self) -> None:
-        decision = ProposalDecision(proposal_id="abc123", status="reject")
-        assert decision.edited_replacement is None
-
-    def test_edit_requires_edited_replacement(self) -> None:
-        with pytest.raises(ValidationError, match="edited_replacement is required"):
-            ProposalDecision(proposal_id="abc123", status="edit")
-
-    def test_edit_accepts_edited_replacement(self) -> None:
+    def test_accept_with_operator_override(self) -> None:
         decision = ProposalDecision(
             proposal_id="abc123",
-            status="edit",
-            edited_replacement="[CUSTOM]",
+            status="accept",
+            operator="hips",
+            operator_params={"seed": 42},
         )
-        assert decision.edited_replacement == "[CUSTOM]"
+        assert decision.operator == "hips"
+        assert decision.operator_params == {"seed": 42}
+
+    def test_accept_with_custom_replacement(self) -> None:
+        decision = ProposalDecision(
+            proposal_id="abc123",
+            status="accept",
+            custom_replacement="[DEFENDANT]",
+        )
+        assert decision.custom_replacement == "[DEFENDANT]"
+
+    def test_reject_does_not_require_anything_extra(self) -> None:
+        decision = ProposalDecision(proposal_id="abc123", status="reject")
+        assert decision.status == "reject"
+
+    def test_rejects_edit_status(self) -> None:
+        """'edit' is gone in Flow B — collapsed into accept + custom_replacement."""
+        with pytest.raises(ValidationError):
+            ProposalDecision(proposal_id="abc123", status="edit")  # type: ignore[arg-type]
 
     def test_rejects_invalid_status(self) -> None:
         with pytest.raises(ValidationError):
@@ -202,21 +218,39 @@ class TestProposalDecision:
 
 
 class TestUserAddedDecision:
-    def test_all_fields_required(self) -> None:
+    def test_minimal_required_fields(self) -> None:
         decision = UserAddedDecision(
             segment_anchor="sheet1/A5",
             entity_type="PERSON",
             original="Priya Patel",
-            replacement="[PERSON_2]",
         )
         assert decision.kind == "user_added"
+        assert decision.operator is None
+        assert decision.custom_replacement is None
 
-    def test_missing_field_raises(self) -> None:
+    def test_accepts_operator_override(self) -> None:
+        decision = UserAddedDecision(
+            segment_anchor="body/p0",
+            entity_type="PERSON",
+            original="Sam",
+            operator="hips",
+        )
+        assert decision.operator == "hips"
+
+    def test_accepts_custom_replacement(self) -> None:
+        decision = UserAddedDecision(
+            segment_anchor="body/p0",
+            entity_type="PERSON",
+            original="Sam",
+            custom_replacement="[WITNESS]",
+        )
+        assert decision.custom_replacement == "[WITNESS]"
+
+    def test_missing_required_field_raises(self) -> None:
         with pytest.raises(ValidationError):
             UserAddedDecision(  # type: ignore[call-arg]
                 segment_anchor="sheet1/A5",
                 entity_type="PERSON",
-                original="Priya Patel",
             )
 
 
@@ -239,7 +273,6 @@ class TestSessionDecision:
                 "segment_anchor": "body/p0",
                 "entity_type": "PERSON",
                 "original": "Jane Doe",
-                "replacement": "[PERSON_1]",
             }
         )
         assert isinstance(decision, UserAddedDecision)
@@ -255,7 +288,7 @@ class TestReviewSession:
             "id": "sess-0001",
             "source_path": Path("/tmp/input.docx"),
             "format": "docx",
-            "operator": "replace",
+            "default_operator": "replace",
             "segments": [TextSegment(id="body/p0/r0", text="Alice went home")],
             "proposals": [_proposal()],
             "created_at": datetime(2026, 4, 24, 12, 0, tzinfo=timezone.utc),
@@ -263,12 +296,17 @@ class TestReviewSession:
         defaults.update(overrides)
         return ReviewSession(**defaults)  # type: ignore[arg-type]
 
-    def test_defaults_empty_decisions_and_mappings_and_open_status(self) -> None:
+    def test_defaults(self) -> None:
         session = self._session()
         assert session.decisions == []
-        assert session.staged_mappings == []
+        assert session.default_operator_params == {}
         assert session.status == "open"
         assert session.committed_at is None
+
+    def test_has_no_staged_mappings_field(self) -> None:
+        """Flow B removes staged_mappings — pseudonymize commits inline at commit."""
+        session = self._session()
+        assert not hasattr(session, "staged_mappings")
 
     def test_mutable_allows_decision_append(self) -> None:
         session = self._session()
@@ -289,27 +327,28 @@ class TestReviewSession:
         session = self._session()
         session.decisions.extend(
             [
-                ProposalDecision(proposal_id="abcdef012345", status="accept"),
+                ProposalDecision(
+                    proposal_id="abcdef012345",
+                    status="accept",
+                    operator="hips",
+                ),
                 UserAddedDecision(
                     segment_anchor="body/p0/r0",
                     entity_type="PERSON",
                     original="Bob",
-                    replacement="[PERSON_2]",
+                    custom_replacement="[WITNESS]",
                 ),
             ]
         )
         restored = ReviewSession.model_validate_json(session.model_dump_json())
         assert isinstance(restored.decisions[0], ProposalDecision)
         assert isinstance(restored.decisions[1], UserAddedDecision)
+        assert restored.decisions[0].operator == "hips"  # type: ignore[union-attr]
+        assert restored.decisions[1].custom_replacement == "[WITNESS]"  # type: ignore[union-attr]
 
-    def test_staged_mappings_accepts_entries(self) -> None:
-        session = self._session()
-        session.staged_mappings.append(
-            StagedMapping(
-                detection_id="abcdef012345",
-                entity_type="PERSON",
-                original="Alice",
-                pseudonym="Priya Patel",
-            )
+    def test_default_operator_params_accepts_nested(self) -> None:
+        session = self._session(
+            default_operator="encrypt",
+            default_operator_params={"key": "s3cret", "alg": "AES-256"},
         )
-        assert session.staged_mappings[0].pseudonym == "Priya Patel"
+        assert session.default_operator_params["alg"] == "AES-256"

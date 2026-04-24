@@ -25,7 +25,7 @@ def _session(**overrides: object) -> ReviewSession:
         "id": "sess-test",
         "source_path": Path("/tmp/input.docx"),
         "format": "docx",
-        "operator": "replace",
+        "default_operator": "replace",
         "segments": [TextSegment(id="body/p0/r0", text="Alice went home")],
         "proposals": [
             ReviewProposal(
@@ -33,8 +33,6 @@ def _session(**overrides: object) -> ReviewSession:
                 entity_type="PERSON",
                 score=0.9,
                 original="Alice",
-                replacement="[PERSON_1]",
-                operator="replace",
             )
         ],
         "created_at": datetime(2026, 4, 24, tzinfo=timezone.utc),
@@ -64,13 +62,11 @@ class TestAddDecision:
             segment_anchor="body/p0/r0",
             entity_type="PERSON",
             original="Bob",
-            replacement="[PERSON_2]",
         )
         b = UserAddedDecision(
             segment_anchor="body/p0/r0",
             entity_type="PERSON",
             original="Chris",
-            replacement="[PERSON_3]",
         )
         session_fn.add_decision(session, a)
         session_fn.add_decision(session, b)

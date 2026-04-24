@@ -22,8 +22,10 @@ from __future__ import annotations
 
 import re
 
+from pydantic import BaseModel
+
 from sanctum.core.exceptions import StagedMappingParseError
-from sanctum.core.models import REVIEW_TRAILER_VERSION, ReviewProposal
+from sanctum.core.models import REVIEW_TRAILER_VERSION
 
 # Re-exported for callers that historically imported it from here (tests,
 # and future WS5 comment emission). The canonical home is
@@ -32,6 +34,7 @@ from sanctum.core.models import REVIEW_TRAILER_VERSION, ReviewProposal
 from sanctum.core.review.identifiers import make_detection_id
 
 __all__ = [
+    "CommentTrailer",
     "format_comment_body",
     "make_detection_id",
     "parse_trailer",
@@ -39,6 +42,28 @@ __all__ = [
     "serialize_trailer",
     "strip_trailers",
 ]
+
+
+class CommentTrailer(BaseModel):
+    """Payload of one ``<!-- sanctum:... -->`` trailer.
+
+    Distinct from ``CommentTrailer`` because the trailer is an *output*
+    artifact of the WS5 native-comment export: it carries the
+    post-anonymization replacement and the operator the reviewer
+    actually chose, neither of which live on the Flow B review
+    proposal (proposals are pure detections; replacement + operator
+    live on committed decisions). WS5 builds a ``CommentTrailer`` from
+    a session's committed state when it writes a DOCX for interop.
+    """
+
+    model_config = {"frozen": True}
+
+    detection_id: str
+    entity_type: str
+    score: float
+    original: str
+    replacement: str
+    operator: str
 
 
 _ENTITY_RE = r"[A-Z][A-Z0-9_]*"
@@ -109,20 +134,20 @@ def _unescape(s: str) -> str:
     return _UNESCAPE_RE.sub(_sub, s)
 
 
-def serialize_trailer(proposal: ReviewProposal) -> str:
-    """Render a ReviewProposal as a single-line HTML-comment trailer."""
+def serialize_trailer(trailer: CommentTrailer) -> str:
+    """Render a CommentTrailer as a single-line HTML-comment trailer."""
     return (
         f"<!-- sanctum:v={REVIEW_TRAILER_VERSION} "
-        f"detection_id={proposal.detection_id} "
-        f"entity={proposal.entity_type} "
-        f"score={proposal.score:.4f} "
-        f'original="{_escape(proposal.original)}" '
-        f'replacement="{_escape(proposal.replacement)}" '
-        f"operator={proposal.operator} -->"
+        f"detection_id={trailer.detection_id} "
+        f"entity={trailer.entity_type} "
+        f"score={trailer.score:.4f} "
+        f'original="{_escape(trailer.original)}" '
+        f'replacement="{_escape(trailer.replacement)}" '
+        f"operator={trailer.operator} -->"
     )
 
 
-def format_comment_body(proposal: ReviewProposal) -> str:
+def format_comment_body(trailer: CommentTrailer) -> str:
     """Full human-readable comment body with the machine trailer appended.
 
     The adapter hands this string to the native comment API verbatim; the
@@ -130,15 +155,15 @@ def format_comment_body(proposal: ReviewProposal) -> str:
     comment through saves.
     """
     return (
-        f"Sanctum applied {proposal.operator!r} to {proposal.entity_type} "
-        f"(score {proposal.score:.2f}): "
-        f'"{proposal.original}" → "{proposal.replacement}".\n'
+        f"Sanctum applied {trailer.operator!r} to {trailer.entity_type} "
+        f"(score {trailer.score:.2f}): "
+        f'"{trailer.original}" → "{trailer.replacement}".\n'
         f"To reject: restore the original text and delete this comment.\n"
-        f"{serialize_trailer(proposal)}"
+        f"{serialize_trailer(trailer)}"
     )
 
 
-def parse_trailers(text: str) -> list[ReviewProposal]:
+def parse_trailers(text: str) -> list[CommentTrailer]:
     """Extract every well-formed sanctum trailer from a text block.
 
     Empty list is a valid result — e.g. for a reviewer-authored comment
@@ -149,7 +174,7 @@ def parse_trailers(text: str) -> list[ReviewProposal]:
     ``parse_trailer`` is the strict variant for contexts that expect
     exactly one trailer.
     """
-    results: list[ReviewProposal] = []
+    results: list[CommentTrailer] = []
     for match in _TRAILER_RE.finditer(text):
         version = int(match.group("v"))
         if version != REVIEW_TRAILER_VERSION:
@@ -158,7 +183,7 @@ def parse_trailers(text: str) -> list[ReviewProposal]:
                 f"this build expects v={REVIEW_TRAILER_VERSION}."
             )
         results.append(
-            ReviewProposal(
+            CommentTrailer(
                 detection_id=match.group("detection_id"),
                 entity_type=match.group("entity"),
                 score=float(match.group("score")),
@@ -170,7 +195,7 @@ def parse_trailers(text: str) -> list[ReviewProposal]:
     return results
 
 
-def parse_trailer(text: str) -> ReviewProposal:
+def parse_trailer(text: str) -> CommentTrailer:
     """Parse exactly one trailer out of ``text``.
 
     Raises ``StagedMappingParseError`` if zero or more than one trailer is

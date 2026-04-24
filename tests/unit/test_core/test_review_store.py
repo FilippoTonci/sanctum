@@ -22,7 +22,7 @@ def _session(session_id: str = "sess-t0", **overrides: object) -> ReviewSession:
         "id": session_id,
         "source_path": Path("/tmp/input.docx"),
         "format": "docx",
-        "operator": "replace",
+        "default_operator": "replace",
         "segments": [TextSegment(id="s0", text="Alice")],
         "proposals": [
             ReviewProposal(
@@ -30,8 +30,6 @@ def _session(session_id: str = "sess-t0", **overrides: object) -> ReviewSession:
                 entity_type="PERSON",
                 score=0.9,
                 original="Alice",
-                replacement="[PERSON_1]",
-                operator="replace",
             )
         ],
         "created_at": datetime(2026, 4, 24, tzinfo=timezone.utc),

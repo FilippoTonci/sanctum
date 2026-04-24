@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import pytest
 from sanctum.core.exceptions import StagedMappingParseError
-from sanctum.core.models import REVIEW_TRAILER_VERSION, ReviewProposal
+from sanctum.core.models import REVIEW_TRAILER_VERSION
 from sanctum.documents.review import (
+    CommentTrailer,
     format_comment_body,
     make_detection_id,
     parse_trailer,
@@ -15,7 +16,7 @@ from sanctum.documents.review import (
 )
 
 
-def _proposal(**overrides: object) -> ReviewProposal:
+def _proposal(**overrides: object) -> CommentTrailer:
     defaults = {
         "detection_id": "abcdef012345",
         "entity_type": "PERSON",
@@ -25,7 +26,7 @@ def _proposal(**overrides: object) -> ReviewProposal:
         "operator": "replace",
     }
     defaults.update(overrides)
-    return ReviewProposal(**defaults)  # type: ignore[arg-type]
+    return CommentTrailer(**defaults)  # type: ignore[arg-type]
 
 
 # --- detection id ---------------------------------------------------------

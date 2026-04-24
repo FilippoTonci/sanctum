@@ -4,7 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class DetectionResult(BaseModel):
@@ -82,18 +82,19 @@ REVIEW_TRAILER_VERSION = 1
 
 
 class ReviewProposal(BaseModel):
-    """Metadata for one Sanctum-originated anonymization proposal.
+    """A single detection presented to the reviewer (Flow B).
 
-    Represents a single detection Sanctum wants to anonymize, with enough
-    context for a reviewer to verify or override it: entity type, score,
-    the original text, and the replacement that would land in the
-    committed document.
+    Pure detection record — no replacement, no operator. Under Flow B
+    the reviewer chooses the operator at decision time; replacements
+    come from the anonymizer at commit time (or from a server-computed
+    preview for the UI). The proposal just tells the reviewer *what*
+    Sanctum found and *where*.
 
     ``detection_id`` is a stable content-addressed hash (see
-    ``sanctum.documents.review.make_detection_id``) that doubles as the
-    session's proposal id — a reviewer tool can't renumber it, which
-    keeps ``ProposalDecision.proposal_id`` references stable across
-    session reads.
+    ``sanctum.core.review.identifiers.make_detection_id``) that doubles
+    as the session's proposal id — a reviewer tool can't renumber it,
+    which keeps ``ProposalDecision.proposal_id`` references stable
+    across session reads.
 
     ``segment_anchor`` is an opaque, adapter-specific pointer into the
     parsed ``StructuredDocument`` segments (e.g. docx paragraph+run
@@ -108,31 +109,7 @@ class ReviewProposal(BaseModel):
     entity_type: str
     score: float
     original: str
-    replacement: str
-    operator: str
     segment_anchor: str | None = None
-
-
-class StagedMapping(BaseModel):
-    """A pseudonymize mapping staged pending human approval.
-
-    Pseudonymize's pass 1 emits these into the review file's comment
-    trailers *without* writing to the encrypted mapping store. The
-    ``commit-review`` step reads them back, reconciles against the
-    reviewed document's current state (accepted / rejected / user-added),
-    and only then persists to the store.
-
-    This is the one piece of Sanctum state that deliberately lives in the
-    user-facing review file before being committed — which is why trailer
-    stripping on commit is a first-order correctness requirement.
-    """
-
-    model_config = {"frozen": True}
-
-    detection_id: str
-    entity_type: str
-    original: str
-    pseudonym: str
 
 
 ReviewDecisionKind = Literal["accepted", "rejected", "user_added"]
@@ -183,19 +160,23 @@ class ReviewDecision(BaseModel):
 
 SessionStatus = Literal["open", "committed", "abandoned"]
 
-ProposalDecisionStatus = Literal["accept", "reject", "edit"]
+ProposalDecisionStatus = Literal["accept", "reject"]
 
 
 class ProposalDecision(BaseModel):
-    """A reviewer's verdict on a Sanctum-originated proposal.
+    """A reviewer's verdict on a Sanctum-originated proposal (Flow B).
 
     ``proposal_id`` references the matching ``ReviewProposal.detection_id``
-    inside the same session. Status semantics:
+    inside the same session.
 
-    - ``accept`` — apply the proposal's ``replacement`` to the committed file.
-    - ``reject`` — leave the original text in place.
-    - ``edit`` — apply ``edited_replacement`` instead of the proposal's
-      default. ``edited_replacement`` is required when ``status == "edit"``.
+    Status semantics:
+
+    - ``accept`` — anonymize this span at commit. The operator is
+      ``operator`` if set, otherwise the session's ``default_operator``;
+      same for ``operator_params``. ``custom_replacement``, if set,
+      short-circuits the operator and lands in the file verbatim.
+    - ``reject`` — leave the original text in place. Operator / params /
+      custom_replacement are ignored.
     """
 
     model_config = {"frozen": True}
@@ -203,24 +184,17 @@ class ProposalDecision(BaseModel):
     kind: Literal["proposal"] = "proposal"
     proposal_id: str
     status: ProposalDecisionStatus
-    edited_replacement: str | None = None
-
-    @model_validator(mode="after")
-    def _check_edit_replacement(self) -> ProposalDecision:
-        if self.status == "edit" and self.edited_replacement is None:
-            raise ValueError("edited_replacement is required when status='edit'")
-        return self
+    operator: str | None = None
+    operator_params: dict[str, Any] | None = None
+    custom_replacement: str | None = None
 
 
 class UserAddedDecision(BaseModel):
-    """A reviewer-contributed span — a miss Sanctum did not catch.
+    """A reviewer-contributed span — a miss Sanctum did not catch (Flow B).
 
-    The reviewer identifies a span in the rendered segment that Sanctum
-    missed, names its entity type, and supplies the replacement that
-    should land in the committed document. For pseudonymize sessions the
-    replacement is also staged into ``ReviewSession.staged_mappings`` by
-    the WS4 commit path; non-persistent operators just apply the
-    replacement directly.
+    Same operator-selection semantics as ``ProposalDecision``: ``operator``
+    and ``operator_params`` fall back to the session defaults when unset;
+    ``custom_replacement`` wins over the operator when set.
     """
 
     model_config = {"frozen": True}
@@ -229,7 +203,9 @@ class UserAddedDecision(BaseModel):
     segment_anchor: str
     entity_type: str
     original: str
-    replacement: str
+    operator: str | None = None
+    operator_params: dict[str, Any] | None = None
+    custom_replacement: str | None = None
 
 
 SessionDecision = Annotated[
@@ -239,21 +215,29 @@ SessionDecision = Annotated[
 
 
 class ReviewSession(BaseModel):
-    """Server-owned state for one human review session.
+    """Server-owned state for one human review session (Flow B).
 
-    Created by ``SanctumEngine.create_review_session`` (WS2 substep 3) when
+    Created by ``SanctumEngine.create_review_session`` when
     ``process-file --review`` runs. Persists under
     ``~/.sanctum/sessions/<id>/`` until committed or abandoned.
 
     Sessions are mutable by design: decisions accumulate as the reviewer
     works, and ``status`` transitions from ``open`` to ``committed`` /
     ``abandoned`` at the terminal step. The state machine lives in
-    ``sanctum.core.review.session`` (WS2 substep 2).
+    ``sanctum.core.review.session``.
 
-    Pseudonymize is the one operator whose commit has a persistent side
-    effect — ``staged_mappings`` holds what would land in the encrypted
-    ``MappingStore`` *if* the reviewer commits. Non-persistent operators
-    leave ``staged_mappings`` empty.
+    Flow B shape:
+
+    - Proposals are pure detections; no pre-computed replacement lives
+      on the session. The anonymizer runs per accepted/user-added
+      decision at commit time.
+    - ``default_operator`` + ``default_operator_params`` are the
+      fallback the UI displays and uses for decisions with no per-
+      decision operator override. The CLI's ``--operator`` flag at
+      ``process-file --review`` time seeds these.
+    - Preview strings are computed on demand by the API layer via
+      ``sanctum.core.review.previews.compute_preview`` — they are not
+      persisted on the session.
 
     Timestamps are UTC; the session store writes them in ISO-8601 form.
     """
@@ -261,11 +245,11 @@ class ReviewSession(BaseModel):
     id: str
     source_path: Path
     format: DocumentFormat
-    operator: str
+    default_operator: str
+    default_operator_params: dict[str, Any] = Field(default_factory=dict)
     segments: list[TextSegment]
     proposals: list[ReviewProposal]
     decisions: list[SessionDecision] = Field(default_factory=list)
-    staged_mappings: list[StagedMapping] = Field(default_factory=list)
     status: SessionStatus = "open"
     created_at: datetime
     committed_at: datetime | None = None
