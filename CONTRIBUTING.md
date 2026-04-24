@@ -72,9 +72,8 @@ coverage below the gate, add tests before merging.
 
 - Open PRs against `main`.
 - Keep PRs focused. Each of the Phase 1 workstreams (CI, adapters, mapping
-  store, API, transformer tier) is broken down further in
-  `~/.claude/plans/` — each adapter and each milestone should land as its
-  own PR.
+  store, API, transformer tier) is broken down further in `plans/` at the
+  repo root — each adapter and each milestone should land as its own PR.
 - The first PR that changes lint/type rules should be **config-only**; land
   the mechanical fixes it surfaces in a separate "baseline fix" PR so review
   stays legible.
