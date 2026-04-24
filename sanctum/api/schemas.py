@@ -7,11 +7,18 @@ import. Models accumulate here as routes land in subsequent substeps.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from sanctum.core.models import DetectionResult
+from sanctum.core.models import (
+    DetectionResult,
+    DocumentFormat,
+    ReviewProposal,
+    SessionDecision,
+    TextSegment,
+)
 
 # Hard cap on direct-text endpoints — `/analyze` and `/anonymize` accept
 # the body inline, so an unchecked string can dominate server memory long
@@ -248,3 +255,145 @@ class RotateMappingKeyResponse(_Frozen):
 
     rotated: bool
     store_path: str
+
+
+# -------- Review sessions (Phase 1.5 WS2 substep 6) ------------------------
+#
+# All bodies ride the same `_StrictRequest` / `_Frozen` base so extra fields
+# are rejected on input and responses advertise a closed shape. Wire names
+# match the underlying ``sanctum.core.models`` fields verbatim — the UI
+# treats the session dump as the source of truth and writes decisions back
+# with the same field names.
+
+
+class CreateReviewSessionRequest(_StrictRequest):
+    """Body for `POST /review-sessions`.
+
+    ``input_path`` is a server-side absolute path. ``default_operator``
+    seeds the fallback operator that decisions inherit when they don't
+    override. API clients can't use the ``custom`` operator because it
+    takes a Python callable in ``params`` which is not JSON-encodable.
+    """
+
+    input_path: str
+    default_operator: str
+    default_operator_params: dict[str, Any] | None = None
+    language: str = "en"
+    entities: list[str] | None = None
+    score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    _reject_api_unsupported_operator = field_validator("default_operator")(
+        _reject_api_unsupported_operator
+    )
+
+
+class ReviewSessionResponse(_Frozen):
+    """Body for create / get — full session dump with computed previews.
+
+    ``previews`` keys are either a ``ReviewProposal.detection_id`` (for
+    proposal-scoped previews) or a ``UserAddedDecision.id`` (for user-
+    added spans). The UI keys its ghost-text overlay off of those ids,
+    so the dict shape intentionally mirrors a client-side cache.
+
+    The preview set is recomputed server-side on every GET and every
+    decision-touching PATCH — the session itself never persists a
+    ``preview_cache`` field. This keeps session storage reviewable as
+    "decisions in, replacements out" instead of a stale mirror.
+    """
+
+    id: str
+    source_path: str
+    format: DocumentFormat
+    default_operator: str
+    default_operator_params: dict[str, Any]
+    segments: list[TextSegment]
+    proposals: list[ReviewProposal]
+    decisions: list[SessionDecision]
+    status: Literal["open", "committed", "abandoned"]
+    created_at: datetime
+    committed_at: datetime | None
+    previews: dict[str, str]
+
+
+class PatchProposalDecisionRequest(_StrictRequest):
+    """Body for `PATCH /review-sessions/{id}/decisions/{proposal_id}`.
+
+    ``status`` is required. Any of ``operator`` / ``operator_params`` /
+    ``custom_replacement`` may be present; omitted fields fall back to
+    the session defaults (operator / params) or are treated as unset
+    (custom_replacement). PATCH is a full replace on the decision — the
+    server does not diff the previous decision forward.
+    """
+
+    status: Literal["accept", "reject"]
+    operator: str | None = None
+    operator_params: dict[str, Any] | None = None
+    custom_replacement: str | None = None
+
+    _reject_api_unsupported_operator = field_validator("operator")(_reject_api_unsupported_operator)
+
+    @model_validator(mode="after")
+    def _operator_params_requires_operator(self) -> PatchProposalDecisionRequest:
+        if self.operator_params is not None and self.operator is None:
+            raise ValueError("operator_params requires operator to be set")
+        return self
+
+
+class DecisionWithPreviewResponse(_Frozen):
+    """Body for PATCH / POST user-added — echoes the decision + its preview.
+
+    Returning the preview on the mutation response spares the UI a
+    follow-up GET just to refresh one cell. The full session is still
+    fetched via GET when the reviewer navigates across proposals.
+    """
+
+    decision: SessionDecision
+    preview: str
+
+
+class AddUserAddedDecisionRequest(_StrictRequest):
+    """Body for `POST /review-sessions/{id}/decisions/user-added`.
+
+    ``segment_anchor`` must match the ``id`` of one of the session's
+    segments; the API rejects unknown anchors with 400 so the UI catches
+    drift early (e.g., a cached session id whose segments have changed
+    underneath it — this can't happen in Flow B but the validator
+    documents the contract).
+    """
+
+    segment_anchor: str
+    entity_type: str
+    original: str
+    operator: str | None = None
+    operator_params: dict[str, Any] | None = None
+    custom_replacement: str | None = None
+
+    _reject_api_unsupported_operator = field_validator("operator")(_reject_api_unsupported_operator)
+
+    @model_validator(mode="after")
+    def _operator_params_requires_operator(self) -> AddUserAddedDecisionRequest:
+        if self.operator_params is not None and self.operator is None:
+            raise ValueError("operator_params requires operator to be set")
+        return self
+
+
+class CommitReviewSessionRequest(_StrictRequest):
+    """Body for `POST /review-sessions/{id}/commit`.
+
+    ``output_path`` is server-side. ``attested`` is the same hard gate as
+    the legacy `/commit-review` route: the API cannot prompt, so the
+    caller must assert on the record that a human has reviewed the
+    session before persistent side effects (pseudonymize store writes,
+    final file emission) land.
+    """
+
+    output_path: str
+    attested: bool = False
+
+
+class CommitReviewSessionResponse(_Frozen):
+    """Body for `POST /review-sessions/{id}/commit` — the finalized copy."""
+
+    session_id: str
+    output_path: str
+    committed_at: datetime

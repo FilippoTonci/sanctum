@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -195,10 +196,18 @@ class UserAddedDecision(BaseModel):
     Same operator-selection semantics as ``ProposalDecision``: ``operator``
     and ``operator_params`` fall back to the session defaults when unset;
     ``custom_replacement`` wins over the operator when set.
+
+    ``id`` is a UUID4 minted when the decision is added; it is the handle
+    the ``DELETE /review-sessions/{id}/decisions/user-added/{ua_id}``
+    route uses. Unlike ``ProposalDecision.proposal_id`` (which is a stable
+    content-addressed hash shared with the native-comment export path),
+    user-added ids have no meaning outside the session — they just need
+    to be unique within it.
     """
 
     model_config = {"frozen": True}
 
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     kind: Literal["user_added"] = "user_added"
     segment_anchor: str
     entity_type: str
