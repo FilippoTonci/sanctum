@@ -62,10 +62,18 @@ class HealthResponse(_Frozen):
     `mapping_store_unlocked` is always present so the GUI can render the
     lock indicator from a single field; WS4.7 wires it to the real store
     state when the mapping routes land.
+
+    `sanctum_commit` is the build-time SHA of the bundled sidecar. The
+    Phase 3 desktop app compares this against the SHA it was built with
+    and fails fast on mismatch — the atomic-installer contract (see
+    `plans/phase-3-desktop-ui.md` WS1 substep 1). The sentinel `"dev"`
+    is reserved for local development and tolerated by the desktop.
     """
 
     status: Literal["ok"]
     version: str
+    sanctum_commit: str
+    openapi_digest: str
     mapping_store_unlocked: bool
 
 

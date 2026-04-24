@@ -37,6 +37,34 @@ jobs:
       - name: Run pre-commit
         run: pre-commit run --all-files --show-diff-on-failure
 
+      - name: Check committed OpenAPI spec matches source
+        # The `sanctum-desktop` repo builds its TypeScript client from the
+        # committed schema/openapi.json. If the generator and the committed
+        # file disagree, the desktop's types would silently drift. Fail the
+        # PR so the author has to regenerate + commit in the same change.
+        run: |
+          python scripts/generate_openapi.py
+          git diff --exit-code -- schema/openapi.json || {
+            echo "::error::schema/openapi.json is stale — run 'python scripts/generate_openapi.py' and commit the result"
+            exit 1
+          }
+
+      - name: Contract-compat check vs main
+        # Fail the PR on a breaking change to the API contract (removed
+        # route, removed schema, removed property, newly-required request
+        # field). Rationale: `sanctum-desktop` pins a specific sanctum
+        # commit, so breaking the contract means the desktop repo must
+        # bump the pin in lockstep. Catch that coordination point in CI.
+        # Skipped when the PR's base already IS main (nothing to diff).
+        if: github.event_name == 'pull_request' && github.base_ref != ''
+        run: |
+          git fetch origin "${{ github.base_ref }}" --depth=1
+          git show "origin/${{ github.base_ref }}:schema/openapi.json" > /tmp/baseline-openapi.json || {
+            echo "baseline spec missing on ${{ github.base_ref }} — skipping compat check"
+            exit 0
+          }
+          python scripts/check_api_compat.py --base /tmp/baseline-openapi.json --current schema/openapi.json
+
   test:
     name: Test (py${{ matrix.python-version }})
     runs-on: ubuntu-latest

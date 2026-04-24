@@ -1,8 +1,10 @@
-"""Unit tests for `/health` — shape, version, mapping-store flag, no-auth, host guard."""
+"""Unit tests for `/health` — shape, version, commit pin, mapping flag, auth, host guard."""
 
 from __future__ import annotations
 
+import pytest
 from sanctum import __version__
+from sanctum._build_info import DEV_SENTINEL, openapi_digest
 from sanctum.api.app import create_app
 from sanctum.api.schemas import HealthResponse
 
@@ -12,16 +14,38 @@ def _client():
     return app, app.test_client()
 
 
-def test_health_returns_200_and_expected_payload():
+def test_health_returns_200_and_expected_payload(monkeypatch: pytest.MonkeyPatch):
+    # Without SANCTUM_COMMIT set, commit() returns the dev sentinel. Clear
+    # explicitly so an ambient shell value doesn't leak into the assertion.
+    monkeypatch.delenv("SANCTUM_COMMIT", raising=False)
     _, client = _client()
     r = client.get("/health", headers={"Host": "127.0.0.1:8765"})
     assert r.status_code == 200
     body = r.get_json()
+    # Digest compared against the same source-of-truth function so the test
+    # doesn't have to re-hash the file itself — and so a legitimate spec
+    # regeneration updates both sides in lockstep.
+    expected_digest = openapi_digest()
     assert body == {
         "status": "ok",
         "version": __version__,
+        "sanctum_commit": DEV_SENTINEL,
+        "openapi_digest": expected_digest,
         "mapping_store_unlocked": False,
     }
+    # Regardless of whether the spec file is reachable, the digest must be
+    # a string and either the 12-char sha prefix or the "unknown" sentinel.
+    assert isinstance(expected_digest, str)
+    assert expected_digest == "unknown" or len(expected_digest) == 12
+
+
+def test_health_reports_pinned_commit_when_env_set(monkeypatch: pytest.MonkeyPatch):
+    """Release builds set SANCTUM_COMMIT; /health must surface it verbatim
+    so the desktop can compare against its build-time bundled SHA."""
+    monkeypatch.setenv("SANCTUM_COMMIT", "abc1234")
+    _, client = _client()
+    r = client.get("/health", headers={"Host": "127.0.0.1:8765"})
+    assert r.get_json()["sanctum_commit"] == "abc1234"
 
 
 def test_health_payload_validates_against_schema():

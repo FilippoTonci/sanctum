@@ -13,9 +13,11 @@ import ipaddress
 import socket
 from typing import TYPE_CHECKING
 
-from waitress import serve as waitress_serve
+from waitress.server import create_server
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from flask import Flask
 
 # Names we accept at all. The literal IPs are trivially loopback; the
@@ -74,13 +76,39 @@ def assert_loopback(host: str) -> None:
         )
 
 
+def pick_free_port(host: str = "127.0.0.1") -> int:
+    """Bind a throwaway socket to ``host:0`` and return the allocated port.
+
+    Used by `sanctum serve --port 0` to resolve a concrete port *before*
+    the Flask app is built — the app's Host/Origin allowlist is keyed on
+    host+port, so it has to be created with the real number. There is a
+    theoretical race where another process binds the same port between
+    this close and waitress's bind; acceptable for a single-user desktop.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind((host, 0))
+        return int(s.getsockname()[1])
+
+
 def run(
     app: Flask,
     *,
     host: str = "127.0.0.1",
     port: int = 8765,
     threads: int = 4,
+    on_ready: Callable[[str, int], None] | None = None,
 ) -> None:
-    """Start waitress on ``host:port``. Blocks until the server is stopped."""
+    """Start waitress on ``host:port``. Blocks until the server is stopped.
+
+    Uses waitress's lower-level ``create_server`` so the socket binds
+    *before* we return from setup; ``on_ready`` fires after bind but
+    before the accept loop, which is the right moment to emit the
+    machine-readable ``SANCTUM_READY`` line the Electron sidecar
+    lifecycle polls against. The callback runs synchronously, so a
+    misbehaving callback can stall startup — keep it small.
+    """
     assert_loopback(host)
-    waitress_serve(app, host=host, port=port, threads=threads)
+    server = create_server(app, host=host, port=port, threads=threads)
+    if on_ready is not None:
+        on_ready(host, port)
+    server.run()

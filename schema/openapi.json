@@ -1,0 +1,2255 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Sanctum API",
+    "version": "0.1.0",
+    "description": "Loopback-only HTTP API for the Sanctum Python backend. Consumed by the `sanctum-desktop` Electron app and the `sanctum` CLI. See `plans/phase-3-desktop-ui.md` WS1."
+  },
+  "paths": {
+    "/analyze": {
+      "post": {
+        "summary": "Detect PII entities in free text.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalyzeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/anonymize": {
+      "post": {
+        "summary": "Detect + anonymize PII in free text.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnonymizeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnonymizeRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Liveness probe + mapping-store state + build pin.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mapping/lock": {
+      "post": {
+        "summary": "Re-encrypt the mapping store and drop it from memory.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LockMappingResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      }
+    },
+    "/mapping/reverse": {
+      "post": {
+        "summary": "Look up the original value behind a pseudonym.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReverseMappingResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReverseMappingRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mapping/rotate-key": {
+      "post": {
+        "summary": "Re-encrypt the mapping store under a new passphrase.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RotateMappingKeyResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RotateMappingKeyRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/mapping/unlock": {
+      "post": {
+        "summary": "Unlock the encrypted pseudonym mapping store.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnlockMappingResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnlockMappingRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/process-file": {
+      "post": {
+        "summary": "Process a document \u2014 fire-and-forget or staged review.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessFileResponse"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProcessFileReviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Payload Too Large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProcessFileRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/review-sessions": {
+      "post": {
+        "summary": "Create a review session from a document.",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReviewSessionRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/review-sessions/{session_id}": {
+      "get": {
+        "summary": "Fetch a review session \u2014 segments, proposals, previews.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "delete": {
+        "summary": "Abandon a session \u2014 deletes input bytes + plaintext proposals.",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/review-sessions/{session_id}/commit": {
+      "post": {
+        "summary": "Finalize the session \u2014 write the anonymized document.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitReviewSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CommitReviewSessionRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/review-sessions/{session_id}/decisions/user-added": {
+      "post": {
+        "summary": "Flag a span Sanctum missed; same operator-fallback chain.",
+        "responses": {
+          "201": {
+            "description": "Created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionWithPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddUserAddedDecisionRequest"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/review-sessions/{session_id}/decisions/user-added/{ua_id}": {
+      "delete": {
+        "summary": "Remove a previously-added user decision.",
+        "responses": {
+          "204": {
+            "description": "No Content"
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ua_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/review-sessions/{session_id}/decisions/{proposal_id}": {
+      "patch": {
+        "summary": "Accept or reject a proposal; override operator / params.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DecisionWithPreviewResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchProposalDecisionRequest"
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AddUserAddedDecisionRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /review-sessions/{id}/decisions/user-added`.\n\n``segment_anchor`` must match the ``id`` of one of the session's\nsegments; the API rejects unknown anchors with 400 so the UI catches\ndrift early (e.g., a cached session id whose segments have changed\nunderneath it \u2014 this can't happen in Flow B but the validator\ndocuments the contract).",
+        "properties": {
+          "segment_anchor": {
+            "title": "Segment Anchor",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "original": {
+            "title": "Original",
+            "type": "string"
+          },
+          "operator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Operator"
+          },
+          "operator_params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Operator Params"
+          },
+          "custom_replacement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Custom Replacement"
+          }
+        },
+        "required": [
+          "segment_anchor",
+          "entity_type",
+          "original"
+        ],
+        "title": "AddUserAddedDecisionRequest",
+        "type": "object"
+      },
+      "AnalyzeRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /analyze`.\n\nMirrors the knobs the CLI `analyze` command exposes. `entities=None`\nmeans \"detect every entity type the analyzer recognizes\"; passing an\nempty list narrows the scan to nothing (Presidio semantics \u2014 we do\nnot second-guess it).",
+        "properties": {
+          "text": {
+            "maxLength": 1000000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "language": {
+            "default": "en",
+            "title": "Language",
+            "type": "string"
+          },
+          "entities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entities"
+          },
+          "score_threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Score Threshold"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "AnalyzeRequest",
+        "type": "object"
+      },
+      "AnalyzeResponse": {
+        "additionalProperties": false,
+        "description": "Body for `POST /analyze` \u2014 detections plus a convenience count.",
+        "properties": {
+          "detections": {
+            "items": {
+              "$ref": "#/components/schemas/DetectionResult"
+            },
+            "title": "Detections",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "detections",
+          "count"
+        ],
+        "title": "AnalyzeResponse",
+        "type": "object"
+      },
+      "AnonymizeRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /anonymize`.\n\n`operator` maps onto the ``DEFAULT`` entry in `OperatorPolicy`-land:\n``None`` means the engine's configured default. ``pseudonymize`` is\n*not* accepted over HTTP until WS4.7 wires the mapping store \u2014 the\nstore is per-session state that has to be unlocked explicitly first,\nand letting `/anonymize` silently skip it would produce an\nunrecoverable leak of originals.",
+        "properties": {
+          "text": {
+            "maxLength": 1000000,
+            "minLength": 1,
+            "title": "Text",
+            "type": "string"
+          },
+          "language": {
+            "default": "en",
+            "title": "Language",
+            "type": "string"
+          },
+          "entities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entities"
+          },
+          "score_threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Score Threshold"
+          },
+          "operator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Operator"
+          },
+          "operator_params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Operator Params"
+          }
+        },
+        "required": [
+          "text"
+        ],
+        "title": "AnonymizeRequest",
+        "type": "object"
+      },
+      "AnonymizeResponse": {
+        "additionalProperties": false,
+        "description": "Body for `POST /anonymize` \u2014 full engine result, wire-friendly.",
+        "properties": {
+          "original_text": {
+            "title": "Original Text",
+            "type": "string"
+          },
+          "anonymized_text": {
+            "title": "Anonymized Text",
+            "type": "string"
+          },
+          "detections": {
+            "items": {
+              "$ref": "#/components/schemas/DetectionResult"
+            },
+            "title": "Detections",
+            "type": "array"
+          },
+          "operators_applied": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Operators Applied",
+            "type": "object"
+          }
+        },
+        "required": [
+          "original_text",
+          "anonymized_text",
+          "detections",
+          "operators_applied"
+        ],
+        "title": "AnonymizeResponse",
+        "type": "object"
+      },
+      "CommitReviewSessionRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /review-sessions/{id}/commit`.\n\n``output_path`` is server-side. ``attested`` is a hard gate: the API\ncannot prompt, so the caller must assert on the record that a human\nhas reviewed the session before persistent side effects (pseudonymize\nstore writes, final file emission) land.",
+        "properties": {
+          "output_path": {
+            "title": "Output Path",
+            "type": "string"
+          },
+          "attested": {
+            "default": false,
+            "title": "Attested",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "output_path"
+        ],
+        "title": "CommitReviewSessionRequest",
+        "type": "object"
+      },
+      "CommitReviewSessionResponse": {
+        "additionalProperties": false,
+        "description": "Body for `POST /review-sessions/{id}/commit` \u2014 the finalized copy.",
+        "properties": {
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "output_path": {
+            "title": "Output Path",
+            "type": "string"
+          },
+          "committed_at": {
+            "format": "date-time",
+            "title": "Committed At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "output_path",
+          "committed_at"
+        ],
+        "title": "CommitReviewSessionResponse",
+        "type": "object"
+      },
+      "CreateReviewSessionRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /review-sessions`.\n\n``input_path`` is a server-side absolute path. ``default_operator``\nseeds the fallback operator that decisions inherit when they don't\noverride. API clients can't use the ``custom`` operator because it\ntakes a Python callable in ``params`` which is not JSON-encodable.",
+        "properties": {
+          "input_path": {
+            "title": "Input Path",
+            "type": "string"
+          },
+          "default_operator": {
+            "title": "Default Operator",
+            "type": "string"
+          },
+          "default_operator_params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Default Operator Params"
+          },
+          "language": {
+            "default": "en",
+            "title": "Language",
+            "type": "string"
+          },
+          "entities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entities"
+          },
+          "score_threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Score Threshold"
+          }
+        },
+        "required": [
+          "input_path",
+          "default_operator"
+        ],
+        "title": "CreateReviewSessionRequest",
+        "type": "object"
+      },
+      "DecisionWithPreviewResponse": {
+        "additionalProperties": false,
+        "description": "Body for PATCH / POST user-added \u2014 echoes the decision + its preview.\n\nReturning the preview on the mutation response spares the UI a\nfollow-up GET just to refresh one cell. The full session is still\nfetched via GET when the reviewer navigates across proposals.",
+        "properties": {
+          "decision": {
+            "discriminator": {
+              "mapping": {
+                "proposal": "#/components/schemas/ProposalDecision",
+                "user_added": "#/components/schemas/UserAddedDecision"
+              },
+              "propertyName": "kind"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ProposalDecision"
+              },
+              {
+                "$ref": "#/components/schemas/UserAddedDecision"
+              }
+            ],
+            "title": "Decision"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "string"
+          }
+        },
+        "required": [
+          "decision",
+          "preview"
+        ],
+        "title": "DecisionWithPreviewResponse",
+        "type": "object"
+      },
+      "DetectionResult": {
+        "description": "A single PII detection found in text.",
+        "properties": {
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "start": {
+            "title": "Start",
+            "type": "integer"
+          },
+          "end": {
+            "title": "End",
+            "type": "integer"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "text_span": {
+            "title": "Text Span",
+            "type": "string"
+          },
+          "context": {
+            "default": "",
+            "title": "Context",
+            "type": "string"
+          },
+          "recognizer_name": {
+            "default": "",
+            "title": "Recognizer Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "entity_type",
+          "start",
+          "end",
+          "score",
+          "text_span"
+        ],
+        "title": "DetectionResult",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "description": "Liveness payload for `/health`.\n\n`mapping_store_unlocked` is always present so the GUI can render the\nlock indicator from a single field; WS4.7 wires it to the real store\nstate when the mapping routes land.\n\n`sanctum_commit` is the build-time SHA of the bundled sidecar. The\nPhase 3 desktop app compares this against the SHA it was built with\nand fails fast on mismatch \u2014 the atomic-installer contract (see\n`plans/phase-3-desktop-ui.md` WS1 substep 1). The sentinel `\"dev\"`\nis reserved for local development and tolerated by the desktop.",
+        "properties": {
+          "status": {
+            "const": "ok",
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "string"
+          },
+          "sanctum_commit": {
+            "title": "Sanctum Commit",
+            "type": "string"
+          },
+          "openapi_digest": {
+            "title": "Openapi Digest",
+            "type": "string"
+          },
+          "mapping_store_unlocked": {
+            "title": "Mapping Store Unlocked",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "status",
+          "version",
+          "sanctum_commit",
+          "openapi_digest",
+          "mapping_store_unlocked"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "LockMappingResponse": {
+        "additionalProperties": false,
+        "description": "Body for `POST /mapping/lock` \u2014 the store is now locked.\n\n`store_path` is ``None`` only when `/lock` was a no-op (nothing was\nunlocked to begin with); the idempotent-success payload.",
+        "properties": {
+          "unlocked": {
+            "const": false,
+            "title": "Unlocked",
+            "type": "boolean"
+          },
+          "store_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Store Path"
+          }
+        },
+        "required": [
+          "unlocked",
+          "store_path"
+        ],
+        "title": "LockMappingResponse",
+        "type": "object"
+      },
+      "PatchProposalDecisionRequest": {
+        "additionalProperties": false,
+        "description": "Body for `PATCH /review-sessions/{id}/decisions/{proposal_id}`.\n\n``status`` is required. Any of ``operator`` / ``operator_params`` /\n``custom_replacement`` may be present; omitted fields fall back to\nthe session defaults (operator / params) or are treated as unset\n(custom_replacement). PATCH is a full replace on the decision \u2014 the\nserver does not diff the previous decision forward.",
+        "properties": {
+          "status": {
+            "enum": [
+              "accept",
+              "reject"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "operator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Operator"
+          },
+          "operator_params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Operator Params"
+          },
+          "custom_replacement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Custom Replacement"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "PatchProposalDecisionRequest",
+        "type": "object"
+      },
+      "ProcessFileRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /process-file`.\n\nBoth paths are *server-side* paths (the API is local; the GUI runs on\nthe same machine). The route refuses non-absolute paths and UNC paths\nso a malicious client can't coerce the server into reading from or\nwriting to a network share \u2014 that would defeat the airgap by smuggling\ndata across the network mount.\n\n``review`` opts into the Flow B review session surface: when True the\nroute does not write the anonymized file inline \u2014 it creates a review\nsession and returns ``ProcessFileReviewResponse`` (session id + URL\nfor the WS3 UI). When False, the route anonymizes and writes in one\nshot, returning ``ProcessFileResponse``. ``output_path`` is required\nwhen ``review=false`` and forbidden when ``review=true`` \u2014 the final\nfile is produced later at ``POST /review-sessions/{id}/commit`` with\nits own output_path.",
+        "properties": {
+          "input_path": {
+            "title": "Input Path",
+            "type": "string"
+          },
+          "output_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Output Path"
+          },
+          "language": {
+            "default": "en",
+            "title": "Language",
+            "type": "string"
+          },
+          "entities": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Entities"
+          },
+          "score_threshold": {
+            "anyOf": [
+              {
+                "maximum": 1.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Score Threshold"
+          },
+          "operator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Operator"
+          },
+          "operator_params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Operator Params"
+          },
+          "review": {
+            "default": false,
+            "title": "Review",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "input_path"
+        ],
+        "title": "ProcessFileRequest",
+        "type": "object"
+      },
+      "ProcessFileResponse": {
+        "additionalProperties": false,
+        "description": "Body for `POST /process-file` \u2014 summary of what the engine did.",
+        "properties": {
+          "output_path": {
+            "title": "Output Path",
+            "type": "string"
+          },
+          "segments_changed": {
+            "title": "Segments Changed",
+            "type": "integer"
+          },
+          "entities_replaced": {
+            "title": "Entities Replaced",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "output_path",
+          "segments_changed",
+          "entities_replaced"
+        ],
+        "title": "ProcessFileResponse",
+        "type": "object"
+      },
+      "ProcessFileReviewResponse": {
+        "additionalProperties": false,
+        "description": "Body for `POST /process-file` when ``review=true`` \u2014 Flow B handoff.\n\nThe route created a review session instead of writing the file inline.\nClients use ``session_id`` to drive the ``/review-sessions`` endpoints\n(PATCH decisions, commit, etc.) and ``review_url`` to open the WS3\nreference UI. ``review_url`` is a template pointing at the server's\nbound host/port \u2014 if WS3 hasn't shipped yet the path 404s, but the\n``session_id`` is fully usable against the API today.",
+        "properties": {
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "review_url": {
+            "title": "Review Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "session_id",
+          "review_url"
+        ],
+        "title": "ProcessFileReviewResponse",
+        "type": "object"
+      },
+      "ProposalDecision": {
+        "description": "A reviewer's verdict on a Sanctum-originated proposal (Flow B).\n\n``proposal_id`` references the matching ``ReviewProposal.detection_id``\ninside the same session.\n\nStatus semantics:\n\n- ``accept`` \u2014 anonymize this span at commit. The operator is\n  ``operator`` if set, otherwise the session's ``default_operator``;\n  same for ``operator_params``. ``custom_replacement``, if set,\n  short-circuits the operator and lands in the file verbatim.\n- ``reject`` \u2014 leave the original text in place. Operator / params /\n  custom_replacement are ignored.",
+        "properties": {
+          "kind": {
+            "const": "proposal",
+            "default": "proposal",
+            "title": "Kind",
+            "type": "string"
+          },
+          "proposal_id": {
+            "title": "Proposal Id",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "accept",
+              "reject"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "operator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Operator"
+          },
+          "operator_params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Operator Params"
+          },
+          "custom_replacement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Custom Replacement"
+          }
+        },
+        "required": [
+          "proposal_id",
+          "status"
+        ],
+        "title": "ProposalDecision",
+        "type": "object"
+      },
+      "ReverseMappingRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /mapping/reverse` \u2014 look up the original behind a pseudonym.",
+        "properties": {
+          "pseudonym": {
+            "minLength": 1,
+            "title": "Pseudonym",
+            "type": "string"
+          },
+          "entity_type": {
+            "minLength": 1,
+            "title": "Entity Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pseudonym",
+          "entity_type"
+        ],
+        "title": "ReverseMappingRequest",
+        "type": "object"
+      },
+      "ReverseMappingResponse": {
+        "additionalProperties": false,
+        "description": "Body for `POST /mapping/reverse` \u2014 the original that maps to the pseudonym.",
+        "properties": {
+          "pseudonym": {
+            "title": "Pseudonym",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "original": {
+            "title": "Original",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pseudonym",
+          "entity_type",
+          "original"
+        ],
+        "title": "ReverseMappingResponse",
+        "type": "object"
+      },
+      "ReviewProposal": {
+        "description": "A single detection presented to the reviewer (Flow B).\n\nPure detection record \u2014 no replacement, no operator. Under Flow B\nthe reviewer chooses the operator at decision time; replacements\ncome from the anonymizer at commit time (or from a server-computed\npreview for the UI). The proposal just tells the reviewer *what*\nSanctum found and *where*.\n\n``detection_id`` is a stable content-addressed hash (see\n``sanctum.core.review.identifiers.make_detection_id``) that doubles\nas the session's proposal id so ``ProposalDecision.proposal_id``\nreferences stay stable across session reads.\n\n``segment_anchor`` is an opaque, adapter-specific pointer into the\nparsed ``StructuredDocument`` segments (e.g. docx paragraph+run\nindices, xlsx sheet+cell).",
+        "properties": {
+          "detection_id": {
+            "title": "Detection Id",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "original": {
+            "title": "Original",
+            "type": "string"
+          },
+          "segment_anchor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Segment Anchor"
+          }
+        },
+        "required": [
+          "detection_id",
+          "entity_type",
+          "score",
+          "original"
+        ],
+        "title": "ReviewProposal",
+        "type": "object"
+      },
+      "ReviewSessionResponse": {
+        "additionalProperties": false,
+        "description": "Body for create / get \u2014 full session dump with computed previews.\n\n``previews`` keys are either a ``ReviewProposal.detection_id`` (for\nproposal-scoped previews) or a ``UserAddedDecision.id`` (for user-\nadded spans). The UI keys its ghost-text overlay off of those ids,\nso the dict shape intentionally mirrors a client-side cache.\n\nThe preview set is recomputed server-side on every GET and every\ndecision-touching PATCH \u2014 the session itself never persists a\n``preview_cache`` field. This keeps session storage reviewable as\n\"decisions in, replacements out\" instead of a stale mirror.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "source_path": {
+            "title": "Source Path",
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "docx",
+              "xlsx",
+              "pdf",
+              "pptx"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "default_operator": {
+            "title": "Default Operator",
+            "type": "string"
+          },
+          "default_operator_params": {
+            "additionalProperties": true,
+            "title": "Default Operator Params",
+            "type": "object"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/TextSegment"
+            },
+            "title": "Segments",
+            "type": "array"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewProposal"
+            },
+            "title": "Proposals",
+            "type": "array"
+          },
+          "decisions": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "proposal": "#/components/schemas/ProposalDecision",
+                  "user_added": "#/components/schemas/UserAddedDecision"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/ProposalDecision"
+                },
+                {
+                  "$ref": "#/components/schemas/UserAddedDecision"
+                }
+              ]
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "committed",
+              "abandoned"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "committed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed At"
+          },
+          "previews": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Previews",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "source_path",
+          "format",
+          "default_operator",
+          "default_operator_params",
+          "segments",
+          "proposals",
+          "decisions",
+          "status",
+          "created_at",
+          "committed_at",
+          "previews"
+        ],
+        "title": "ReviewSessionResponse",
+        "type": "object"
+      },
+      "RotateMappingKeyRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /mapping/rotate-key` \u2014 re-encrypt under a new passphrase.",
+        "properties": {
+          "store_path": {
+            "title": "Store Path",
+            "type": "string"
+          },
+          "old_passphrase": {
+            "minLength": 1,
+            "title": "Old Passphrase",
+            "type": "string"
+          },
+          "new_passphrase": {
+            "minLength": 1,
+            "title": "New Passphrase",
+            "type": "string"
+          }
+        },
+        "required": [
+          "store_path",
+          "old_passphrase",
+          "new_passphrase"
+        ],
+        "title": "RotateMappingKeyRequest",
+        "type": "object"
+      },
+      "RotateMappingKeyResponse": {
+        "additionalProperties": false,
+        "description": "Body for `POST /mapping/rotate-key` \u2014 confirmation of rotation.",
+        "properties": {
+          "rotated": {
+            "title": "Rotated",
+            "type": "boolean"
+          },
+          "store_path": {
+            "title": "Store Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rotated",
+          "store_path"
+        ],
+        "title": "RotateMappingKeyResponse",
+        "type": "object"
+      },
+      "TextSegment": {
+        "description": "One atomic unit of text extracted from a structured document.\n\nSegments are the grain at which anonymization happens. A segment id is\nadapter-specific and stable across read/write round trips: the same\nrun, cell, or text frame produces the same id every time.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "title": "Metadata",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "text"
+        ],
+        "title": "TextSegment",
+        "type": "object"
+      },
+      "UnlockMappingRequest": {
+        "additionalProperties": false,
+        "description": "Body for `POST /mapping/unlock`.\n\n`store_path` is server-side; same UNC/absolute rules as /process-file.\nA non-existent file is treated as \"create on first lock\" \u2014 matches the\nCLI behavior where `EncryptedFileMappingStore.unlock` on a missing\npath generates a fresh salt and starts with empty entries.",
+        "properties": {
+          "store_path": {
+            "title": "Store Path",
+            "type": "string"
+          },
+          "passphrase": {
+            "minLength": 1,
+            "title": "Passphrase",
+            "type": "string"
+          }
+        },
+        "required": [
+          "store_path",
+          "passphrase"
+        ],
+        "title": "UnlockMappingRequest",
+        "type": "object"
+      },
+      "UnlockMappingResponse": {
+        "additionalProperties": false,
+        "description": "Body for `POST /mapping/unlock` \u2014 the store is now unlocked.",
+        "properties": {
+          "unlocked": {
+            "const": true,
+            "title": "Unlocked",
+            "type": "boolean"
+          },
+          "store_path": {
+            "title": "Store Path",
+            "type": "string"
+          }
+        },
+        "required": [
+          "unlocked",
+          "store_path"
+        ],
+        "title": "UnlockMappingResponse",
+        "type": "object"
+      },
+      "UserAddedDecision": {
+        "description": "A reviewer-contributed span \u2014 a miss Sanctum did not catch (Flow B).\n\nSame operator-selection semantics as ``ProposalDecision``: ``operator``\nand ``operator_params`` fall back to the session defaults when unset;\n``custom_replacement`` wins over the operator when set.\n\n``id`` is a UUID4 minted when the decision is added; it is the handle\nthe ``DELETE /review-sessions/{id}/decisions/user-added/{ua_id}``\nroute uses. Unlike ``ProposalDecision.proposal_id`` (which is a stable\ncontent-addressed hash shared with the native-comment export path),\nuser-added ids have no meaning outside the session \u2014 they just need\nto be unique within it.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "user_added",
+            "default": "user_added",
+            "title": "Kind",
+            "type": "string"
+          },
+          "segment_anchor": {
+            "title": "Segment Anchor",
+            "type": "string"
+          },
+          "entity_type": {
+            "title": "Entity Type",
+            "type": "string"
+          },
+          "original": {
+            "title": "Original",
+            "type": "string"
+          },
+          "operator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Operator"
+          },
+          "operator_params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Operator Params"
+          },
+          "custom_replacement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Custom Replacement"
+          }
+        },
+        "required": [
+          "segment_anchor",
+          "entity_type",
+          "original"
+        ],
+        "title": "UserAddedDecision",
+        "type": "object"
+      },
+      "_ErrorResponse": {
+        "properties": {
+          "error": {
+            "title": "Error",
+            "type": "string"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Details"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "_ErrorResponse",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Loopback-only bearer token. The CLI's `sanctum serve` writes the token to `~/.sanctum/api-token` (0600 perms); the Phase 3 desktop app passes it via `--token-stdin`."
+      }
+    }
+  }
+}

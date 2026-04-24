@@ -203,15 +203,39 @@ depends on.
 
 ### Substep list
 
-1. **API versioning policy.** Decide and document (ADR in
-   `resources/adr-0003-api-versioning.md`) whether the API is versioned
-   via URL prefix (`/v1/...`) or via a `Sanctum-API-Version` request
-   header. Apply to all existing routes in a single PR. Add a changelog
-   entry format for future breaking changes.
-2. **OpenAPI spec emission.** Generate `resources/openapi.json` from
-   the Pydantic schemas + Flask route registration. Commit the
-   generated file. CI re-generates and diffs; any uncommitted diff
-   fails the build. This is the artefact the desktop repo consumes.
+1. **Commit-pinned contract + version marker.** The desktop app and
+   the Python sidecar ship in the same installer — the sidecar binary
+   is built from a specific `sanctum` commit pinned by the desktop
+   release workflow (see WS6). There is **no** rolling-window scenario
+   where an installed desktop talks to a newer/older sidecar than it
+   was built against; the pair is atomic.
+
+   What this substep actually needs:
+
+   - **Extend `/health`** to return `sanctum_commit` (short SHA) and
+     `openapi_digest` (hash of the committed spec). Desktop compares
+     these at startup against the values it was built with; any
+     mismatch means the installer is corrupt or someone swapped the
+     sidecar manually — fail fast with an actionable error.
+   - **`CHANGELOG.md`** at repo root (not under gitignored `resources/`
+     or `docs/`) using `Keep a Changelog` format. Every PR that touches
+     the API records an entry under `Added` / `Changed` / `Removed` /
+     `Fixed` / `Security`.
+   - **No URL versioning.** Evaluated and deferred: Sanctum's
+     deployment model (single atomic installer) makes `/v1/...`
+     prefixes speculative work for a problem that doesn't exist at this
+     scale. If a second external consumer ever appears (a CLI as a
+     network client, another app) **and** ships on a different cadence,
+     reopen this decision — the mechanism (a single `API_VERSION_PREFIX`
+     constant applied at blueprint registration) is a one-hour change.
+
+2. **OpenAPI spec emission.** Generate `schema/openapi.json` (new
+   top-level directory — **not** `resources/` or `docs/`, which are
+   both gitignored) from the Pydantic schemas + Flask route
+   registration. Commit the generated file. CI re-generates and diffs;
+   any uncommitted diff fails the build. This is the artefact the
+   desktop repo consumes to build its typed client. The hash of this
+   file is what `/health` returns as `openapi_digest`.
 3. **`sanctum serve` ready-signal + port=0 support.** Add `--port 0`
    handling: bind an OS-allocated port, read it back, emit a
    machine-readable line `SANCTUM_READY host=127.0.0.1 port=<N>
@@ -229,17 +253,20 @@ depends on.
    recoverable; ensure mapping-store flock is always released. Add an
    integration test that sends SIGTERM mid-request and verifies no
    locked state remains.
-6. **Deprecation / compatibility harness.** Lightweight runner script
-   `scripts/check_api_compat.py` that loads the committed `openapi.json`
-   from `main` and compares it to the current branch's spec; flags
-   removed endpoints, removed request fields, added required request
-   fields, narrowed response fields. Wire into CI as a warning at
-   first, an error after the first `sanctum-desktop` release.
+6. **Contract compat harness.** Lightweight runner script
+   `scripts/check_api_compat.py` that loads the committed
+   `schema/openapi.json` from `main` and compares it to the current
+   branch's spec; flags removed endpoints, removed request fields,
+   added required request fields, narrowed response fields. Wire into
+   CI. Because there is no versioning to cushion breaking changes, any
+   flagged diff is a hard failure the PR author must address
+   deliberately — either by reverting the change, or by bumping the
+   `sanctum` pin in the desktop repo in lockstep.
 
 ### Files (this repo)
 
-- `sanctum/api/app.py` — add OpenAPI spec generation endpoint (dev-only,
-  gated on `SANCTUM_DEV=1`) and versioning middleware.
+- `sanctum/api/routes/health.py` — extend response with
+  `sanctum_commit` and `openapi_digest` fields.
 - `sanctum/api/schemas.py` — unchanged; already Pydantic, already the
   OpenAPI source of truth.
 - `sanctum/cli/commands.py::serve` — add `--port 0` handling,
@@ -247,8 +274,8 @@ depends on.
   flags working.
 - `sanctum/api/server.py` — expose the bound port back to the caller
   after `listen()` so `serve` can print the allocated port.
-- `resources/openapi.json` — NEW, generated.
-- `resources/adr-0003-api-versioning.md` — NEW, decision record.
+- `CHANGELOG.md` — NEW, at repo root. Keep a Changelog format.
+- `schema/openapi.json` — NEW, generated, committed.
 - `scripts/generate_openapi.py` — NEW, emits the spec file.
 - `scripts/check_api_compat.py` — NEW, CI helper.
 - `.github/workflows/ci.yml` — add OpenAPI-generation diff check and
@@ -256,10 +283,9 @@ depends on.
 
 ### Approach
 
-- **Versioning**: URL prefix (`/v1/...`). Header versioning is more
-  elegant but harder for the desktop app to debug in a browser devtools
-  panel. Breaking changes move to `/v2/...` with a one-minor-release
-  overlap window where both paths are live.
+- **No URL versioning.** See substep 1 above for the rationale.
+  Breaking changes are handled via the contract compat harness +
+  atomic installer pinning, not URL prefixes.
 - **OpenAPI emission**: use `apispec[marshmallow]` or, preferable,
   Pydantic v2's `model_json_schema()` composed into an OpenAPI envelope
   by a small script. Do **not** adopt FastAPI to get this for free —
@@ -1044,23 +1070,20 @@ lead time) must be kicked off no later than WS2.
 
 ## Open decisions to confirm before WS1 starts
 
-1. **Versioning: URL prefix vs header.** Tentative: URL prefix
-   (`/v1/...`). Easier to debug in devtools, easier to pin in the
-   OpenAPI spec. **Confirm or override in the WS1 substep 1 ADR.**
-2. **Tier at launch.** Phase 3 MVP ships Standard tier (spaCy sm,
+1. **Tier at launch.** Phase 3 MVP ships Standard tier (spaCy sm,
    ~15 MB models) with Pro tier gated behind a settings toggle
    and a download. Is that the right default, or should the
    installer bundle `en_core_web_lg` upfront? Tradeoff: ~560 MB
    extra installer vs. a worse out-of-box detection quality.
-3. **Update server**. Sanctum needs a static file host for
+2. **Update server**. Sanctum needs a static file host for
    installers + models. S3 + CloudFront? Self-hosted on Hetzner?
    Both? Decide before WS6.
-4. **Public beta**: do we ship an unsigned / non-notarized
+3. **Public beta**: do we ship an unsigned / non-notarized
    pre-release to a small cohort to validate the review UX
    before investing in signing infrastructure? Tempting but
    risks Windows SmartScreen + macOS Gatekeeper burning user
    trust.
-5. **Dev-mode backend spawn**: WS3 substep 8 assumes a sibling
+4. **Dev-mode backend spawn**: WS3 substep 8 assumes a sibling
    `../sanctum` checkout. Is that how contributors will actually
    work, or do we want a `pip install -e .` path that points at
    a venv instead? Pick the one-line dev-setup experience.
