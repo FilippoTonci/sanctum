@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import tempfile
 import uuid
-import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -27,8 +26,6 @@ from sanctum.core.protocols import (
     Analyzer,
     Anonymizer,
     MappingStore,
-    ReviewEmittingWriter,
-    ReviewParsingReader,
     StructuredDocumentReader,
     StructuredDocumentWriter,
 )
@@ -117,7 +114,6 @@ class SanctumEngine:
         entities: list[str] | None = None,
         score_threshold: float | None = None,
         operator_policies: dict[str, OperatorPolicy] | None = None,
-        review: bool = False,
     ) -> list[AnonymizationResult]:
         """Read a structured document, anonymize each text segment, write back.
 
@@ -130,28 +126,16 @@ class SanctumEngine:
         whose text is empty after stripping are skipped silently — they
         cost nothing and produce no useful detections.
 
-        When ``review`` is True, the output is written via the adapter's
-        ``emit_review`` path — the document carries anonymized text *and* a
-        native comment per detection so a human can verify the changes
-        before sharing. Requires ``writer`` to satisfy the
-        ``ReviewEmittingWriter`` protocol; raises ``NotImplementedError``
-        otherwise. Default is False during Phase 1.5; the CLI / API layers
-        flip the user-facing default to True once WS2-5 light up review
-        for every format.
+        This is the fire-and-forget pipeline (CLI ``--no-review``, API
+        ``review=false``). The human-in-the-loop review path lives on
+        ``create_review_session`` / ``commit_review_session`` instead.
         """
-        if review and not isinstance(writer, ReviewEmittingWriter):
-            raise NotImplementedError(
-                f"{type(writer).__name__} does not yet implement emit_review; "
-                "pass review=False or wait for the adapter to land in Phase 1.5 WS2-5."
-            )
-
         try:
             doc = reader.read(input_path)
         except Exception as exc:
             raise DocumentError(f"Failed to read {input_path}: {exc}") from exc
 
         results: list[AnonymizationResult] = []
-        results_by_segment: dict[str, AnonymizationResult] = {}
         new_segments: list[TextSegment] = []
         for segment in doc.segments:
             if not segment.text.strip():
@@ -174,7 +158,6 @@ class SanctumEngine:
                 operator_policies=operator_policies,
             )
             results.append(result)
-            results_by_segment[segment.id] = result
             new_segments.append(segment.model_copy(update={"text": result.anonymized_text}))
 
         mutated = doc.model_copy(update={"segments": new_segments})
@@ -184,11 +167,7 @@ class SanctumEngine:
         mutated.raw_handle = doc.raw_handle
 
         try:
-            if review:
-                # isinstance check above guarantees this call is safe.
-                writer.emit_review(mutated, output_path, results_by_segment)  # type: ignore[attr-defined]
-            else:
-                writer.write(mutated, output_path)
+            writer.write(mutated, output_path)
         except Exception as exc:
             raise DocumentError(f"Failed to write {output_path}: {exc}") from exc
 
@@ -341,40 +320,6 @@ class SanctumEngine:
         )
         session_store.delete(session_id)
         return output_path
-
-    def commit_review(
-        self,
-        reader: StructuredDocumentReader,
-        writer: StructuredDocumentWriter,
-        input_path: Path,
-        output_path: Path,
-        mapping_store: MappingStore,
-    ) -> None:
-        """Deprecated file-scoped commit (Phase 1.5 WS1 shim).
-
-        Flow B moved review commit behind a session id — see
-        ``commit_review_session``. This entry point survives one release
-        for callers still on the file-scoped shape; it always raises
-        ``NotImplementedError`` since the trailer-parse path was dropped
-        along with the native-comment review UX (issue #16).
-        """
-        warnings.warn(
-            "SanctumEngine.commit_review(reader, writer, input_path, output_path, "
-            "store) is deprecated; use commit_review_session(session_id, ...) "
-            "instead. The file-scoped entry point is scheduled for removal "
-            "after Phase 1.5 WS5.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        if not isinstance(reader, ReviewParsingReader):
-            raise NotImplementedError(
-                f"{type(reader).__name__} does not yet implement read_review_decisions; "
-                "per-format commit-review support lands in Phase 1.5 WS2-5."
-            )
-        raise NotImplementedError(
-            "commit_review reconciliation lands in Phase 1.5 WS6; the protocol "
-            "surface is in place but the store-write path is intentionally unwired."
-        )
 
 
 def _apply_decisions_to_segments(

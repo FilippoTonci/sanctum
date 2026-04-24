@@ -453,15 +453,3 @@ class TestCommitReviewSession:
                 session_store=store,
                 committed_at=_FIXED_NOW,
             )
-
-
-class TestDeprecatedCommitReview:
-    def test_emits_deprecation_warning(self, engine: SanctumEngine) -> None:
-        reader = Mock()
-        writer = Mock()
-        store = Mock()
-        with (
-            pytest.warns(DeprecationWarning, match="commit_review_session"),
-            pytest.raises(NotImplementedError),
-        ):
-            engine.commit_review(reader, writer, Path("/tmp/in.docx"), Path("/tmp/out.docx"), store)
