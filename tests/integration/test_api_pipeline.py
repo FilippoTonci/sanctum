@@ -225,43 +225,32 @@ def test_mapping_unlock_pseudonymize_reverse_lock_cycle(
     assert h1["mapping_store_unlocked"] is True
 
     try:
-        # 3. Anonymize with pseudonymize → store learns a mapping.
+        # 3. Anonymize with pseudonymize → store learns a mapping. Text is
+        # just the PERSON span with no surrounding context so the whole
+        # anonymized_text IS the pseudonym — no extraction needed.
+        #
+        # Earlier versions used "John Smith ate lunch." and peeled common
+        # prefix/suffix bytes against the original to recover the middle
+        # slice. That was deterministically broken: whenever Faker drew a
+        # pseudonym starting with the same letter as the original (e.g.
+        # "Justin Hamilton" for "John Smith"), the prefix walk consumed
+        # the shared 'J' and the extracted key was "ustin Hamilton" —
+        # /mapping/reverse 404'd, and CI flaked ~10-20% of the time.
+        # Trimming the surrounding text removes the entire failure mode.
         status, anon = _request(
             "POST",
             f"{base}/anonymize",
             token=token,
-            body={"text": "John Smith ate lunch.", "operator": "pseudonymize"},
+            body={"text": "John Smith", "operator": "pseudonymize"},
         )
         assert status == 200, anon
-        # The anonymized text should differ from the original; the operator
-        # used should be pseudonymize.
         assert anon["anonymized_text"] != anon["original_text"]
         person_dets = [d for d in anon["detections"] if d["entity_type"] == "PERSON"]
         assert person_dets, anon
 
         # 4. Reverse: feed the pseudonym back, get the original PERSON span.
-        # Faker can produce multi-token pseudonyms (e.g. "Jane Doe"), so
-        # token-level diffing is unsafe. Peel the common prefix/suffix
-        # against the original text — what's left in the middle is the
-        # exact pseudonym the store recorded as a key.
-        original = "John Smith ate lunch."
-        anonymized = anon["anonymized_text"]
-        prefix_len = 0
-        while (
-            prefix_len < len(original)
-            and prefix_len < len(anonymized)
-            and original[prefix_len] == anonymized[prefix_len]
-        ):
-            prefix_len += 1
-        suffix_len = 0
-        while (
-            suffix_len < len(original) - prefix_len
-            and suffix_len < len(anonymized) - prefix_len
-            and original[-(suffix_len + 1)] == anonymized[-(suffix_len + 1)]
-        ):
-            suffix_len += 1
-        pseudonym = anonymized[prefix_len : len(anonymized) - suffix_len]
-        assert pseudonym, f"could not extract pseudonym from {anonymized!r}"
+        pseudonym = anon["anonymized_text"]
+        assert pseudonym, f"no pseudonym in {anon!r}"
 
         status, rev = _request(
             "POST",
