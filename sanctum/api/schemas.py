@@ -195,34 +195,6 @@ class ProcessFileReviewResponse(_Frozen):
     review_url: str
 
 
-class CommitReviewRequest(_StrictRequest):
-    """Body for `POST /commit-review`.
-
-    Reconciles a reviewed pseudonymize file into the mapping store and
-    emits a shareable copy with all ``sanctum:`` trailers stripped. Same
-    server-side path rules as /process-file.
-
-    ``attested`` is a hard gate because the API cannot prompt for
-    confirmation the way the CLI can: the caller must assert, on the
-    record, that a human has reviewed the file before accepted
-    pseudonyms are written to persistent state. Requests with
-    ``attested=false`` (or omitted) return 400.
-    """
-
-    input_path: str
-    output_path: str
-    attested: bool = False
-
-
-class CommitReviewResponse(_Frozen):
-    """Body for `POST /commit-review` — summary of what the commit step did."""
-
-    output_path: str
-    accepted: int
-    rejected: int
-    user_added: int
-
-
 class UnlockMappingRequest(_StrictRequest):
     """Body for `POST /mapping/unlock`.
 
@@ -407,11 +379,10 @@ class AddUserAddedDecisionRequest(_StrictRequest):
 class CommitReviewSessionRequest(_StrictRequest):
     """Body for `POST /review-sessions/{id}/commit`.
 
-    ``output_path`` is server-side. ``attested`` is the same hard gate as
-    the legacy `/commit-review` route: the API cannot prompt, so the
-    caller must assert on the record that a human has reviewed the
-    session before persistent side effects (pseudonymize store writes,
-    final file emission) land.
+    ``output_path`` is server-side. ``attested`` is a hard gate: the API
+    cannot prompt, so the caller must assert on the record that a human
+    has reviewed the session before persistent side effects (pseudonymize
+    store writes, final file emission) land.
     """
 
     output_path: str
