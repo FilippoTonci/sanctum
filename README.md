@@ -275,22 +275,32 @@ Sanctum is designed to help professionals meet the requirements of:
 *Reframed in issue #16: canonical review surface is a Sanctum-owned UI backed by the localhost API. Native Office comments are demoted to a one-way export / interop path.*
 - [x] `ReviewWriter` contract, review-domain models, per-detection replacements, CLI/API scaffolding (WS1 — foundation, shipped)
 - [ ] Server-side review sessions — proposals, decisions, staged pseudonym mappings, `POST /review-sessions` + commit endpoint; `process-file --review` returns a session URL (WS2)
-- [ ] Minimal keyboard-first review UI — in-context segment view, accept / reject / edit / mark-missed shortcuts; served by the same localhost API (WS3)
+- [ ] ~~Minimal keyboard-first review UI — in-context segment view, accept / reject / edit / mark-missed shortcuts; served by the same localhost API (WS3)~~ *— skipped (2026-04-24); superseded by the Phase 3 Electron app (see roadmap MVP note below)*
 - [ ] Pseudonymize commit via session — staged mappings only persist to the encrypted store after human approval; committed output is trailer-free (WS4)
 - [ ] DOCX native-comment export (`sanctum export-review --format docx-comments`) for interchange with Word-based reviewers (WS5)
 - [ ] `--no-review` escape hatch preserves Phase 1 fire-and-forget behaviour for automation
 
-### Phase 2 — Intelligence & Compliance
+---
+
+> **MVP scope (2026-04-24).** The minimum shippable product is **Phase 1.5
+> (WS4 + WS5, with WS3 skipped) + Phase 3 (Electron desktop GUI, separate
+> `sanctum-desktop` repo)**. Phase 2 is deferred to post-MVP — its items
+> (HIPAA recognizer, risk scoring, audit trail, locale recognizers) are
+> pure additions that layer on top of a working MVP without blocking it.
+> Phase numbers are kept stable for citation; execution order is **1.5 → 3
+> → 4 → 2**.
+
+### Phase 2 — Intelligence & Compliance *(deferred — post-MVP enhancement)*
 - [ ] HIPAA entity recognizer mode (18 safe harbor identifiers)
 - [ ] Risk scoring — post-anonymization residual identifiability metric
 - [ ] Confidence thresholding with entity-specific policies
 - [ ] Audit trail and decision trace export (JSON/PDF)
 - [ ] Locale-specific recognizers (UK, EU, India)
 
-### Phase 3 — Desktop GUI & Packaging
-- [ ] Standalone desktop GUI (Electron or native wrapper around Python core)
+### Phase 3 — Desktop GUI & Packaging *(MVP — separate `sanctum-desktop` Electron repo)*
+- [ ] Standalone desktop GUI (Electron wrapper around Python core, own repo + release cadence)
 - [ ] Drag-and-drop document import (`.docx`, `.pdf`, `.xlsx`)
-- [ ] Selective redaction by entity type in the GUI (v1 of human-in-the-loop review ships in Phase 1.5 as a minimal localhost-served UI; Phase 3 promotes it to a full desktop experience)
+- [ ] Selective redaction by entity type in the GUI (replaces the skipped Phase 1.5 WS3 reference UI — the Electron app consumes the same `/review-sessions` API directly)
 - [ ] `.pdf` burn-in redaction (structural removal, not just visual)
 - [ ] Packaged installers for Windows (`.exe`) and macOS (`.dmg`)
 
