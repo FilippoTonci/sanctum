@@ -24,7 +24,7 @@ import hashlib
 import re
 
 from sanctum.core.exceptions import StagedMappingParseError
-from sanctum.core.models import REVIEW_TRAILER_VERSION, ReviewComment
+from sanctum.core.models import REVIEW_TRAILER_VERSION, ReviewProposal
 
 
 def make_detection_id(entity_type: str, original: str, position: str | int) -> str:
@@ -108,20 +108,20 @@ def _unescape(s: str) -> str:
     return _UNESCAPE_RE.sub(_sub, s)
 
 
-def serialize_trailer(comment: ReviewComment) -> str:
-    """Render a ReviewComment as a single-line HTML-comment trailer."""
+def serialize_trailer(proposal: ReviewProposal) -> str:
+    """Render a ReviewProposal as a single-line HTML-comment trailer."""
     return (
         f"<!-- sanctum:v={REVIEW_TRAILER_VERSION} "
-        f"detection_id={comment.detection_id} "
-        f"entity={comment.entity_type} "
-        f"score={comment.score:.4f} "
-        f'original="{_escape(comment.original)}" '
-        f'replacement="{_escape(comment.replacement)}" '
-        f"operator={comment.operator} -->"
+        f"detection_id={proposal.detection_id} "
+        f"entity={proposal.entity_type} "
+        f"score={proposal.score:.4f} "
+        f'original="{_escape(proposal.original)}" '
+        f'replacement="{_escape(proposal.replacement)}" '
+        f"operator={proposal.operator} -->"
     )
 
 
-def format_comment_body(comment: ReviewComment) -> str:
+def format_comment_body(proposal: ReviewProposal) -> str:
     """Full human-readable comment body with the machine trailer appended.
 
     The adapter hands this string to the native comment API verbatim; the
@@ -129,15 +129,15 @@ def format_comment_body(comment: ReviewComment) -> str:
     comment through saves.
     """
     return (
-        f"Sanctum applied {comment.operator!r} to {comment.entity_type} "
-        f"(score {comment.score:.2f}): "
-        f'"{comment.original}" → "{comment.replacement}".\n'
+        f"Sanctum applied {proposal.operator!r} to {proposal.entity_type} "
+        f"(score {proposal.score:.2f}): "
+        f'"{proposal.original}" → "{proposal.replacement}".\n'
         f"To reject: restore the original text and delete this comment.\n"
-        f"{serialize_trailer(comment)}"
+        f"{serialize_trailer(proposal)}"
     )
 
 
-def parse_trailers(text: str) -> list[ReviewComment]:
+def parse_trailers(text: str) -> list[ReviewProposal]:
     """Extract every well-formed sanctum trailer from a text block.
 
     Empty list is a valid result — e.g. for a reviewer-authored comment
@@ -148,7 +148,7 @@ def parse_trailers(text: str) -> list[ReviewComment]:
     ``parse_trailer`` is the strict variant for contexts that expect
     exactly one trailer.
     """
-    results: list[ReviewComment] = []
+    results: list[ReviewProposal] = []
     for match in _TRAILER_RE.finditer(text):
         version = int(match.group("v"))
         if version != REVIEW_TRAILER_VERSION:
@@ -157,7 +157,7 @@ def parse_trailers(text: str) -> list[ReviewComment]:
                 f"this build expects v={REVIEW_TRAILER_VERSION}."
             )
         results.append(
-            ReviewComment(
+            ReviewProposal(
                 detection_id=match.group("detection_id"),
                 entity_type=match.group("entity"),
                 score=float(match.group("score")),
@@ -169,7 +169,7 @@ def parse_trailers(text: str) -> list[ReviewComment]:
     return results
 
 
-def parse_trailer(text: str) -> ReviewComment:
+def parse_trailer(text: str) -> ReviewProposal:
     """Parse exactly one trailer out of ``text``.
 
     Raises ``StagedMappingParseError`` if zero or more than one trailer is
