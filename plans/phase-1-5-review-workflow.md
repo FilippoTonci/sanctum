@@ -27,6 +27,64 @@
 > via edited-Office-file parsing, and the per-format native-comment
 > matrix (WS3-WS5 of the old plan).
 
+> **UX reframe (2026-04-24, "Flow B").** The server-backed plan above still
+> applies — native comments out, Sanctum-owned UI in — but *when*
+> anonymization runs changes. The first pass ("Flow A") had the server
+> call Presidio's anonymizer eagerly and ship the user a document with
+> replacements already in place; the review UI accepted/rejected those
+> pre-computed replacements. Two things pushed us off that design:
+>
+> 1. **Operator choice belongs to the user, not Sanctum.** A legal
+>    reviewer frequently wants `hips` for witness names, `[DEFENDANT]`
+>    for a defendant, and `redact` for a case number — different
+>    operators in the same document. Baking the operator into the
+>    pre-review anonymization pass forces the user to restart for any
+>    mix; edit-the-string is a lossy workaround.
+> 2. **Eager anonymization wastes work.** Pseudonymize mints pseudonyms
+>    before review. Every rejected detection is a wasted mint — and the
+>    staging state that kept those mints out of `MappingStore` until
+>    commit was a whole `staged_mappings` sub-surface.
+>
+> **Flow B.** The session captures *detections only*. Decisions carry
+> the operator the user chose (falling back to a session-level default
+> set from the CLI). Previews are computed server-side on demand — cheap
+> for every operator (pseudonymize peeks `MappingStore` without writing).
+> Anonymization happens at commit, once per accepted or user-added
+> decision. `MappingStore.get_or_create` handles pseudonymize persistence
+> directly; there is no `staged_mappings` list.
+>
+> **What this changes in the data model**
+>
+> - `ReviewProposal` becomes a pure detection record:
+>   `{detection_id, entity_type, score, original, segment_anchor}`.
+>   Drops `replacement` and `operator`.
+> - `ReviewSession` gains `default_operator: str` +
+>   `default_operator_params: dict[str, Any]`; drops `staged_mappings`
+>   and the old session-level `operator` field.
+> - `ProposalDecision` grows `operator?: str`,
+>   `operator_params?: dict[str, Any]`, `custom_replacement?: str`;
+>   drops the `edit` status (collapses to `accept` + `custom_replacement`).
+> - `UserAddedDecision` drops the required `replacement`; gains the same
+>   `operator` / `operator_params` / `custom_replacement` trio.
+> - `StagedMapping` is removed (dead under Flow B).
+> - NEW `sanctum/core/review/previews.py` — `compute_preview()` invokes
+>   the anonymizer for a single detection under a given operator without
+>   persisting anything.
+>
+> **What survives from WS2 so far.** The `sanctum.core.review` package
+> structure, the `ReviewComment → ReviewProposal` rename, the session
+> state machine (`add_decision` / `commit` / `abandon`), the session
+> store (`~/.sanctum/sessions/<id>/`, 0700/0600 perms), the identifier
+> module, and the exception taxonomy. The cherry-picked per-detection
+> replacements on `AnonymizationResult` are **dropped** — `--no-review`
+> uses `anonymized_text` directly and the Flow B session path doesn't
+> need per-detection data.
+>
+> **Where Presidio still earns its keep.** Commit time, via
+> `AnonymizerEngine`, called per accepted decision under the user's
+> chosen operator. "Anonymize later" is the same library used on a
+> different schedule — not a replacement.
+
 ---
 
 ## Context
@@ -44,15 +102,22 @@ False negatives are the failure mode that actually hurts: a missed SSN is a priv
 
 That means the review surface has to render the **document in context**, with detections highlighted *inline* and very low-friction actions for the reviewer's own marks (misses, edits). The native document rendered by Word/Excel/PowerPoint/PDF was one candidate for that context; the reframe moves to a Sanctum-rendered context instead, because the keyboard-first accept/reject/edit/mark-missed rhythm is where the review actually lives or dies.
 
-### Shape of the flow (reframed)
+### Shape of the flow (Flow B)
 
-1. `sanctum process-file <input> --review` (default on) parses the document, runs analysis, and produces **anonymization proposals** with structured metadata (`detection_id`, `entity_type`, `score`, `original`, `replacement`, stable anchor into the source segments).
-2. Proposals land in a **server-side review session** keyed by a session id. The input document, its parsed segments, and the staged pseudonym mappings (if the operator is pseudonymize) all live in the session — not in the output file.
-3. The user opens the Sanctum review UI (served by the same localhost API). UI renders each segment in context with detections highlighted. Keyboard-first actions: **Accept / Reject / Edit replacement / Mark missed span**.
-4. User commits the session. `POST /review-sessions/{id}/commit` writes the final document (trailer-free, no Sanctum metadata leakage) and, for pseudonymize, flushes staged mappings into the encrypted `MappingStore`.
-5. `--no-review` escape hatch preserves fire-and-forget behaviour for automation/CI pipelines — bypasses session creation, writes the final file directly, and (for pseudonymize) commits mappings immediately.
+1. `sanctum process-file <input> --operator <default> --review` (default on) parses the document and runs **analysis only**. Detections become **review proposals** carrying `{detection_id, entity_type, score, original, segment_anchor}` — no anonymization has happened yet.
+2. Proposals and parsed segments land in a **server-side review session** keyed by a session id. The session records the CLI's `--operator` as its `default_operator` and snapshots a preview for each proposal under that default (so the first UI render hands back a complete preview set).
+3. The user opens the Sanctum review UI (served by the same localhost API). UI renders each segment in context with detections highlighted and the current preview shown inline. Keyboard-first actions:
+   - **Accept** with the proposal's current operator (session default or a per-detection override).
+   - **Reject** (keep the original text).
+   - **Override operator** → picker → preview rerenders.
+   - **Custom replacement** literal → operator becomes `custom`.
+   - **Mark missed span** → entity-type picker → operator picker (inherits session default).
+4. User commits the session. `POST /review-sessions/{id}/commit` runs the anonymizer *per decision* (the user's chosen operator on each accepted / user-added span), writes the final document trailer-free, and — for pseudonymize decisions — calls `MappingStore.get_or_create` inline (no staged-mappings flush because there's no staged-mappings list).
+5. `--no-review` escape hatch preserves fire-and-forget behaviour for automation/CI pipelines — bypasses session creation and runs the Phase 1 pipeline (analyze + anonymize + write) in one shot, writing mappings directly.
 
-**Pseudonymize is the one operator whose final output includes local persistent state that must only be committed post-human-approval.** Non-persistent operators (`replace`, `redact`, `mask`, `hash`, `encrypt`, `hips`) also run through sessions for review, but their "commit" is just "write the file" — no mapping-store side effect.
+**Pseudonymize is still the one operator whose final output includes local persistent state that must only be committed post-human-approval.** Non-persistent operators (`replace`, `redact`, `mask`, `hash`, `encrypt`, `hips`) also run through sessions for review, but their "commit" is just "apply + write the file" — no mapping-store side effect.
+
+**Preview semantics.** Preview strings live in `ReviewSession.preview_cache` (keyed by proposal id, or equivalent on user-added decisions). They're updated by the API on any PATCH that changes the operator or custom replacement for a decision. The UI never computes previews itself — it reads whatever the server returned. `custom_replacement` on a decision wins over the operator-derived preview.
 
 ### Native-comment export (demoted, still supported)
 
@@ -81,16 +146,19 @@ All Phase 1 guardrails apply — hexagonal purity, air-gap, round-trip fidelity,
 
 Format-agnostic plumbing. Shipped the `ReviewWriter` protocol (`emit_review` method on `StructuredDocumentWriter`), the `ReviewComment` and `StagedMapping` models, per-detection replacements threaded through `AnonymizationResult`, the `commit_review` engine method skeleton, the CLI `--review` flag, and the `/commit-review` API endpoint.
 
-### What stays load-bearing after the reframe
-- Review-domain models (`ReviewComment`, `StagedMapping`) — promoted to the session state schema (see WS2 below). `ReviewComment` is generalized to `ReviewProposal` in WS2 (rename, not a rewrite).
-- Per-detection replacement metadata on `AnonymizationResult` — used unchanged.
-- Trailer serialize / parse helpers (`sanctum/documents/review.py`) — now scoped to the native-comment export path (see WS5); not used on the server-backed review surface.
-- Detection-id hashing — reused unchanged as the stable anchor id.
+### What stays load-bearing after the reframes
+- `ReviewComment` → `ReviewProposal` rename (substep 1 of the new WS2) — still correct, though the field set is now narrower under Flow B.
+- Trailer serialize / parse helpers (`sanctum/documents/review.py`) — scoped to the native-comment export path (see WS5); not used on the server-backed review surface.
+- Detection-id hashing — reused unchanged as the stable proposal id (now lives in `sanctum/core/review/identifiers.py`).
 
 ### What gets re-scoped by later workstreams
 - `commit_review()` engine method — re-shaped in WS4 to consume a session id instead of a reviewed file path. Operator-mismatch and attestation semantics carry over.
 - `/commit-review` API endpoint — folded into `/review-sessions/{id}/commit` in WS2 (keep the old path as a thin alias that 308-redirects through one release cycle if any caller depends on it).
 - CLI `--no-review` / `--review` flags — unchanged.
+
+### What gets dropped under Flow B
+- `StagedMapping` model — dead; pseudonymize writes to `MappingStore` at commit time directly via `get_or_create`.
+- `AnonymizationResult.per_detection_replacements` (cherry-picked during WS2 substep 1.5) — not needed by the Flow B session path, and `--no-review` uses `anonymized_text` directly.
 
 ---
 
@@ -98,39 +166,60 @@ Format-agnostic plumbing. Shipped the `ReviewWriter` protocol (`emit_review` met
 
 The server-side surface that makes reviews first-class. Land this before any UI work.
 
+### Substep list (Flow B)
+
+Each lands as one commit; draft PR #18 opens at substep 1.
+
+1. **Rename + session models (shipped, `e9b989b`).** `ReviewComment` → `ReviewProposal`; introduce `ProposalDecision` / `UserAddedDecision` / `SessionDecision` / `ReviewSession`.
+2. *(reverted — Flow B reframe drops per-detection replacements; see substep 2b below.)*
+3. **`sanctum/core/review/` package (shipped, `6a93eca`).** `identifiers.py`, `session.py` state machine, `proposals.py` (Flow A signature — reworked in substep 2b), `store.py`.
+4. **Flow B model + builder rework (new).** Reshape `ReviewProposal` / `ReviewSession` / `ProposalDecision` / `UserAddedDecision` to the Flow B shape; drop `StagedMapping`; rewrite `build_proposals` to take bare detections; add `sanctum/core/review/previews.py`. Plus the matching test updates and a revert of the per-detection-replacements cherry-pick.
+5. **Engine methods.** `create_review_session` (analyze-only + preview-seed), `commit_review_session` (anonymize per decision at commit time). Deprecate old file-scoped `commit_review`.
+6. **API endpoint family.** Routes for create / get / patch / commit / abandon plus a user-added-decision route. `PATCH` recomputes preview; `GET` returns the preview cache.
+7. **`process-file --review` integration.** Returns `{session_id, review_url}` instead of the anonymized file inline. `--no-review` unchanged.
+
 ### Files
-- `sanctum/core/models.py` — new `ReviewSession` (id, input_path, segments, proposals, decisions, staged_mappings, operator, status: `open|committed|abandoned`, timestamps). Rename `ReviewComment` → `ReviewProposal` for clarity (sessions don't emit comments on the primary path).
-- `sanctum/core/review/` — NEW package for review-domain logic:
-  - `session.py` — `ReviewSession` state transitions, invariants (one-commit, operator consistency, proposal ↔ decision matching).
-  - `proposals.py` — build `ReviewProposal` list from an `AnonymizationResult` + `StructuredDocument` (uses the WS1 per-detection replacements).
-  - `store.py` — local session persistence (`~/.sanctum/sessions/<id>/`, 0600 perms, JSON manifest + raw input bytes).
-- `sanctum/core/engine.py` — `create_review_session(input, operator, ...) -> ReviewSession`; `commit_review_session(session_id) -> Path` (returns the final output path). Old `commit_review(file_path, store)` kept as a thin wrapper for one release cycle; emits a deprecation warning.
-- `sanctum/core/exceptions.py` — `ReviewSessionNotFoundError`, `ReviewSessionAlreadyCommittedError`, `ReviewSessionInvalidDecisionError` (decision references unknown proposal id, etc.). Keep `CommitReviewOperatorMismatchError` from WS1.
+- `sanctum/core/models.py` — Flow B shapes: `ReviewProposal` (pure detection), `ReviewSession` (with `default_operator`, `default_operator_params`, `preview_cache`), `ProposalDecision` (with `operator` / `operator_params` / `custom_replacement`), `UserAddedDecision` (same trio). Remove `StagedMapping`.
+- `sanctum/core/review/` — package already landed for session state + store; substep 4 adds `previews.py` and reshapes `proposals.py`:
+  - `identifiers.py` — stable content-addressed proposal id.
+  - `session.py` — `ReviewSession` state machine (`add_decision` / `commit` / `abandon`).
+  - `proposals.py` — `build_proposals(document, detections_by_segment)` returning bare-detection proposals.
+  - `previews.py` — `compute_preview(proposal, operator, operator_params, custom_replacement, anonymizer, mapping_store=None)` — one-detection preview, never persists.
+  - `store.py` — local session persistence (`~/.sanctum/sessions/<id>/`, 0700 dir / 0600 files, JSON manifest + raw input bytes).
+- `sanctum/core/engine.py` — `create_review_session(input_path, default_operator, default_operator_params, ...) -> ReviewSession`; `commit_review_session(session_id, mapping_store=None) -> Path`. Old `commit_review(file_path, store)` becomes a deprecated shim for one release cycle.
+- `sanctum/core/exceptions.py` — `ReviewSessionNotFoundError`, `ReviewSessionAlreadyCommittedError`, `ReviewSessionInvalidDecisionError` (already landed in substep 3).
 - `sanctum/api/routes/review_sessions.py` — NEW: `POST /review-sessions`, `GET /review-sessions/{id}`, `PATCH /review-sessions/{id}/decisions/{proposal_id}`, `POST /review-sessions/{id}/decisions/user-added`, `DELETE /review-sessions/{id}/decisions/user-added/{id}`, `POST /review-sessions/{id}/commit`, `DELETE /review-sessions/{id}` (abandon).
-- `sanctum/api/routes/process_file.py` — `review=true` default now creates a session and returns `{session_id, review_url}` instead of returning the anonymized file inline. `review=false` preserves Phase 1 inline-response behaviour.
+- `sanctum/api/routes/process_file.py` — `review=true` default now creates a session and returns `{session_id, review_url}` instead of returning the anonymized file inline.
 
 ### Approach
 - **Session id.** UUID4. The on-disk session directory name is the id.
-- **Proposal shape.** `{id, segment_anchor, entity_type, score, original, replacement, operator}`. `segment_anchor` is an opaque structural pointer (adapter-specific: paragraph+run index for docx, sheet+cell for xlsx, etc.) that the UI uses to render the detection inline against the segment text returned in the session payload.
-- **Decision shape.** `{proposal_id, status: accept|reject|edit, edited_replacement?}` for Sanctum-originated proposals; `{kind: user_added, segment_anchor, entity_type, original, replacement}` for reviewer-contributed spans. Decisions overwrite prior decisions on the same proposal (last write wins).
-- **Staged pseudonym mappings.** For pseudonymize sessions, each accepted/edited decision stages a `StagedMapping` in session state. `POST /commit` flushes all staged mappings to the `MappingStore` via `get_or_create` (so cross-document reuse just works) then writes the final file.
-- **Operator guard** — the commit endpoint re-checks the session operator against the store semantics: pseudonymize flushes mappings; everything else just writes the file.
+- **Proposal shape (Flow B).** `{detection_id, entity_type, score, original, segment_anchor}`. `segment_anchor` is an opaque structural pointer (adapter-specific: paragraph+run index for docx, sheet+cell for xlsx, etc.) that the UI uses to render the detection inline against the segment text returned in the session payload. No replacement field — replacement comes from the decision's operator at commit time.
+- **Decision shape.**
+  - Proposal decision: `{kind: "proposal", proposal_id, status: accept|reject, operator?: str, operator_params?: dict, custom_replacement?: str}`. `operator` falls back to `session.default_operator`; `operator_params` falls back to `session.default_operator_params`. `custom_replacement` (if set) shortcuts the operator on that decision — its stored value is what lands in the file verbatim.
+  - User-added: `{kind: "user_added", segment_anchor, entity_type, original, operator?, operator_params?, custom_replacement?}`. Same operator fallback semantics.
+  - Decisions overwrite prior decisions on the same proposal id (last write wins). User-added decisions always append.
+- **Preview cache.** Populated on session create (under session default) and refreshed on any PATCH that changes `operator` / `operator_params` / `custom_replacement`. The anonymizer adapter takes the preview call; pseudonymize's preview consults `MappingStore.get_or_create`-style logic *without* writing (use a read-only peek or a detached seeded Faker).
+- **Pseudonymize at commit.** No staged-mappings intermediate. For each accepted or user-added decision with operator `pseudonymize`, `MappingStore.get_or_create(original, entity_type, factory)` is called inline as the anonymizer runs. Cross-document reuse comes for free.
+- **Operator validation.** The API's `PATCH` rejects unknown operator names (400). Operators not supported for a given entity/context (e.g. `encrypt` missing `key`) surface as 400 at PATCH time, not at commit.
 - **Air-gap.** Session store is local filesystem only. No network calls introduced.
 
 ### Tests
-- `tests/unit/test_core/test_review_session.py` — state transitions, one-commit invariant, decision overwrite semantics, operator-mismatch error.
-- `tests/unit/test_core/test_proposals.py` — proposals build deterministically from a fixed `AnonymizationResult` + `StructuredDocument`; proposal ids stable under re-run.
-- `tests/unit/test_core/test_session_store.py` — directory perms (0600), round-trip serialize/deserialize, abandon cleans up.
-- `tests/integration/test_api_review_sessions.py` — full HTTP flow: create session, list proposals, patch decisions, commit, verify final file matches decisions; verify `--no-review` bypass still works.
+- `tests/unit/test_core/test_review_session.py` — state transitions, one-commit invariant, decision overwrite semantics.
+- `tests/unit/test_core/test_review_proposals.py` — `build_proposals` deterministically builds bare-detection proposals from `(document, detections_by_segment)`; proposal ids stable across calls and distinct across segments.
+- `tests/unit/test_core/test_review_previews.py` — `compute_preview` returns correct replacement for each built-in operator; pseudonymize preview peeks the mapping store without persisting; `custom_replacement` short-circuits the operator.
+- `tests/unit/test_core/test_review_store.py` — directory perms (0700/0600), manifest round-trip, input-bytes persisted once, abandon cleans up.
+- `tests/integration/test_api_review_sessions.py` — full HTTP flow: create session, GET returns proposals + previews, PATCH a decision with operator override, PATCH a decision with custom_replacement, commit, verify final file matches decisions; verify `--no-review` bypass still works.
 
 ### Troubleshooting hotspots
 - **Session store growth.** Input bytes live in the session dir until commit/abandon. Document the retention policy; optional `sanctum sessions prune --older-than 7d` CLI. Don't auto-delete without the user's say-so.
 - **Concurrent decisions.** Two PATCHes to the same proposal — last-write-wins is fine for a single local user but document it. No locking.
+- **Preview for pseudonymize.** A naive preview call could double-mint if it writes to the store; the preview must use a read-only peek or a detached seeded Faker so the same pseudonym reappears on commit.
 - **Attestation.** `POST /commit` requires `attested: true` in the body; reject with 400 otherwise. Mirrors the WS1 contract.
 
 ### Verification
-- `POST /review-sessions` with a fixture `.docx` returns a session id; `GET` returns the proposal list with per-detection replacements.
-- `PATCH` each decision, then `POST /commit` → final file written, trailer-free (`grep sanctum:` → zero hits), pseudonymize store populated.
+- `POST /review-sessions` with a fixture `.docx` returns a session id; `GET` returns the proposal list plus a preview per proposal under the session default operator.
+- `PATCH` a decision with an operator override → response includes the new preview. `PATCH` with `custom_replacement` → response includes the literal.
+- `POST /commit` → final file written, trailer-free (`grep sanctum:` → zero hits), pseudonymize store populated with exactly the accepted pseudonym decisions.
 - `--no-review` on `process-file` still returns the final file inline; session never created.
 
 ---
@@ -173,38 +262,41 @@ The keyboard-first reference client. Deliberately minimal — shipping HITL revi
 
 ---
 
-## Workstream 4 — Pseudonymize commit via session
+## Workstream 4 — Pseudonymize commit via session *(simplified under Flow B)*
 
-Wires the session-commit path to the encrypted `MappingStore` so pseudonymize mappings are persisted only after human approval.
+Under Flow A this was a substantial workstream that managed `staged_mappings`, a pre-review minting pass, and a separate flush step. Under Flow B it shrinks to wiring: the anonymizer already calls `MappingStore.get_or_create` when invoked with operator `pseudonymize`, and commit just invokes the anonymizer per decision.
 
 ### Files
-- `sanctum/core/engine.py` — `commit_review_session()` (introduced in WS2) grows the pseudonymize branch: flush `session.staged_mappings` through `MappingStore.get_or_create` before writing the final file.
-- `sanctum/anonymizer/operators/pseudonymize.py` — review-mode behaviour: in `review=True` paths, generate the pseudonym deterministically and stash it in the `StagedMapping` on the session; do **not** touch `MappingStore` yet.
-- `sanctum/cli/commands.py` — `sanctum commit-review <session-id>` subcommand (session-scoped, not file-scoped). Old file-scoped `commit-review <file>` kept as a thin shim for one release with a deprecation warning.
+- `sanctum/core/engine.py` — `commit_review_session()` already performs per-decision anonymization (introduced in WS2 substep 5). WS4 verifies pseudonymize's path: anonymizer is invoked with `mapping_store` plumbed through, `get_or_create` persists only accepted / user-added pseudonyms.
+- `sanctum/anonymizer/operators/pseudonymize.py` — no review-mode branch needed; it just runs normally at commit.
+- `sanctum/cli/commands.py` — `sanctum commit-review <session-id>` subcommand (session-scoped). Old file-scoped `commit-review <file>` kept as a thin shim for one release with a deprecation warning.
 
 ### Approach
-- **Deterministic pseudonym generation** — Faker seed derived from `(document_hash, entity_type, original)`. Reproducible across re-runs of `process-file` on the same input before commit.
-- **Cross-document reuse.** `MappingStore.get_or_create` guarantees that if `(entity_type, original)` already has a pseudonym from a prior committed session, the new session reuses it on accept. Edits override.
-- **User-added spans in UI.** When the reviewer marks a missed span as `PERSON` (for example), the session records a `user_added` decision; on commit, pseudonymize sessions generate a pseudonym using the same seed family and persist it through the same `get_or_create` path.
-- **Attestation** — required at commit time (WS2 contract). Non-interactive attestation flows (CI, automation) must pass `attested=true` explicitly; log a flagged telemetry event.
+- **Preview must not mint.** `previews.py::compute_preview` for pseudonymize uses either a read-only peek on `MappingStore` or a detached seeded Faker that doesn't touch the store. This is the one non-trivial bit — otherwise previews would leak pseudonyms into persistence.
+- **Deterministic pseudonym generation** — Faker seed derived from `(document_hash, entity_type, original)`. Reproducible across re-runs of `process-file` on the same input before commit, so a preview shown pre-commit is the same value that lands post-commit.
+- **Cross-document reuse.** `MappingStore.get_or_create` guarantees that if `(entity_type, original)` already has a pseudonym from a prior committed session, the new session reuses it. Fires naturally at commit time.
+- **User-added spans.** Reviewer marks a miss as `PERSON` with operator `pseudonymize` → commit runs the anonymizer on that span through the same `get_or_create` path.
+- **Attestation** — required at commit time. Non-interactive attestation flows (CI, automation) must pass `attested=true` explicitly.
 - **Dedupe.** If a user-added span's `(entity_type, original)` duplicates a Sanctum-originated proposal in the same session, the Sanctum proposal wins; warn in the response.
 
 ### Tests
 - `tests/integration/test_pseudonymize_session_commit.py`:
-  1. `POST /review-sessions` with pseudonymize on a fixture — store unchanged on disk.
-  2. PATCH decisions (accept / reject / edit / user-added).
-  3. `POST /commit` — store populated with accepted + edited + user-added; rejected decisions absent; final file trailer-free.
-  4. Second session on a second fixture sharing entities — reuses existing pseudonyms from the store.
-  5. `grep sanctum:` on the final output → zero matches.
-- `tests/unit/test_anonymizer/test_pseudonymize_review_mode.py` — review-mode staging never touches `MappingStore`.
+  1. `POST /review-sessions` with pseudonymize as session default on a fixture — store unchanged on disk.
+  2. `GET` returns previews with plausible pseudonyms.
+  3. PATCH decisions (accept with default operator, reject, accept with per-entity override to non-pseudonymize, user-added pseudonymize).
+  4. `POST /commit` — store populated with *only* the accepted+user-added pseudonymize entries; rejected and non-pseudonymize decisions contribute nothing; final file trailer-free.
+  5. Second session on a second fixture sharing entities — reuses existing pseudonyms from the store; preview matches the committed value.
+  6. `grep sanctum:` on the final output → zero matches.
+- `tests/unit/test_core/test_review_previews.py` (from WS2) already covers the "preview must not mint" invariant.
 
 ### Troubleshooting hotspots
 - **Double-commit.** `POST /commit` on an already-committed session returns 409.
-- **Session abandoned after staging.** Abandon must delete the session dir and leave `MappingStore` untouched. Integration test for this.
+- **Session abandoned before commit.** Abandon must delete the session dir and leave `MappingStore` untouched. Integration test for this.
 - **Clock skew on session timestamps** — use UTC consistently; document the field.
+- **Preview / commit divergence.** A bug that makes preview and commit produce different pseudonyms would be silently wrong; the seed path must be identical in both call sites.
 
 ### Verification
-- Full session flow on pseudonymize: `process-file --operator pseudonymize --store /tmp/map.sanctum --review` → session URL → UI actions → commit → store populated, file trailer-free.
+- Full session flow on pseudonymize: `process-file --operator pseudonymize --store /tmp/map.sanctum --review` → session URL → UI actions → commit → store populated, file trailer-free, committed pseudonyms match the previewed ones.
 - `sanctum mapping reverse <pseudonym>` retrieves the original after commit.
 - Abandoning a session before commit leaves `MappingStore` untouched.
 
@@ -240,10 +332,11 @@ Repurposes the DOCX comment emit/read work (partial in PR #14) as a **one-way ex
 
 ## Critical Files Being Modified (summary)
 
-- `sanctum/core/models.py` — add `ReviewSession`, `ReviewProposal` (rename from `ReviewComment`), keep `StagedMapping` (WS2).
-- `sanctum/core/review/` — NEW package: `session.py`, `proposals.py`, `store.py` (WS2).
-- `sanctum/core/engine.py` — `create_review_session`, `commit_review_session` (WS2, WS4); keep/wrap `commit_review` one release.
+- `sanctum/core/models.py` — `ReviewProposal` (pure detection), `ReviewSession` (with `default_operator`, `default_operator_params`, `preview_cache`), `ProposalDecision` / `UserAddedDecision` (with `operator` / `operator_params` / `custom_replacement`). **Remove** `StagedMapping` (WS2 Flow B rework).
+- `sanctum/core/review/` — NEW package: `identifiers.py`, `session.py`, `proposals.py`, `previews.py`, `store.py` (WS2).
+- `sanctum/core/engine.py` — `create_review_session`, `commit_review_session` (WS2 substep 5 + WS4); keep/wrap `commit_review` one release.
 - `sanctum/core/exceptions.py` — new session errors (WS2).
+- `sanctum/anonymizer/adapter.py` — **revert** the per-detection-replacements field (cherry-pick from closed WS2 branch), no longer needed under Flow B.
 - `sanctum/api/routes/review_sessions.py` — NEW endpoint family (WS2); export route (WS5).
 - `sanctum/api/routes/process_file.py` — review-on default returns session id + URL (WS2).
 - `sanctum/api/routes/review_ui.py` + `sanctum/api/static/review/` — reference UI (WS3).
