@@ -354,6 +354,36 @@ def test_abandon_cleans_up_session(server: tuple[str, str]) -> None:
     assert status == 404
 
 
+def test_process_file_review_true_creates_session_and_is_retrievable(
+    server: tuple[str, str],
+) -> None:
+    """/process-file with review=true is the CLI/API shortcut: one POST to
+    stage a session, then the standard /review-sessions flow takes over.
+
+    Proves (a) the handoff shape — {session_id, review_url} — is what the
+    WS3 UI will hang off of, and (b) the session id the route returned
+    actually resolves via GET /review-sessions/{id}. Without (b) the
+    shortcut would be a dead pointer.
+    """
+    base, token = server
+    status, body = _request(
+        "POST",
+        f"{base}/process-file",
+        token=token,
+        body={"input_path": str(_FIXTURE), "review": True, "operator": "replace"},
+    )
+    assert status == 201, body
+    session_id = body["session_id"]
+    assert session_id
+    assert body["review_url"].endswith(f"/review/{session_id}")
+
+    status, session = _request("GET", f"{base}/review-sessions/{session_id}", token=token)
+    assert status == 200, session
+    assert session["id"] == session_id
+    assert session["default_operator"] == "replace"
+    assert len(session["proposals"]) > 0
+
+
 def test_user_added_decision_round_trip(server: tuple[str, str]) -> None:
     """Add a user-added span against a real segment, then delete it."""
     base, token = server

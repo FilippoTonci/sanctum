@@ -256,7 +256,11 @@ def anonymize(
 
 @cli.command("process-file")
 @click.argument("input_path", type=click.Path(exists=True, dir_okay=False, path_type=Path))
-@click.argument("output_path", type=click.Path(dir_okay=False, path_type=Path))
+@click.argument(
+    "output_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    required=False,
+)
 @click.option(
     "--language",
     "-l",
@@ -303,15 +307,15 @@ def anonymize(
     default=False,
     show_default=True,
     help=(
-        "Emit the output as a review file with native comments documenting each "
-        "change. Review support lands per-format across Phase 1.5 WS2-5; until "
-        "then --review raises a clear 'not yet supported' error. The default "
-        "flips to --review in WS6."
+        "Create a human-review session instead of writing the file inline. "
+        "Under --review, OUTPUT_PATH is omitted and the final file is "
+        "produced later by POST /review-sessions/{id}/commit. --no-review "
+        "preserves the Phase 1 fire-and-forget pipeline for CI/automation."
     ),
 )
 def process_file(
     input_path: Path,
-    output_path: Path,
+    output_path: Path | None,
     language: str,
     threshold: float,
     entities: str | None,
@@ -320,11 +324,35 @@ def process_file(
     passphrase: str | None,
     review: bool,
 ) -> None:
-    """Anonymize a structured office document (.docx/.xlsx/.pdf/.pptx)."""
+    """Anonymize a structured office document (.docx/.xlsx/.pdf/.pptx).
+
+    OUTPUT_PATH is required under --no-review (the default); under --review
+    it must be omitted — the final file is produced by the commit step on
+    the /review-sessions endpoint.
+    """
+    if review and output_path is not None:
+        raise click.UsageError("OUTPUT_PATH must be omitted when --review is set.")
+    if not review and output_path is None:
+        raise click.UsageError("OUTPUT_PATH is required unless --review is set.")
+
     try:
-        reader, writer = adapter_for(input_path)
         engine = _create_engine()
         entity_list = [e.strip() for e in entities.split(",")] if entities else None
+
+        if review:
+            _process_file_review(
+                engine=engine,
+                input_path=input_path,
+                default_operator=operator or settings.anonymizer.default_operator,
+                operator_params=None,
+                language=language,
+                threshold=threshold,
+                entities=entity_list,
+            )
+            return
+
+        reader, writer = adapter_for(input_path)
+        assert output_path is not None  # guard above
 
         if operator == "pseudonymize":
             with _mapping_store(store_path, passphrase) as store:
@@ -337,7 +365,6 @@ def process_file(
                     score_threshold=threshold,
                     entities=entity_list,
                     operator_policies=_pseudonymize_policies(store, language),
-                    review=review,
                 )
         else:
             # Mirror the `anonymize` command: when `--operator` is set,
@@ -353,7 +380,6 @@ def process_file(
                 score_threshold=threshold,
                 entities=entity_list,
                 operator_policies=policies,
-                review=review,
             )
 
         total = sum(len(r.detections) for r in results)
@@ -361,16 +387,48 @@ def process_file(
             f"[green]Wrote anonymized document to {output_path}[/green] "
             f"({len(results)} segments changed, {total} entities replaced)."
         )
-    except NotImplementedError as e:
-        # The engine raises NotImplementedError when review=True is used
-        # against an adapter that hasn't wired emit_review yet. Treat it as
-        # a user-facing error (not a crash) so the Phase 1.5 rollout window
-        # gives a clean message instead of a traceback.
-        console.print(f"[yellow]Not yet supported: {e}[/yellow]")
-        raise SystemExit(2) from e
     except SanctumError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise SystemExit(1) from e
+
+
+def _process_file_review(
+    *,
+    engine: SanctumEngine,
+    input_path: Path,
+    default_operator: str,
+    operator_params: dict[str, object] | None,
+    language: str,
+    threshold: float,
+    entities: list[str] | None,
+) -> None:
+    """Build a review session for INPUT_PATH and tell the user how to open it.
+
+    The CLI writes directly to the default ``SessionStore`` (under
+    ``~/.sanctum/sessions/``) — the same store the API server reads, so a
+    session created here is immediately discoverable by ``sanctum serve``.
+    We don't know what port the user will run ``serve`` on, so the URL is
+    printed as a template; WS3 will render the concrete URL through the
+    API response instead.
+    """
+    from sanctum.core.review.store import SessionStore
+
+    reader, _writer = adapter_for(input_path)
+    session = engine.create_review_session(
+        reader=reader,
+        input_path=input_path,
+        default_operator=default_operator,
+        session_store=SessionStore(),
+        default_operator_params=operator_params,
+        language=language,
+        entities=entities,
+        score_threshold=threshold,
+    )
+    console.print(f"[green]Created review session[/green] {session.id}")
+    console.print(
+        f"[dim]Start the API (`sanctum serve --port <port>`) and open "
+        f"http://127.0.0.1:<port>/review/{session.id} to review.[/dim]"
+    )
 
 
 @cli.command("commit-review")

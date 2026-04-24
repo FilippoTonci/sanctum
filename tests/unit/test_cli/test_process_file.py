@@ -118,28 +118,11 @@ def test_process_file_forwards_entities_flag(runner: CliRunner, tmp_path: Path) 
     assert call.kwargs["score_threshold"] == 0.7
 
 
-def test_process_file_forwards_review_flag(runner: CliRunner, tmp_path: Path) -> None:
-    """--review must propagate to engine.process_document(review=True)."""
-    src = tmp_path / "in.docx"
-    src.write_bytes(b"x")
-    out = tmp_path / "out.docx"
-
-    fake_reader, fake_writer = Mock(), Mock()
-    with (
-        patch("sanctum.cli.commands.adapter_for", return_value=(fake_reader, fake_writer)),
-        patch("sanctum.cli.commands._create_engine") as mock_engine,
-    ):
-        mock_engine.return_value.process_document.return_value = []
-        result = runner.invoke(cli, ["process-file", str(src), str(out), "--review"])
-
-    assert result.exit_code == 0, result.output
-    call = mock_engine.return_value.process_document.call_args
-    assert call.kwargs["review"] is True
-
-
-def test_process_file_default_is_no_review(runner: CliRunner, tmp_path: Path) -> None:
-    """WS1 keeps default review=False to avoid breaking adapters that
-    don't yet implement emit_review; WS6 flips this."""
+def test_process_file_default_goes_through_process_document(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    """No --review → fire-and-forget path: process_document is called,
+    create_review_session is not."""
     src = tmp_path / "in.docx"
     src.write_bytes(b"x")
     out = tmp_path / "out.docx"
@@ -152,27 +135,76 @@ def test_process_file_default_is_no_review(runner: CliRunner, tmp_path: Path) ->
         mock_engine.return_value.process_document.return_value = []
         runner.invoke(cli, ["process-file", str(src), str(out)])
 
-    call = mock_engine.return_value.process_document.call_args
-    assert call.kwargs["review"] is False
+    assert mock_engine.return_value.process_document.called
+    assert not mock_engine.return_value.create_review_session.called
 
 
-def test_process_file_review_not_yet_supported_exits_2(runner: CliRunner, tmp_path: Path) -> None:
-    """When engine raises NotImplementedError (WS1 adapters don't support
-    review), CLI should exit 2 with a user-facing 'not yet supported'
-    message rather than a traceback."""
+def test_process_file_review_creates_session_and_prints_id(
+    runner: CliRunner, tmp_path: Path
+) -> None:
+    """--review → engine.create_review_session is called; no output_path is
+    passed; the CLI prints the session id and a URL hint."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+
+    fake_reader = Mock()
+    fake_session = Mock()
+    fake_session.id = "session-abc-123"
+
+    with (
+        patch("sanctum.cli.commands.adapter_for", return_value=(fake_reader, Mock())),
+        patch("sanctum.cli.commands._create_engine") as mock_engine,
+    ):
+        mock_engine.return_value.create_review_session.return_value = fake_session
+        result = runner.invoke(cli, ["process-file", str(src), "--review"])
+
+    assert result.exit_code == 0, result.output
+    assert "session-abc-123" in result.output
+    # URL template points back at the loopback API — concrete port is the
+    # user's `sanctum serve` choice, so we keep it as <port> in copy.
+    assert "/review/session-abc-123" in result.output
+    # Engine got the CLI's operator fallback (hips today).
+    call = mock_engine.return_value.create_review_session.call_args
+    assert call.kwargs["default_operator"] == "hips"
+    assert not mock_engine.return_value.process_document.called
+
+
+def test_process_file_review_respects_explicit_operator(runner: CliRunner, tmp_path: Path) -> None:
+    """--operator overrides the configured default for the session."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+
+    fake_session = Mock()
+    fake_session.id = "s1"
+    with (
+        patch("sanctum.cli.commands.adapter_for", return_value=(Mock(), Mock())),
+        patch("sanctum.cli.commands._create_engine") as mock_engine,
+    ):
+        mock_engine.return_value.create_review_session.return_value = fake_session
+        result = runner.invoke(cli, ["process-file", str(src), "--review", "--operator", "replace"])
+
+    assert result.exit_code == 0, result.output
+    call = mock_engine.return_value.create_review_session.call_args
+    assert call.kwargs["default_operator"] == "replace"
+
+
+def test_process_file_review_rejects_output_path(runner: CliRunner, tmp_path: Path) -> None:
+    """OUTPUT_PATH under --review is nonsensical (no file is produced until
+    commit); the CLI should raise UsageError, not silently ignore it."""
     src = tmp_path / "in.docx"
     src.write_bytes(b"x")
     out = tmp_path / "out.docx"
 
-    fake_reader, fake_writer = Mock(), Mock()
-    with (
-        patch("sanctum.cli.commands.adapter_for", return_value=(fake_reader, fake_writer)),
-        patch("sanctum.cli.commands._create_engine") as mock_engine,
-    ):
-        mock_engine.return_value.process_document.side_effect = NotImplementedError(
-            "adapter does not yet implement emit_review"
-        )
-        result = runner.invoke(cli, ["process-file", str(src), str(out), "--review"])
+    result = runner.invoke(cli, ["process-file", str(src), str(out), "--review"])
+    assert result.exit_code != 0
+    assert "OUTPUT_PATH must be omitted" in result.output
 
-    assert result.exit_code == 2, result.output
-    assert "Not yet supported" in result.output
+
+def test_process_file_no_review_requires_output_path(runner: CliRunner, tmp_path: Path) -> None:
+    """Fire-and-forget mode has nowhere to write without OUTPUT_PATH."""
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+
+    result = runner.invoke(cli, ["process-file", str(src)])
+    assert result.exit_code != 0
+    assert "OUTPUT_PATH is required" in result.output

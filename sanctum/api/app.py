@@ -78,6 +78,12 @@ def create_app(
     app = Flask("sanctum.api")
     app.config["SANCTUM_API_TOKEN"] = token
     app.config["SANCTUM_ALLOWED_HOSTS"] = _build_allowed_hosts(host, port)
+    # Kept alongside ALLOWED_HOSTS so routes can render absolute URLs that
+    # point back at this server — e.g. /process-file --review builds a
+    # review_url template using these. The host/port pair is already the
+    # source of truth for the bind address; no reason to recompute it.
+    app.config["SANCTUM_HOST"] = host
+    app.config["SANCTUM_PORT"] = port
     app.config["SANCTUM_ENGINE"] = engine
     app.config["SANCTUM_MAPPING_STORE"] = None
     app.config["SANCTUM_MAPPING_STORE_FACTORY"] = (

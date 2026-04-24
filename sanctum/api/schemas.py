@@ -136,14 +136,18 @@ class ProcessFileRequest(_StrictRequest):
     writing to a network share — that would defeat the airgap by smuggling
     data across the network mount.
 
-    ``review`` defaults to False during Phase 1.5 WS1-5: the CLI flips its
-    user-facing default in WS6 once every adapter implements emit_review.
-    Clients that want review emission must opt in explicitly; until the
-    relevant adapter lands, the route returns 501.
+    ``review`` opts into the Flow B review session surface: when True the
+    route does not write the anonymized file inline — it creates a review
+    session and returns ``ProcessFileReviewResponse`` (session id + URL
+    for the WS3 UI). When False, the route anonymizes and writes in one
+    shot, returning ``ProcessFileResponse``. ``output_path`` is required
+    when ``review=false`` and forbidden when ``review=true`` — the final
+    file is produced later at ``POST /review-sessions/{id}/commit`` with
+    its own output_path.
     """
 
     input_path: str
-    output_path: str
+    output_path: str | None = None
     language: str = "en"
     entities: list[str] | None = None
     score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
@@ -159,6 +163,14 @@ class ProcessFileRequest(_StrictRequest):
             raise ValueError("operator_params requires operator to be set")
         return self
 
+    @model_validator(mode="after")
+    def _output_path_matches_mode(self) -> ProcessFileRequest:
+        if self.review and self.output_path is not None:
+            raise ValueError("output_path must be omitted when review=true")
+        if not self.review and self.output_path is None:
+            raise ValueError("output_path is required when review=false")
+        return self
+
 
 class ProcessFileResponse(_Frozen):
     """Body for `POST /process-file` — summary of what the engine did."""
@@ -166,6 +178,21 @@ class ProcessFileResponse(_Frozen):
     output_path: str
     segments_changed: int
     entities_replaced: int
+
+
+class ProcessFileReviewResponse(_Frozen):
+    """Body for `POST /process-file` when ``review=true`` — Flow B handoff.
+
+    The route created a review session instead of writing the file inline.
+    Clients use ``session_id`` to drive the ``/review-sessions`` endpoints
+    (PATCH decisions, commit, etc.) and ``review_url`` to open the WS3
+    reference UI. ``review_url`` is a template pointing at the server's
+    bound host/port — if WS3 hasn't shipped yet the path 404s, but the
+    ``session_id`` is fully usable against the API today.
+    """
+
+    session_id: str
+    review_url: str
 
 
 class CommitReviewRequest(_StrictRequest):
