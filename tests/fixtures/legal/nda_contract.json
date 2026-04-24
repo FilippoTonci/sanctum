@@ -15,8 +15,8 @@
       "entity_type": "PERSON",
       "start": 163,
       "end": 175,
-      "text": "Allison Hill",
-      "context": " between:\n\nParty A: Allison Hill, acting on behalf o"
+      "text": "Rachel Moore",
+      "context": " between:\n\nParty A: Rachel Moore, acting on behalf o"
     },
     {
       "entity_type": "ORGANIZATION",
@@ -78,8 +78,8 @@
       "entity_type": "PERSON",
       "start": 2111,
       "end": 2123,
-      "text": "Allison Hill",
-      "context": "___________________\nAllison Hill\nAuthorized Represen"
+      "text": "Rachel Moore",
+      "context": "___________________\nRachel Moore\nAuthorized Represen"
     },
     {
       "entity_type": "ORGANIZATION",

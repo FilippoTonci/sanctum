@@ -47,7 +47,7 @@ def test_docx_end_to_end_removes_named_person(engine: SanctumEngine, tmp_path: P
 
     rewritten = Document(str(dst))
     full_text = "\n".join(p.text for p in rewritten.paragraphs)
-    assert "Allison Hill" not in full_text  # a known PERSON from the fixture inventory
+    assert "Rachel Moore" not in full_text  # a known PERSON from the fixture inventory
 
 
 def test_xlsx_end_to_end_removes_person(engine: SanctumEngine, tmp_path: Path) -> None:
