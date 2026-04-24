@@ -106,6 +106,69 @@ def test_serve_with_port_zero_resolves_to_real_port(runner: CliRunner, tmp_path:
     assert f"port={kwargs['port']}" in ready_line
 
 
+def test_serve_reads_token_from_stdin(runner: CliRunner):
+    """`--token-stdin` must consume one line from stdin as the bearer
+    token and never create/touch `~/.sanctum/api-token`."""
+    with (
+        patch("sanctum.cli.commands._create_engine"),
+        patch("sanctum.api.server.create_server"),
+        patch("sanctum.api.app.create_app") as mock_create_app,
+    ):
+        result = runner.invoke(
+            cli,
+            ["serve", "--port", "9200", "--token-stdin"],
+            input="supplied-via-stdin\n",
+        )
+
+    assert result.exit_code == 0, result.output
+    # The token the app was built with is what stdin fed in.
+    _, kwargs = mock_create_app.call_args
+    assert kwargs["token"] == "supplied-via-stdin"
+    # Ready line uses the stdin marker, not a path.
+    ready = next(line for line in result.output.splitlines() if line.startswith("SANCTUM_READY"))
+    assert "token_source=stdin" in ready
+    assert "token_path=" not in ready
+
+
+def test_serve_token_stdin_rejects_empty_input(runner: CliRunner):
+    """An empty stdin under `--token-stdin` is a hard error, not a
+    silent token of `""`."""
+    with (
+        patch("sanctum.cli.commands._create_engine"),
+        patch("sanctum.api.server.create_server"),
+    ):
+        result = runner.invoke(
+            cli,
+            ["serve", "--token-stdin"],
+            input="",
+        )
+
+    assert result.exit_code != 0
+    assert "empty" in result.output.lower() or "empty" in str(result.exception).lower()
+
+
+def test_serve_token_stdin_and_token_path_are_mutually_exclusive(runner: CliRunner, tmp_path: Path):
+    """Specifying both is ambiguous; refuse early."""
+    with (
+        patch("sanctum.cli.commands._create_engine"),
+        patch("sanctum.api.server.create_server"),
+    ):
+        result = runner.invoke(
+            cli,
+            [
+                "serve",
+                "--token-stdin",
+                "--token-path",
+                str(tmp_path / "tok"),
+            ],
+            input="whatever\n",
+        )
+
+    assert result.exit_code != 0
+    combined = (result.output + (str(result.exception) if result.exception else "")).lower()
+    assert "mutually exclusive" in combined
+
+
 def test_serve_reuses_existing_token(runner: CliRunner, tmp_path: Path):
     """Re-running `sanctum serve` should not rotate the token."""
     from sanctum.api.auth import write_token

@@ -64,6 +64,15 @@ the break.
   clean for subprocess parsers — chiefly the Electron sidecar
   lifecycle in the Phase 3 desktop app. (Phase 3 WS1 substep 3.)
 
+- `sanctum serve --token-stdin`: read the bearer token from stdin
+  (one line, stripped) instead of generating/reading
+  `~/.sanctum/api-token`. Stdin is closed after the read so a crashed
+  parent can't re-leak the token on pipe resume. Mutually exclusive
+  with `--token-path`. Under this mode the ready line reports
+  `token_source=stdin` instead of a `token_path=`. Used by the Phase 3
+  Electron sidecar lifecycle to keep the token off disk and out of
+  process lists. (Phase 3 WS1 substep 4.)
+
 ### Changed
 
 - `sanctum.api.server.run()` now accepts an `on_ready` callback that

@@ -588,13 +588,23 @@ def mapping_rotate(store_path: Path, old_passphrase: str, new_passphrase: str) -
     help="Override the default ~/.sanctum/api-token location.",
 )
 @click.option(
+    "--token-stdin",
+    is_flag=True,
+    default=False,
+    help=(
+        "Read the bearer token from stdin (one line). Mutually exclusive "
+        "with --token-path. Used by the Phase 3 Electron sidecar so the "
+        "token never touches disk or shows up in process lists."
+    ),
+)
+@click.option(
     "--threads",
     default=4,
     show_default=True,
     type=int,
     help="Waitress worker-thread count.",
 )
-def serve(host: str, port: int, token_path: Path | None, threads: int) -> None:
+def serve(host: str, port: int, token_path: Path | None, token_stdin: bool, threads: int) -> None:
     """Start the localhost API server.
 
     Emits a single machine-readable line on **stdout** once the listener
@@ -602,9 +612,14 @@ def serve(host: str, port: int, token_path: Path | None, threads: int) -> None:
 
         SANCTUM_READY host=<host> port=<port> token_path=<path>
 
+    or, with ``--token-stdin`` (token supplied by the subprocess parent,
+    never touches disk):
+
+        SANCTUM_READY host=<host> port=<port> token_source=stdin
+
     Subprocess parents (notably the Phase 3 Electron sidecar lifecycle)
     read this line to discover the allocated port — especially when
-    `--port 0` was passed. Human-readable status lines go to stderr so
+    ``--port 0`` was passed. Human-readable status lines go to stderr so
     stdout stays clean for the parser.
     """
     import signal
@@ -617,6 +632,9 @@ def serve(host: str, port: int, token_path: Path | None, threads: int) -> None:
 
     assert_loopback(host)
 
+    if token_stdin and token_path is not None:
+        raise click.UsageError("--token-stdin and --token-path are mutually exclusive")
+
     # Resolve `--port 0` before building the app — the Host/Origin
     # allowlist is keyed on host:port, so the Flask config needs the
     # concrete number. Race window between close here and waitress's
@@ -624,8 +642,24 @@ def serve(host: str, port: int, token_path: Path | None, threads: int) -> None:
     if port == 0:
         port = pick_free_port(host)
 
-    path = token_path or DEFAULT_TOKEN_PATH
-    token = ensure_token(path)
+    if token_stdin:
+        import contextlib
+
+        # One line, stripped. Closing stdin after the read means a
+        # crashed Electron main can't accidentally re-leak the token
+        # via a resumed pipe. CliRunner's patched stdin may refuse
+        # close(); that's benign, suppress.
+        raw = sys.stdin.readline()
+        with contextlib.suppress(OSError):
+            sys.stdin.close()
+        token = raw.strip()
+        if not token:
+            raise click.UsageError("--token-stdin was set but stdin was empty")
+        path: Path | None = None
+    else:
+        path = token_path or DEFAULT_TOKEN_PATH
+        token = ensure_token(path)
+
     engine = _create_engine()
     app = create_app(token=token, host=host, port=port, engine=engine)
 
@@ -633,15 +667,21 @@ def serve(host: str, port: int, token_path: Path | None, threads: int) -> None:
 
     def _emit_ready(h: str, p: int) -> None:
         # Machine-readable first (stdout), before any other output — the
-        # subprocess parent may `readline()` once and proceed.
-        sys.stdout.write(f"SANCTUM_READY host={h} port={p} token_path={path}\n")
+        # subprocess parent may `readline()` once and proceed. With
+        # --token-stdin the parent already has the token, so we report
+        # `token_source=stdin` instead of a `token_path` it can't use.
+        token_field = "token_source=stdin" if token_stdin else f"token_path={path}"
+        sys.stdout.write(f"SANCTUM_READY host={h} port={p} {token_field}\n")
         sys.stdout.flush()
         stderr.print(f"[green]Sanctum API listening on[/green] http://{h}:{p}")
-        stderr.print(f"[dim]Bearer token stored at {path} (0600)[/dim]")
-        stderr.print(
-            "[dim]Clients: "
-            f'curl -H "Authorization: Bearer $(cat {path})" http://{h}:{p}/health[/dim]'
-        )
+        if token_stdin:
+            stderr.print("[dim]Bearer token supplied via stdin (not written to disk).[/dim]")
+        else:
+            stderr.print(f"[dim]Bearer token stored at {path} (0600)[/dim]")
+            stderr.print(
+                "[dim]Clients: "
+                f'curl -H "Authorization: Bearer $(cat {path})" http://{h}:{p}/health[/dim]'
+            )
 
     # Route SIGTERM through the default interrupt handler so waitress's
     # blocking serve loop exits cleanly on `systemctl stop` / `docker stop`,
