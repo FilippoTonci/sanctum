@@ -80,6 +80,12 @@ class PseudonymizeOperator(Operator):
         generator = self._ENTITY_GENERATORS.get(entity_type)
 
         def factory() -> str:
+            # Seed per call so preview (through a non-persisting façade)
+            # and commit (through the real store) mint the *same*
+            # pseudonym on first encounter — without this, Faker's
+            # shared PRNG state drifts between the two code paths and
+            # preview/commit divergence leaks into the final file.
+            fake.seed_instance(f"{entity_type}\x00{text}")
             if generator:
                 return str(getattr(fake, generator)())
             return str(fake.bothify("????-####"))

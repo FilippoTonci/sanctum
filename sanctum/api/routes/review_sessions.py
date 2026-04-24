@@ -55,6 +55,8 @@ from sanctum.core.models import (
     ReviewSession,
     UserAddedDecision,
 )
+from sanctum.core.protocols import MappingStore
+from sanctum.core.review.preview_store import PreviewMappingStore
 from sanctum.core.review.previews import compute_preview
 from sanctum.core.review.session import abandon as abandon_session
 from sanctum.core.review.session import add_decision
@@ -111,6 +113,82 @@ def _require_open(session: ReviewSession) -> tuple[dict, int] | None:
     return None
 
 
+def _session_uses_pseudonymize(session: ReviewSession) -> bool:
+    """True iff any decision that will actually be anonymized resolves to pseudonymize.
+
+    Only accepted proposal decisions and user-added decisions run
+    through the anonymizer at commit; rejected proposals and
+    undecided ones are left alone, so they can't drag a store
+    requirement in.
+    """
+    for d in session.decisions:
+        if isinstance(d, ProposalDecision):
+            if d.status != "accept":
+                continue
+            effective = d.operator or session.default_operator
+        else:
+            effective = d.operator or session.default_operator
+        if effective == "pseudonymize":
+            return True
+    return False
+
+
+def _unlocked_store_for_commit(
+    session: ReviewSession,
+) -> MappingStore | None | tuple[dict, int]:
+    """Return the unlocked store, ``None`` if not needed, or an error tuple.
+
+    Commit only needs a store when at least one accepted / user-added
+    decision resolves to ``pseudonymize``. For other operator mixes
+    the absence of a store is fine — the returned ``None`` never
+    reaches the anonymizer.
+    """
+    needs_store = _session_uses_pseudonymize(session)
+    raw = current_app.config.get("SANCTUM_MAPPING_STORE")
+    if not needs_store:
+        return None
+    if raw is None:
+        return (
+            {
+                "error": (
+                    "commit requires a mapping store for pseudonymize decisions; "
+                    "none has been unlocked this session. Call /mapping/unlock first."
+                )
+            },
+            400,
+        )
+    if not getattr(raw, "is_unlocked", False):
+        return (
+            {
+                "error": (
+                    "the mapping store is currently locked; unlock it via "
+                    "/mapping/unlock before committing a pseudonymize session"
+                )
+            },
+            409,
+        )
+    # ``raw`` came out of an untyped Flask config slot; the isinstance
+    # guard above confirms the MappingStore surface, so cast-narrow to
+    # satisfy mypy without loosening the upstream type.
+    assert isinstance(raw, MappingStore)
+    return raw
+
+
+def _preview_store() -> PreviewMappingStore | None:
+    """Wrap the app's unlocked ``MappingStore`` in a non-persisting façade.
+
+    Returns ``None`` when no store is unlocked — pseudonymize previews
+    raise in that case, and the caller renders the preview slot with an
+    error sentinel rather than crashing the whole GET.
+    """
+    raw = current_app.config.get("SANCTUM_MAPPING_STORE")
+    if raw is None:
+        return None
+    if not getattr(raw, "is_unlocked", False):
+        return None
+    return PreviewMappingStore(raw)
+
+
 def _compute_previews(session: ReviewSession, engine: SanctumEngine) -> dict[str, str]:
     """Render the full preview set for a session.
 
@@ -121,6 +199,13 @@ def _compute_previews(session: ReviewSession, engine: SanctumEngine) -> dict[str
       so the UI's ghost-text reads "this stays unchanged".
     - User-added decisions → preview under their own operator / params
       / custom (same fallback chain).
+
+    Pseudonymize previews consult the unlocked mapping store through a
+    ``PreviewMappingStore`` wrapper: existing mappings are reused, new
+    ones are minted but *not* persisted, so the reviewer sees the same
+    pseudonym commit would produce without leaking mappings into the
+    encrypted file. If no store is unlocked, pseudonymize previews
+    render as a sentinel so the route stays a 200.
     """
     previews: dict[str, str] = {}
     # Build a proposal-id → decision map for quick lookup.
@@ -133,22 +218,40 @@ def _compute_previews(session: ReviewSession, engine: SanctumEngine) -> dict[str
             user_added.append(d)
 
     anonymizer = engine._anonymizer
+    preview_store = _preview_store()
+
+    def _safe_preview(
+        *,
+        proposal: ReviewProposal,
+        operator: str,
+        operator_params: dict[str, Any] | None,
+        custom_replacement: str | None,
+    ) -> str:
+        if operator == "pseudonymize" and preview_store is None:
+            return "<pseudonymize preview unavailable — unlock the mapping store>"
+        return compute_preview(
+            proposal=proposal,
+            operator=operator,
+            operator_params=operator_params,
+            custom_replacement=custom_replacement,
+            anonymizer=anonymizer,
+            mapping_store=preview_store,
+        )
 
     for proposal in session.proposals:
         decision = proposal_decisions.get(proposal.detection_id)
         if decision is None:
-            previews[proposal.detection_id] = compute_preview(
+            previews[proposal.detection_id] = _safe_preview(
                 proposal=proposal,
                 operator=session.default_operator,
                 operator_params=session.default_operator_params,
                 custom_replacement=None,
-                anonymizer=anonymizer,
             )
             continue
         if decision.status == "reject":
             previews[proposal.detection_id] = proposal.original
             continue
-        previews[proposal.detection_id] = compute_preview(
+        previews[proposal.detection_id] = _safe_preview(
             proposal=proposal,
             operator=decision.operator or session.default_operator,
             operator_params=(
@@ -157,7 +260,6 @@ def _compute_previews(session: ReviewSession, engine: SanctumEngine) -> dict[str
                 else session.default_operator_params
             ),
             custom_replacement=decision.custom_replacement,
-            anonymizer=anonymizer,
         )
 
     for ua in user_added:
@@ -167,7 +269,7 @@ def _compute_previews(session: ReviewSession, engine: SanctumEngine) -> dict[str
             score=1.0,
             original=ua.original,
         )
-        previews[ua.id] = compute_preview(
+        previews[ua.id] = _safe_preview(
             proposal=shim,
             operator=ua.operator or session.default_operator,
             operator_params=(
@@ -176,7 +278,6 @@ def _compute_previews(session: ReviewSession, engine: SanctumEngine) -> dict[str
                 else session.default_operator_params
             ),
             custom_replacement=ua.custom_replacement,
-            anonymizer=anonymizer,
         )
 
     return previews
@@ -436,6 +537,15 @@ def commit_session(session_id: str) -> tuple[dict, int]:
     except UnsupportedDocumentFormatError as exc:
         return {"error": str(exc)}, 415
 
+    # Resolve the unlocked mapping store once so both the session-default
+    # path *and* any per-decision override that asked for pseudonymize
+    # see the same persisted minter. ``None`` is fine for non-
+    # pseudonymize sessions; the anonymizer only reaches for it when a
+    # pseudonymize decision is actually being applied.
+    mapping_store = _unlocked_store_for_commit(session)
+    if isinstance(mapping_store, tuple):
+        return mapping_store
+
     committed_at = datetime.now(timezone.utc)
     try:
         engine.commit_review_session(
@@ -444,6 +554,7 @@ def commit_session(session_id: str) -> tuple[dict, int]:
             session_id=session_id,
             output_path=out_path,
             session_store=store,
+            mapping_store=mapping_store,
             committed_at=committed_at,
         )
     except ReviewSessionAlreadyCommittedError:

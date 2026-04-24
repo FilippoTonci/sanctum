@@ -5,7 +5,9 @@ from __future__ import annotations
 import pytest
 from sanctum.anonymizer.adapter import PresidioAnonymizer
 from sanctum.core.models import ReviewProposal
+from sanctum.core.review.preview_store import PreviewMappingStore
 from sanctum.core.review.previews import compute_preview
+from sanctum.security.mapping_store import InMemoryMappingStore
 
 
 @pytest.fixture(scope="module")
@@ -118,3 +120,96 @@ def test_empty_custom_replacement_is_respected(
         anonymizer=anonymizer,
     )
     assert preview == ""
+
+
+# ---- pseudonymize previews (WS4) -----------------------------------------
+
+
+def test_pseudonymize_preview_requires_mapping_store(
+    anonymizer: PresidioAnonymizer,
+) -> None:
+    """Without a store the preview call must fail loudly, not silently mint."""
+    with pytest.raises(ValueError, match="mapping_store"):
+        compute_preview(
+            proposal=_proposal(),
+            operator="pseudonymize",
+            operator_params=None,
+            custom_replacement=None,
+            anonymizer=anonymizer,
+        )
+
+
+def test_pseudonymize_preview_does_not_persist(
+    anonymizer: PresidioAnonymizer,
+) -> None:
+    """Preview through PreviewMappingStore must leave the real store untouched."""
+    real = InMemoryMappingStore()
+    preview_store = PreviewMappingStore(real)
+
+    preview = compute_preview(
+        proposal=_proposal(),
+        operator="pseudonymize",
+        operator_params=None,
+        custom_replacement=None,
+        anonymizer=anonymizer,
+        mapping_store=preview_store,
+    )
+    assert preview != "Alice Smith"
+    # The real store must have seen zero writes.
+    assert real.peek("Alice Smith", "PERSON") is None
+    assert real.reverse(preview, "PERSON") is None
+
+
+def test_pseudonymize_preview_matches_commit_for_fresh_pseudonym(
+    anonymizer: PresidioAnonymizer,
+) -> None:
+    """Preview (non-persisting) and commit (persisting) mint the same value.
+
+    Deterministic Faker seeding in the operator is the load-bearing bit —
+    without it the two call paths drift and the reviewer sees one value
+    pre-commit and a different one in the committed file.
+    """
+    # Separate stores so the preview cannot leak into the commit path.
+    preview_real = InMemoryMappingStore()
+    commit_real = InMemoryMappingStore()
+
+    preview = compute_preview(
+        proposal=_proposal(),
+        operator="pseudonymize",
+        operator_params=None,
+        custom_replacement=None,
+        anonymizer=anonymizer,
+        mapping_store=PreviewMappingStore(preview_real),
+    )
+    commit = compute_preview(
+        proposal=_proposal(),
+        operator="pseudonymize",
+        operator_params=None,
+        custom_replacement=None,
+        anonymizer=anonymizer,
+        mapping_store=commit_real,
+    )
+    assert preview == commit
+    # Commit path persists; preview path does not.
+    assert commit_real.peek("Alice Smith", "PERSON") == commit
+    assert preview_real.peek("Alice Smith", "PERSON") is None
+
+
+def test_pseudonymize_preview_reuses_existing_mapping(
+    anonymizer: PresidioAnonymizer,
+) -> None:
+    """An already-minted pseudonym shows up verbatim in the preview."""
+    real = InMemoryMappingStore()
+    # Simulate a prior committed session having minted a pseudonym for
+    # the same (entity_type, original).
+    real.get_or_create("Alice Smith", "PERSON", lambda: "Priya Patel")
+
+    preview = compute_preview(
+        proposal=_proposal(),
+        operator="pseudonymize",
+        operator_params=None,
+        custom_replacement=None,
+        anonymizer=anonymizer,
+        mapping_store=PreviewMappingStore(real),
+    )
+    assert preview == "Priya Patel"

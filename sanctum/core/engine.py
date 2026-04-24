@@ -288,10 +288,14 @@ class SanctumEngine:
         The session dir is deleted on success — input bytes + plaintext
         proposals don't outlive the commit.
 
-        ``mapping_store`` is accepted for forward-compat with WS4 (the
-        pseudonymize commit path plumbs it through to the anonymizer);
-        under Flow B the anonymizer adapter owns its own store wiring,
-        so it's currently unused at this layer.
+        ``mapping_store`` is the unlocked ``MappingStore`` used to
+        persist pseudonyms for ``pseudonymize`` decisions. Any accepted
+        or user-added decision whose resolved operator is
+        ``pseudonymize`` will mint through ``get_or_create`` on the
+        given store — non-pseudonymize decisions ignore the store. If
+        no pseudonymize decisions are present, the argument is allowed
+        to be ``None``; otherwise the anonymizer will raise when it
+        tries to mint without one.
         """
         session = session_store.load(session_id)
         if session.status != "open":
@@ -319,6 +323,7 @@ class SanctumEngine:
                 session=session,
                 segments=doc.segments,
                 anonymizer=self._anonymizer,
+                mapping_store=mapping_store,
             )
             mutated = doc.model_copy(update={"segments": new_segments})
             mutated.raw_handle = doc.raw_handle
@@ -376,6 +381,7 @@ def _apply_decisions_to_segments(
     session: ReviewSession,
     segments: list[TextSegment],
     anonymizer: Anonymizer,
+    mapping_store: MappingStore | None = None,
 ) -> list[TextSegment]:
     """Project Flow B decisions onto freshly-read segments.
 
@@ -447,6 +453,7 @@ def _apply_decisions_to_segments(
                 operator_params=operator_params,
                 custom_replacement=decision.custom_replacement,
                 anonymizer=anonymizer,
+                mapping_store=mapping_store,
             )
             replacements.append((start, end, replacement))
 
@@ -471,6 +478,7 @@ def _apply_decisions_to_segments(
                 operator_params=operator_params,
                 custom_replacement=ua.custom_replacement,
                 anonymizer=anonymizer,
+                mapping_store=mapping_store,
             )
             replacements.append((start, end, replacement))
 
@@ -492,13 +500,16 @@ def _render_replacement(
     operator_params: dict[str, Any] | None,
     custom_replacement: str | None,
     anonymizer: Anonymizer,
+    mapping_store: MappingStore | None = None,
 ) -> str:
     """Run a single detection through the anonymizer and return the replacement.
 
     Reuses ``compute_preview`` by building a synthetic ``ReviewProposal`` —
     the code paths for preview and commit must produce identical output
     for a given ``(operator, params, custom_replacement)`` triple, so we
-    share the implementation rather than risk drift.
+    share the implementation rather than risk drift. ``mapping_store``
+    is forwarded verbatim: commit passes the real store (to persist
+    pseudonyms), preview passes a ``PreviewMappingStore`` wrapper.
     """
     shim = ReviewProposal(
         detection_id="commit-shim",
@@ -512,4 +523,5 @@ def _render_replacement(
         operator_params=operator_params,
         custom_replacement=custom_replacement,
         anonymizer=anonymizer,
+        mapping_store=mapping_store,
     )
