@@ -576,7 +576,10 @@ def mapping_rotate(store_path: Path, old_passphrase: str, new_passphrase: str) -
     default=8765,
     show_default=True,
     type=int,
-    help="TCP port to listen on.",
+    help=(
+        "TCP port to listen on. Pass 0 to let the OS pick a free port; "
+        "the chosen port is reported on the SANCTUM_READY stdout line."
+    ),
 )
 @click.option(
     "--token-path",
@@ -592,26 +595,53 @@ def mapping_rotate(store_path: Path, old_passphrase: str, new_passphrase: str) -
     help="Waitress worker-thread count.",
 )
 def serve(host: str, port: int, token_path: Path | None, threads: int) -> None:
-    """Start the localhost API server."""
-    import signal
+    """Start the localhost API server.
 
+    Emits a single machine-readable line on **stdout** once the listener
+    has bound its socket:
+
+        SANCTUM_READY host=<host> port=<port> token_path=<path>
+
+    Subprocess parents (notably the Phase 3 Electron sidecar lifecycle)
+    read this line to discover the allocated port — especially when
+    `--port 0` was passed. Human-readable status lines go to stderr so
+    stdout stays clean for the parser.
+    """
+    import signal
+    import sys
+
+    from rich.console import Console
     from sanctum.api.app import create_app
     from sanctum.api.auth import DEFAULT_TOKEN_PATH, ensure_token
-    from sanctum.api.server import assert_loopback, run
+    from sanctum.api.server import assert_loopback, pick_free_port, run
 
     assert_loopback(host)
+
+    # Resolve `--port 0` before building the app — the Host/Origin
+    # allowlist is keyed on host:port, so the Flask config needs the
+    # concrete number. Race window between close here and waitress's
+    # bind is tiny and acceptable for a single-user desktop.
+    if port == 0:
+        port = pick_free_port(host)
 
     path = token_path or DEFAULT_TOKEN_PATH
     token = ensure_token(path)
     engine = _create_engine()
     app = create_app(token=token, host=host, port=port, engine=engine)
 
-    console.print(f"[green]Sanctum API listening on[/green] http://{host}:{port}")
-    console.print(f"[dim]Bearer token stored at {path} (0600)[/dim]")
-    console.print(
-        "[dim]Clients: "
-        f'curl -H "Authorization: Bearer $(cat {path})" http://{host}:{port}/health[/dim]'
-    )
+    stderr = Console(stderr=True)
+
+    def _emit_ready(h: str, p: int) -> None:
+        # Machine-readable first (stdout), before any other output — the
+        # subprocess parent may `readline()` once and proceed.
+        sys.stdout.write(f"SANCTUM_READY host={h} port={p} token_path={path}\n")
+        sys.stdout.flush()
+        stderr.print(f"[green]Sanctum API listening on[/green] http://{h}:{p}")
+        stderr.print(f"[dim]Bearer token stored at {path} (0600)[/dim]")
+        stderr.print(
+            "[dim]Clients: "
+            f'curl -H "Authorization: Bearer $(cat {path})" http://{h}:{p}/health[/dim]'
+        )
 
     # Route SIGTERM through the default interrupt handler so waitress's
     # blocking serve loop exits cleanly on `systemctl stop` / `docker stop`,
@@ -619,9 +649,9 @@ def serve(host: str, port: int, token_path: Path | None, threads: int) -> None:
     # and any unlocked mapping store is left with its flock held.
     signal.signal(signal.SIGTERM, signal.default_int_handler)
     try:
-        run(app, host=host, port=port, threads=threads)
+        run(app, host=host, port=port, threads=threads, on_ready=_emit_ready)
     except KeyboardInterrupt:
-        console.print("[dim]Sanctum API shutting down...[/dim]")
+        stderr.print("[dim]Sanctum API shutting down...[/dim]")
     finally:
         # Best-effort flush of the encrypted mapping store on the way out.
         # Any failure here is logged and swallowed — the process is exiting
@@ -630,9 +660,9 @@ def serve(host: str, port: int, token_path: Path | None, threads: int) -> None:
         if store is not None and getattr(store, "is_unlocked", False):
             try:
                 store.lock()
-                console.print("[dim]Mapping store locked on shutdown.[/dim]")
+                stderr.print("[dim]Mapping store locked on shutdown.[/dim]")
             except Exception as exc:
-                console.print(f"[yellow]Failed to lock mapping store: {exc}[/yellow]")
+                stderr.print(f"[yellow]Failed to lock mapping store: {exc}[/yellow]")
 
 
 @cli.command()

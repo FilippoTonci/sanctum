@@ -57,6 +57,21 @@ the break.
   CI regenerates and diffs; any drift fails the build.
   (Phase 3 WS1 substep 2.)
 - `CHANGELOG.md` itself — this file. (Phase 3 WS1 substep 1.)
+- `sanctum serve --port 0` now OS-allocates a free port and reports it
+  on the `SANCTUM_READY host=... port=... token_path=...` line emitted
+  to **stdout** before the accept loop starts. Human-readable status
+  lines (the rich-console banners) moved to **stderr** so stdout stays
+  clean for subprocess parsers — chiefly the Electron sidecar
+  lifecycle in the Phase 3 desktop app. (Phase 3 WS1 substep 3.)
+
+### Changed
+
+- `sanctum.api.server.run()` now accepts an `on_ready` callback that
+  fires after the listener binds its socket but before the accept
+  loop begins. Existing callers that don't pass the kwarg are
+  unaffected. Internal refactor from `waitress.serve` to
+  `waitress.server.create_server + server.run()` to enable this. The
+  HTTP contract is unchanged.
 
 ---
 
