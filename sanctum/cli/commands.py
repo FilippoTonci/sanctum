@@ -478,6 +478,78 @@ def commit_review(
         raise SystemExit(1) from e
 
 
+@cli.command("commit-review-session")
+@click.argument("session_id")
+@click.argument("output_path", type=click.Path(dir_okay=False, path_type=Path))
+@click.option(
+    "--store",
+    "store_path",
+    type=click.Path(dir_okay=False, path_type=Path),
+    default=None,
+    help=(
+        "Path to the encrypted mapping store. Required when any accepted / "
+        "user-added decision resolves to the pseudonymize operator; omit "
+        "otherwise."
+    ),
+)
+@click.option(
+    "--passphrase",
+    envvar="SANCTUM_PASSPHRASE",
+    default=None,
+    help="Passphrase for the mapping store. Prefer the SANCTUM_PASSPHRASE env var.",
+)
+def commit_review_session(
+    session_id: str,
+    output_path: Path,
+    store_path: Path | None,
+    passphrase: str | None,
+) -> None:
+    """Commit review session SESSION_ID to OUTPUT_PATH.
+
+    Reads the persisted session under ``~/.sanctum/sessions/<id>/``,
+    applies every accepted and user-added decision against the stored
+    input bytes, and writes the final document to OUTPUT_PATH with
+    zero ``sanctum:`` trailers. Accepted pseudonymize decisions are
+    persisted to the encrypted mapping store; other operators leave
+    the store untouched.
+
+    Under Flow B (Phase 1.5 WS4) this is the session-scoped commit
+    entry point. The file-scoped ``commit-review <input> <output>``
+    form is retained as a deprecated shim for one release.
+    """
+    from contextlib import nullcontext
+
+    from sanctum.core.review.store import SessionStore
+
+    try:
+        session_store = SessionStore()
+        session = session_store.load(session_id)
+        reader, writer = adapter_for(session.source_path)
+        engine = _create_engine()
+
+        # Only open the encrypted mapping store when the user supplied a
+        # --store path. Without one, pseudonymize decisions at commit will
+        # raise a crisp ValueError from the operator — a loud failure is
+        # better than silently minting into an InMemoryMappingStore that
+        # evaporates when the process ends.
+        mapping_cm = (
+            _mapping_store(store_path, passphrase) if store_path is not None else nullcontext(None)
+        )
+        with mapping_cm as store:
+            engine.commit_review_session(
+                reader=reader,
+                writer=writer,
+                session_id=session_id,
+                output_path=output_path,
+                session_store=session_store,
+                mapping_store=store,
+            )
+        console.print(f"[green]Committed review session to {output_path}[/green]")
+    except SanctumError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1) from e
+
+
 @cli.group()
 def mapping() -> None:
     """Manage the encrypted mapping store used by the pseudonymize operator."""
