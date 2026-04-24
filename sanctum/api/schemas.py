@@ -73,6 +73,7 @@ class HealthResponse(_Frozen):
     status: Literal["ok"]
     version: str
     sanctum_commit: str
+    openapi_digest: str
     mapping_store_unlocked: bool
 
 

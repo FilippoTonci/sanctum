@@ -37,6 +37,18 @@ jobs:
       - name: Run pre-commit
         run: pre-commit run --all-files --show-diff-on-failure
 
+      - name: Check committed OpenAPI spec matches source
+        # The `sanctum-desktop` repo builds its TypeScript client from the
+        # committed schema/openapi.json. If the generator and the committed
+        # file disagree, the desktop's types would silently drift. Fail the
+        # PR so the author has to regenerate + commit in the same change.
+        run: |
+          python scripts/generate_openapi.py
+          git diff --exit-code -- schema/openapi.json || {
+            echo "::error::schema/openapi.json is stale — run 'python scripts/generate_openapi.py' and commit the result"
+            exit 1
+          }
+
   test:
     name: Test (py${{ matrix.python-version }})
     runs-on: ubuntu-latest

@@ -11,7 +11,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app
 
 from sanctum import __version__
-from sanctum._build_info import commit
+from sanctum._build_info import commit, openapi_digest
 from sanctum.api.schemas import HealthResponse
 
 health_bp = Blueprint("health", __name__)
@@ -24,6 +24,7 @@ def health() -> tuple[dict, int]:
         status="ok",
         version=__version__,
         sanctum_commit=commit(),
+        openapi_digest=openapi_digest(),
         mapping_store_unlocked=current_app.config.get("SANCTUM_MAPPING_STORE") is not None,
     )
     return payload.model_dump(), 200
