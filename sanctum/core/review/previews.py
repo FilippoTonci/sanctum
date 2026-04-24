@@ -6,13 +6,12 @@ never by the UI — by running the user-chosen operator against a single
 synthetic detection. Custom replacements short-circuit the operator
 (the literal *is* the preview).
 
-**Preview must not mint.** For pseudonymize, calling this function with
-the standard anonymizer path today writes to ``MappingStore`` as a side
-effect. WS4 tightens that by either plumbing a read-only peek or using
-a detached seeded Faker so the preview returns the pseudonym that
-commit *will* produce, without persisting. Until then, callers should
-be aware that previewing pseudonymize in a hot loop is not side-effect-
-free.
+For pseudonymize, the caller passes a ``MappingStore`` (typically a
+``PreviewMappingStore`` wrapping the real encrypted store) so the
+lookup can reuse an already-minted pseudonym without persisting any
+new ones. The same function is reused from the commit path in the
+engine — passing the *real* store there — so preview and commit share
+exactly one rendering code path.
 """
 
 from __future__ import annotations
@@ -20,7 +19,7 @@ from __future__ import annotations
 from typing import Any
 
 from sanctum.core.models import DetectionResult, OperatorPolicy, ReviewProposal
-from sanctum.core.protocols import Anonymizer
+from sanctum.core.protocols import Anonymizer, MappingStore
 
 
 def compute_preview(
@@ -29,6 +28,7 @@ def compute_preview(
     operator_params: dict[str, Any] | None,
     custom_replacement: str | None,
     anonymizer: Anonymizer,
+    mapping_store: MappingStore | None = None,
 ) -> str:
     """Return the replacement the UI should ghost next to ``proposal``.
 
@@ -37,10 +37,21 @@ def compute_preview(
 
     Otherwise, runs ``anonymizer`` against a single synthetic detection
     covering the whole of ``proposal.original`` under the chosen
-    operator, and returns the anonymized text.
+    operator, and returns the anonymized text. Operator ``pseudonymize``
+    additionally requires ``mapping_store`` — pass a
+    ``PreviewMappingStore`` for preview (non-persisting) or the real
+    store for commit.
     """
     if custom_replacement is not None:
         return custom_replacement
+
+    params: dict[str, Any] = dict(operator_params or {})
+    if operator == "pseudonymize":
+        if mapping_store is None:
+            raise ValueError(
+                "compute_preview requires a `mapping_store` when operator is 'pseudonymize'"
+            )
+        params.setdefault("store", mapping_store)
 
     synthetic = DetectionResult(
         entity_type=proposal.entity_type,
@@ -49,7 +60,7 @@ def compute_preview(
         score=proposal.score,
         text_span=proposal.original,
     )
-    policy = OperatorPolicy(operator_name=operator, params=operator_params or {})
+    policy = OperatorPolicy(operator_name=operator, params=params)
     result = anonymizer.anonymize(
         text=proposal.original,
         detections=[synthetic],

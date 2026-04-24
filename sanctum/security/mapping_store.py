@@ -112,6 +112,19 @@ class _BaseStore:
                     return original
             return None
 
+    def peek(self, original: str, entity_type: str) -> str | None:
+        """Return an existing pseudonym for ``original`` or ``None`` without minting.
+
+        Distinct from ``get_or_create``: no factory call, no write, no
+        side effects. The review preview path uses this so showing a
+        pseudonym pre-commit does not leak a mapping into persistent
+        storage.
+        """
+        with self._lock:
+            entries = self._require_unlocked()
+            bucket = entries.get(entity_type, {})
+            return bucket.get(original)
+
 
 class InMemoryMappingStore(_BaseStore):
     """Session-only mapping store. Always ready, dies with the process."""
