@@ -392,6 +392,8 @@ class TestCommitReviewSession:
                 segment_anchor="s0",
                 entity_type="PERSON",
                 original="Bob",
+                start=10,
+                end=13,
             )
         )
         store.save(session)

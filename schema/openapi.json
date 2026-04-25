@@ -508,6 +508,46 @@
       }
     },
     "/review-sessions": {
+      "get": {
+        "summary": "List persisted review sessions (newest first).",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSessionListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
       "post": {
         "summary": "Create a review session from a document.",
         "responses": {
@@ -1066,7 +1106,7 @@
     "schemas": {
       "AddUserAddedDecisionRequest": {
         "additionalProperties": false,
-        "description": "Body for `POST /review-sessions/{id}/decisions/user-added`.\n\n``segment_anchor`` must match the ``id`` of one of the session's\nsegments; the API rejects unknown anchors with 400 so the UI catches\ndrift early (e.g., a cached session id whose segments have changed\nunderneath it \u2014 this can't happen in Flow B but the validator\ndocuments the contract).",
+        "description": "Body for `POST /review-sessions/{id}/decisions/user-added`.\n\n``segment_anchor`` must match the ``id`` of one of the session's\nsegments; the API rejects unknown anchors with 400 so the UI catches\ndrift early (e.g., a cached session id whose segments have changed\nunderneath it \u2014 this can't happen in Flow B but the validator\ndocuments the contract).\n\n``start`` / ``end`` are inclusive/exclusive char offsets within the\nreferenced segment's text. Required: an ``original`` string alone\nis ambiguous when the segment contains the same string twice\n(*\"Smith met Smith\"*). The route handler additionally checks\n``segment.text[start:end] == original`` so a stale offset cannot\nsilently flag the wrong span at commit time.",
         "properties": {
           "segment_anchor": {
             "title": "Segment Anchor",
@@ -1079,6 +1119,16 @@
           "original": {
             "title": "Original",
             "type": "string"
+          },
+          "start": {
+            "minimum": 0,
+            "title": "Start",
+            "type": "integer"
+          },
+          "end": {
+            "exclusiveMinimum": 0,
+            "title": "End",
+            "type": "integer"
           },
           "operator": {
             "anyOf": [
@@ -1121,7 +1171,9 @@
         "required": [
           "segment_anchor",
           "entity_type",
-          "original"
+          "original",
+          "start",
+          "end"
         ],
         "title": "AddUserAddedDecisionRequest",
         "type": "object"
@@ -1873,7 +1925,7 @@
         "type": "object"
       },
       "ReviewProposal": {
-        "description": "A single detection presented to the reviewer (Flow B).\n\nPure detection record \u2014 no replacement, no operator. Under Flow B\nthe reviewer chooses the operator at decision time; replacements\ncome from the anonymizer at commit time (or from a server-computed\npreview for the UI). The proposal just tells the reviewer *what*\nSanctum found and *where*.\n\n``detection_id`` is a stable content-addressed hash (see\n``sanctum.core.review.identifiers.make_detection_id``) that doubles\nas the session's proposal id so ``ProposalDecision.proposal_id``\nreferences stay stable across session reads.\n\n``segment_anchor`` is an opaque, adapter-specific pointer into the\nparsed ``StructuredDocument`` segments (e.g. docx paragraph+run\nindices, xlsx sheet+cell).",
+        "description": "A single detection presented to the reviewer (Flow B).\n\nPure detection record \u2014 no replacement, no operator. Under Flow B\nthe reviewer chooses the operator at decision time; replacements\ncome from the anonymizer at commit time (or from a server-computed\npreview for the UI). The proposal just tells the reviewer *what*\nSanctum found and *where*.\n\n``detection_id`` is a stable content-addressed hash (see\n``sanctum.core.review.identifiers.make_detection_id``) that doubles\nas the session's proposal id so ``ProposalDecision.proposal_id``\nreferences stay stable across session reads.\n\n``segment_anchor`` is an opaque, adapter-specific pointer into the\nparsed ``StructuredDocument`` segments (e.g. docx paragraph+run\nindices, xlsx sheet+cell).\n\n``start`` / ``end`` are inclusive/exclusive char offsets within the\nanchored segment's text. Carried verbatim from the originating\n``DetectionResult`` so a UI can highlight the exact span without\nre-running ``str.find(original)`` \u2014 that fallback is ambiguous when\nthe segment contains the same string twice (e.g. *\"Smith met\nSmith\"*). The fields exist on every analyzer-derived proposal; the\nin-memory shim variants used by the preview path pass ``start=0``\nand ``end=len(original)`` since they cover the whole synthetic span.",
         "properties": {
           "detection_id": {
             "title": "Detection Id",
@@ -1902,15 +1954,120 @@
             ],
             "default": null,
             "title": "Segment Anchor"
+          },
+          "start": {
+            "minimum": 0,
+            "title": "Start",
+            "type": "integer"
+          },
+          "end": {
+            "exclusiveMinimum": 0,
+            "title": "End",
+            "type": "integer"
           }
         },
         "required": [
           "detection_id",
           "entity_type",
           "score",
-          "original"
+          "original",
+          "start",
+          "end"
         ],
         "title": "ReviewProposal",
+        "type": "object"
+      },
+      "ReviewSessionIndexEntry": {
+        "additionalProperties": false,
+        "description": "Thin per-session record for `GET /review-sessions`.\n\nThe desktop landing page needs an authoritative list of resumable\nsessions without paying for a full segment + proposal dump per\nsession \u2014 this projection includes only what the recent-sessions\nlist renders: identity, source provenance, status, timestamps, and\nthe three decision counts (accepted / rejected / pending).\n\n`pending_count` is `len(proposals) - {proposals with a ProposalDecision}`;\nuser-added decisions are always counted as accepted because there is\nno \"undecided user-added\" state.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "source_path": {
+            "title": "Source Path",
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "docx",
+              "xlsx",
+              "pdf",
+              "pptx"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "committed",
+              "abandoned"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "committed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed At"
+          },
+          "accepted_count": {
+            "title": "Accepted Count",
+            "type": "integer"
+          },
+          "rejected_count": {
+            "title": "Rejected Count",
+            "type": "integer"
+          },
+          "pending_count": {
+            "title": "Pending Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "source_path",
+          "format",
+          "status",
+          "created_at",
+          "committed_at",
+          "accepted_count",
+          "rejected_count",
+          "pending_count"
+        ],
+        "title": "ReviewSessionIndexEntry",
+        "type": "object"
+      },
+      "ReviewSessionListResponse": {
+        "additionalProperties": false,
+        "description": "Body for `GET /review-sessions` \u2014 chronologically-ordered index.\n\nSessions sort newest-first by `created_at`. The list is unbounded\ntoday; the desktop's Recent Sessions UI can render with virtual\nscrolling if the local store grows large. Pagination is a no-op\naffordance the API can add later without a contract break.",
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewSessionIndexEntry"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "title": "ReviewSessionListResponse",
         "type": "object"
       },
       "ReviewSessionResponse": {
@@ -2168,6 +2325,16 @@
             "title": "Original",
             "type": "string"
           },
+          "start": {
+            "minimum": 0,
+            "title": "Start",
+            "type": "integer"
+          },
+          "end": {
+            "exclusiveMinimum": 0,
+            "title": "End",
+            "type": "integer"
+          },
           "operator": {
             "anyOf": [
               {
@@ -2209,7 +2376,9 @@
         "required": [
           "segment_anchor",
           "entity_type",
-          "original"
+          "original",
+          "start",
+          "end"
         ],
         "title": "UserAddedDecision",
         "type": "object"

@@ -52,6 +52,7 @@ from sanctum.api.schemas import (  # noqa: E402
     ProcessFileReviewResponse,
     ReverseMappingRequest,
     ReverseMappingResponse,
+    ReviewSessionListResponse,
     ReviewSessionResponse,
     RotateMappingKeyRequest,
     RotateMappingKeyResponse,
@@ -207,6 +208,19 @@ ROUTES: list[Route] = [
             401: _ErrorResponse,
             409: _ErrorResponse,
             500: _ErrorResponse,
+        },
+    ),
+    Route(
+        method="get",
+        path="/review-sessions",
+        summary="List persisted review sessions (newest first).",
+        requires_auth=True,
+        path_params=(),
+        request_body=None,
+        responses={
+            200: ReviewSessionListResponse,
+            401: _ErrorResponse,
+            503: _ErrorResponse,
         },
     ),
     Route(

@@ -36,6 +36,8 @@ from sanctum.api.schemas import (
     CreateReviewSessionRequest,
     DecisionWithPreviewResponse,
     PatchProposalDecisionRequest,
+    ReviewSessionIndexEntry,
+    ReviewSessionListResponse,
     ReviewSessionResponse,
 )
 from sanctum.core.engine import SanctumEngine
@@ -268,6 +270,11 @@ def _compute_previews(session: ReviewSession, engine: SanctumEngine) -> dict[str
             entity_type=ua.entity_type,
             score=1.0,
             original=ua.original,
+            # See `_run_single_detection_for_preview` in engine.py for
+            # the rationale: shim proposals exist only to call
+            # `compute_preview`, which never reads start/end.
+            start=ua.start,
+            end=ua.end,
         )
         previews[ua.id] = _safe_preview(
             proposal=shim,
@@ -303,6 +310,75 @@ def _session_response(session: ReviewSession, engine: SanctumEngine) -> dict[str
 
 
 # ----- routes --------------------------------------------------------------
+
+
+def _index_entry(session: ReviewSession) -> ReviewSessionIndexEntry:
+    """Project a full session into its thin landing-page record.
+
+    Counts treat user-added decisions as accepted (they are explicit
+    additions, never undecided) and proposals without a decision as
+    pending. Status-terminal sessions (committed / abandoned) keep
+    their last-known counts so the desktop UI shows what happened.
+    """
+    accepted = 0
+    rejected = 0
+    decided_proposal_ids: set[str] = set()
+    for d in session.decisions:
+        if isinstance(d, ProposalDecision):
+            decided_proposal_ids.add(d.proposal_id)
+            if d.status == "accept":
+                accepted += 1
+            else:
+                rejected += 1
+        else:
+            accepted += 1
+    pending = sum(1 for p in session.proposals if p.detection_id not in decided_proposal_ids)
+    return ReviewSessionIndexEntry(
+        id=session.id,
+        source_path=str(session.source_path),
+        format=session.format,
+        status=session.status,
+        created_at=session.created_at,
+        committed_at=session.committed_at,
+        accepted_count=accepted,
+        rejected_count=rejected,
+        pending_count=pending,
+    )
+
+
+@review_sessions_bp.get("")
+@require_bearer_token
+def list_sessions() -> tuple[dict, int]:
+    """Return a chronologically-ordered index of every persisted session.
+
+    Walks the on-disk session store, loads each manifest, and projects
+    it into a thin ``ReviewSessionIndexEntry``. A manifest that fails
+    to load (corrupt JSON, schema drift after an upgrade) is logged
+    and skipped — one bad session shouldn't blank the whole landing
+    page. Sort newest-first so the desktop's Recent Sessions list
+    matches the user's mental model without a client-side re-sort.
+    """
+    store = _get_store()
+    if store is None:
+        current_app.logger.error(
+            "/review-sessions GET called but SANCTUM_SESSION_STORE is unconfigured"
+        )
+        return {"error": "session store not configured"}, 503
+
+    entries: list[ReviewSessionIndexEntry] = []
+    for sid in store.list_ids():
+        try:
+            session = store.load(sid)
+        except Exception:
+            current_app.logger.warning(
+                "GET /review-sessions: skipping unreadable manifest for session %r", sid
+            )
+            continue
+        entries.append(_index_entry(session))
+
+    entries.sort(key=lambda e: e.created_at, reverse=True)
+    payload = ReviewSessionListResponse(sessions=entries)
+    return payload.model_dump(mode="json"), 200
 
 
 @review_sessions_bp.post("")
@@ -433,10 +509,32 @@ def add_user_added_decision(session_id: str) -> tuple[dict, int]:
     if open_err is not None:
         return open_err
 
-    known_anchors = {s.id for s in session.segments}
-    if req.segment_anchor not in known_anchors:
+    segments_by_id = {s.id: s for s in session.segments}
+    target_segment = segments_by_id.get(req.segment_anchor)
+    if target_segment is None:
         return (
             {"error": f"segment_anchor {req.segment_anchor!r} not found in session"},
+            400,
+        )
+
+    if req.end > len(target_segment.text):
+        return (
+            {
+                "error": (
+                    f"end ({req.end}) exceeds segment text length " f"({len(target_segment.text)})"
+                )
+            },
+            400,
+        )
+    actual = target_segment.text[req.start : req.end]
+    if actual != req.original:
+        return (
+            {
+                "error": (
+                    f"original {req.original!r} does not match segment "
+                    f"slice [{req.start}:{req.end}] = {actual!r}"
+                )
+            },
             400,
         )
 
@@ -444,6 +542,8 @@ def add_user_added_decision(session_id: str) -> tuple[dict, int]:
         segment_anchor=req.segment_anchor,
         entity_type=req.entity_type,
         original=req.original,
+        start=req.start,
+        end=req.end,
         operator=req.operator,
         operator_params=req.operator_params,
         custom_replacement=req.custom_replacement,

@@ -42,6 +42,8 @@ def build_proposals(
                     score=det.score,
                     original=det.text_span,
                     segment_anchor=segment.id,
+                    start=det.start,
+                    end=det.end,
                 )
             )
     return proposals

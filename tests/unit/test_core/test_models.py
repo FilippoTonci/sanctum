@@ -122,6 +122,8 @@ def _proposal(**overrides: object) -> ReviewProposal:
         "entity_type": "PERSON",
         "score": 0.9,
         "original": "Alice",
+        "start": 0,
+        "end": 5,
     }
     defaults.update(overrides)
     return ReviewProposal(**defaults)  # type: ignore[arg-type]
@@ -194,6 +196,8 @@ class TestUserAddedDecision:
             segment_anchor="sheet1/A5",
             entity_type="PERSON",
             original="Priya Patel",
+            start=0,
+            end=11,
         )
         assert decision.kind == "user_added"
         assert decision.operator is None
@@ -204,6 +208,8 @@ class TestUserAddedDecision:
             segment_anchor="body/p0",
             entity_type="PERSON",
             original="Sam",
+            start=0,
+            end=3,
             operator="hips",
         )
         assert decision.operator == "hips"
@@ -213,6 +219,8 @@ class TestUserAddedDecision:
             segment_anchor="body/p0",
             entity_type="PERSON",
             original="Sam",
+            start=0,
+            end=3,
             custom_replacement="[WITNESS]",
         )
         assert decision.custom_replacement == "[WITNESS]"
@@ -222,6 +230,16 @@ class TestUserAddedDecision:
             UserAddedDecision(  # type: ignore[call-arg]
                 segment_anchor="sheet1/A5",
                 entity_type="PERSON",
+            )
+
+    def test_rejects_inverted_offsets(self) -> None:
+        with pytest.raises(ValidationError):
+            UserAddedDecision(
+                segment_anchor="body/p0",
+                entity_type="PERSON",
+                original="Sam",
+                start=5,
+                end=3,
             )
 
 
@@ -244,6 +262,8 @@ class TestSessionDecision:
                 "segment_anchor": "body/p0",
                 "entity_type": "PERSON",
                 "original": "Jane Doe",
+                "start": 0,
+                "end": 8,
             }
         )
         assert isinstance(decision, UserAddedDecision)
@@ -307,6 +327,8 @@ class TestReviewSession:
                     segment_anchor="body/p0/r0",
                     entity_type="PERSON",
                     original="Bob",
+                    start=0,
+                    end=3,
                     custom_replacement="[WITNESS]",
                 ),
             ]

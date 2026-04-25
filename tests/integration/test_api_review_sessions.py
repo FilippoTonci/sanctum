@@ -398,6 +398,7 @@ def test_user_added_decision_round_trip(server: tuple[str, str]) -> None:
     # any substring of that segment's text for ``original``.
     anchor_segment = next(s for s in created["segments"] if s["text"].strip())
     original = anchor_segment["text"].split()[0]  # first word — guaranteed substring.
+    start = anchor_segment["text"].index(original)
 
     status, body = _request(
         "POST",
@@ -407,6 +408,8 @@ def test_user_added_decision_round_trip(server: tuple[str, str]) -> None:
             "segment_anchor": anchor_segment["id"],
             "entity_type": "PERSON",
             "original": original,
+            "start": start,
+            "end": start + len(original),
         },
     )
     assert status == 201, body

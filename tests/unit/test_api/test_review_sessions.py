@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
@@ -277,6 +278,92 @@ class TestCreateSession:
             assert body["previews"][detection_id] == "[PERSON]"
 
 
+# ================ GET /review-sessions (list) ==============================
+
+
+class TestListSessions:
+    def test_requires_bearer_token(self, client: Any) -> None:
+        r = client.get("/review-sessions", headers=LOOPBACK)
+        assert r.status_code == 401
+
+    def test_empty_when_no_sessions_exist(self, client: Any) -> None:
+        r = client.get("/review-sessions", headers={**LOOPBACK, **AUTH})
+        assert r.status_code == 200
+        assert r.get_json() == {"sessions": []}
+
+    def test_lists_open_session_with_zero_decisions(
+        self, client: Any, tmp_input_path: Path, patched_adapter: Any
+    ) -> None:
+        created = _create_session(client, tmp_input_path)
+
+        r = client.get("/review-sessions", headers={**LOOPBACK, **AUTH})
+        assert r.status_code == 200
+        body = r.get_json()
+        assert len(body["sessions"]) == 1
+        entry = body["sessions"][0]
+        assert entry["id"] == created["id"]
+        assert entry["status"] == "open"
+        assert entry["format"] == "docx"
+        assert entry["accepted_count"] == 0
+        assert entry["rejected_count"] == 0
+        assert entry["pending_count"] == len(created["proposals"])
+        assert entry["committed_at"] is None
+
+    def test_counts_reflect_decisions(
+        self, client: Any, tmp_input_path: Path, patched_adapter: Any
+    ) -> None:
+        created = _create_session(client, tmp_input_path)
+        pids = [p["detection_id"] for p in created["proposals"]]
+        # accept the first, reject nothing, leave the second pending.
+        client.patch(
+            f"/review-sessions/{created['id']}/decisions/{pids[0]}",
+            headers={**LOOPBACK, **AUTH},
+            json={"status": "accept"},
+        )
+        # add one user-added decision (which always counts as accepted).
+        client.post(
+            f"/review-sessions/{created['id']}/decisions/user-added",
+            headers={**LOOPBACK, **AUTH},
+            json={
+                "segment_anchor": "s0",
+                "entity_type": "PERSON",
+                "original": "Bob",
+                "start": 10,
+                "end": 13,
+            },
+        )
+
+        r = client.get("/review-sessions", headers={**LOOPBACK, **AUTH})
+        body = r.get_json()
+        entry = next(e for e in body["sessions"] if e["id"] == created["id"])
+        assert entry["accepted_count"] == 2  # 1 proposal + 1 user-added
+        assert entry["rejected_count"] == 0
+        assert entry["pending_count"] == len(pids) - 1
+
+    def test_orders_newest_first(
+        self,
+        client: Any,
+        tmp_input_path: Path,
+        patched_adapter: Any,
+        session_store: SessionStore,
+    ) -> None:
+        # create three sessions; mutate stored created_at to known offsets so
+        # the assertion is deterministic across the route's wall-clock.
+        ids = []
+        for _ in range(3):
+            created = _create_session(client, tmp_input_path)
+            ids.append(created["id"])
+        for i, sid in enumerate(ids):
+            session = session_store.load(sid)
+            session.created_at = datetime(2026, 4, 25 - i, 12, 0, tzinfo=timezone.utc)
+            session_store.save(session)
+
+        r = client.get("/review-sessions", headers={**LOOPBACK, **AUTH})
+        ordered_ids = [e["id"] for e in r.get_json()["sessions"]]
+        # ids[0] got the most-recent created_at (April 25), so it sorts first.
+        assert ordered_ids == [ids[0], ids[1], ids[2]]
+
+
 # ================ GET /review-sessions/{id} ================================
 
 
@@ -426,12 +513,16 @@ class TestUserAddedDecisions:
                 "segment_anchor": "s0",
                 "entity_type": "PERSON",
                 "original": "Bob",
+                "start": 10,
+                "end": 13,
             },
         )
         assert r.status_code == 201
         body = r.get_json()
         assert body["decision"]["segment_anchor"] == "s0"
         assert body["decision"]["entity_type"] == "PERSON"
+        assert body["decision"]["start"] == 10
+        assert body["decision"]["end"] == 13
         assert "id" in body["decision"]
         assert body["preview"] == "[PERSON]"
 
@@ -446,6 +537,46 @@ class TestUserAddedDecisions:
                 "segment_anchor": "nonexistent",
                 "entity_type": "PERSON",
                 "original": "Bob",
+                "start": 0,
+                "end": 3,
+            },
+        )
+        assert r.status_code == 400
+
+    def test_400_on_offsets_disagreeing_with_segment_text(
+        self, client: Any, tmp_input_path: Path, patched_adapter: Any
+    ) -> None:
+        # Segment s0 is "Alice met Bob"; original="Bob" but start/end pointing
+        # at "Alice" should be rejected so a stale offset can't silently flag
+        # the wrong span at commit time.
+        created = _create_session(client, tmp_input_path)
+        r = client.post(
+            f"/review-sessions/{created['id']}/decisions/user-added",
+            headers={**LOOPBACK, **AUTH},
+            json={
+                "segment_anchor": "s0",
+                "entity_type": "PERSON",
+                "original": "Bob",
+                "start": 0,
+                "end": 5,
+            },
+        )
+        assert r.status_code == 400
+        assert "does not match" in r.get_json()["error"]
+
+    def test_400_on_offsets_past_segment_end(
+        self, client: Any, tmp_input_path: Path, patched_adapter: Any
+    ) -> None:
+        created = _create_session(client, tmp_input_path)
+        r = client.post(
+            f"/review-sessions/{created['id']}/decisions/user-added",
+            headers={**LOOPBACK, **AUTH},
+            json={
+                "segment_anchor": "s0",
+                "entity_type": "PERSON",
+                "original": "ZZZ",
+                "start": 10,
+                "end": 999,
             },
         )
         assert r.status_code == 400
@@ -461,6 +592,8 @@ class TestUserAddedDecisions:
                 "segment_anchor": "s0",
                 "entity_type": "PERSON",
                 "original": "Bob",
+                "start": 10,
+                "end": 13,
             },
         )
         ua_id = r_add.get_json()["decision"]["id"]

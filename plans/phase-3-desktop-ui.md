@@ -345,6 +345,83 @@ depends on.
 
 ---
 
+## Workstream 1.5 — Review-session API ergonomics *(this repo)*
+
+Added 2026-04-25 after the initial WS1 PR merged and the desktop
+repo's WS4 (`.docx` review surface) implementation surfaced two
+contract-level gaps that would force the renderer to ship around
+them. Caught early enough that landing the fixes in `sanctum`
+before WS5 wires the renderer is cheaper than fixing them in
+`sanctum-desktop` and threading workarounds through the type
+generator.
+
+The original Phase 3 plan claimed *"WS1 is the only workstream that
+touches this repo"* — that was the intent at planning time; this
+addendum records that contract gaps surfaced during desktop
+implementation and were closed in a coordinated bump.
+
+### Substep list
+
+1. **`start` / `end` offsets on `ReviewProposal` + `UserAddedDecision`
+   + `AddUserAddedDecisionRequest`.** The internal `DetectionResult`
+   already carries char offsets within the segment text; the
+   review-session projection drops them. Without offsets the renderer
+   has to fall back to `str.find(original)` inside the anchored
+   segment, which silently mis-targets the wrong occurrence when the
+   segment contains the same string twice (*"Smith met Smith"*) — the
+   commit then anonymizes the wrong span. **Required** on both the
+   response (`ReviewProposal.start/end`, `UserAddedDecision.start/end`
+   in session manifests) and the request body (the desktop's
+   mark-missed-span flow already produces them). The route handler
+   for `POST /review-sessions/{id}/decisions/user-added` additionally
+   validates that `segment.text[start:end] == original`, so a stale
+   offset cannot silently flag the wrong span at commit time.
+   Counts as a **breaking** change on the request side per the
+   compat-check policy: the desktop pin moves atomically when this
+   PR + the corresponding `sanctum-desktop` PR merge in lockstep.
+
+2. **`GET /review-sessions` listing endpoint.** WS5 slice 1 (Recent
+   Sessions landing page) needs an authoritative list. Returns a
+   thin `ReviewSessionIndexEntry` per session — id, source_path,
+   format, status, created_at, committed_at, accepted/rejected/
+   pending counts — sorted newest-first. One round-trip; corrupt
+   manifests are logged + skipped so a single bad session can't
+   blank the whole landing page.
+
+### Out of scope (deferred)
+
+- **Multipart create-session.** `POST /review-sessions` still
+  requires `input_path` (server-side absolute path). Electron has
+  `webUtils.getPathForFile(file)` so this is fine for the shipped
+  product; a `multipart/form-data` variant would help future
+  browser-only / iOS clients but no client needs it today.
+- **Streaming / progress for slow create-session.** A 200-page
+  document blocks for 30+ seconds while Presidio scans it. Worth
+  doing eventually (SSE or chunked response with proposals trickling
+  in) but not in scope here — slice 2 of WS5 will use a spinner
+  against the synchronous response.
+- **`previews` ghost-text rendering.** The backend already ships
+  per-detection preview strings on every session GET / decision
+  PATCH; the desktop currently ignores them. That's a frontend job
+  in WS5 — no backend change needed.
+- **`/health.max_upload_bytes`** + accepted-formats advertising for
+  pre-flight validation. Belongs in `sanctum` but lower urgency —
+  filed as a follow-up issue.
+
+### Acceptance for WS1.5
+
+- [x] `start`/`end` required on `ReviewProposal`, `UserAddedDecision`,
+  `AddUserAddedDecisionRequest`; route validator rejects
+  inconsistent offsets with 400.
+- [x] `GET /review-sessions` returns the index sorted newest-first.
+- [x] OpenAPI spec regenerated; compat check flags the request-side
+  break under "newly-required field" so the desktop pin bump is
+  visible in CI.
+- [x] CHANGELOG entry under `[Unreleased]` with the breaking-change
+  callout.
+
+---
+
 ## Workstream 2 — sanctum-desktop repo scaffold *(new repo)*
 
 Stand up `sanctum-desktop` and scaffold the Electron + Vite + React +

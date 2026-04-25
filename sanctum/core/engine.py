@@ -461,6 +461,11 @@ def _render_replacement(
         entity_type=entity_type,
         score=score,
         original=original,
+        # The shim covers the whole synthetic span — start/end are not
+        # used by `compute_preview`, but ReviewProposal requires them
+        # since real proposals carry segment-relative offsets.
+        start=0,
+        end=len(original),
     )
     return compute_preview(
         proposal=shim,
