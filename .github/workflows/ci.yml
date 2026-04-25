@@ -49,14 +49,20 @@ jobs:
             exit 1
           }
 
-      - name: Contract-compat check vs main
-        # Fail the PR on a breaking change to the API contract (removed
-        # route, removed schema, removed property, newly-required request
-        # field). Rationale: `sanctum-desktop` pins a specific sanctum
-        # commit, so breaking the contract means the desktop repo must
-        # bump the pin in lockstep. Catch that coordination point in CI.
-        # Skipped when the PR's base already IS main (nothing to diff).
+      - name: Contract-compat check vs main (informational during beta)
+        # Reports breaking changes to the API contract (removed route,
+        # removed schema, removed property, newly-required request field).
+        # `sanctum-desktop` pins a specific sanctum commit, so a break
+        # eventually means the desktop pin moves in lockstep — but until
+        # `sanctum-desktop` cuts its first tagged 0.0.1 release the
+        # contract is still settling and the WS-by-WS rhythm produces
+        # several deliberate breaks. `continue-on-error: true` keeps the
+        # signal visible in the PR's checks tab without blocking merge.
+        # Re-promote to a hard gate (delete `continue-on-error`) at the
+        # first sanctum-desktop tagged release. Skipped when the PR's
+        # base already IS main (nothing to diff).
         if: github.event_name == 'pull_request' && github.base_ref != ''
+        continue-on-error: true
         run: |
           git fetch origin "${{ github.base_ref }}" --depth=1
           git show "origin/${{ github.base_ref }}:schema/openapi.json" > /tmp/baseline-openapi.json || {
