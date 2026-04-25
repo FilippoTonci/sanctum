@@ -36,6 +36,8 @@ from sanctum.api.schemas import (
     CreateReviewSessionRequest,
     DecisionWithPreviewResponse,
     PatchProposalDecisionRequest,
+    ReviewSessionIndexEntry,
+    ReviewSessionListResponse,
     ReviewSessionResponse,
 )
 from sanctum.core.engine import SanctumEngine
@@ -308,6 +310,75 @@ def _session_response(session: ReviewSession, engine: SanctumEngine) -> dict[str
 
 
 # ----- routes --------------------------------------------------------------
+
+
+def _index_entry(session: ReviewSession) -> ReviewSessionIndexEntry:
+    """Project a full session into its thin landing-page record.
+
+    Counts treat user-added decisions as accepted (they are explicit
+    additions, never undecided) and proposals without a decision as
+    pending. Status-terminal sessions (committed / abandoned) keep
+    their last-known counts so the desktop UI shows what happened.
+    """
+    accepted = 0
+    rejected = 0
+    decided_proposal_ids: set[str] = set()
+    for d in session.decisions:
+        if isinstance(d, ProposalDecision):
+            decided_proposal_ids.add(d.proposal_id)
+            if d.status == "accept":
+                accepted += 1
+            else:
+                rejected += 1
+        else:
+            accepted += 1
+    pending = sum(1 for p in session.proposals if p.detection_id not in decided_proposal_ids)
+    return ReviewSessionIndexEntry(
+        id=session.id,
+        source_path=str(session.source_path),
+        format=session.format,
+        status=session.status,
+        created_at=session.created_at,
+        committed_at=session.committed_at,
+        accepted_count=accepted,
+        rejected_count=rejected,
+        pending_count=pending,
+    )
+
+
+@review_sessions_bp.get("")
+@require_bearer_token
+def list_sessions() -> tuple[dict, int]:
+    """Return a chronologically-ordered index of every persisted session.
+
+    Walks the on-disk session store, loads each manifest, and projects
+    it into a thin ``ReviewSessionIndexEntry``. A manifest that fails
+    to load (corrupt JSON, schema drift after an upgrade) is logged
+    and skipped — one bad session shouldn't blank the whole landing
+    page. Sort newest-first so the desktop's Recent Sessions list
+    matches the user's mental model without a client-side re-sort.
+    """
+    store = _get_store()
+    if store is None:
+        current_app.logger.error(
+            "/review-sessions GET called but SANCTUM_SESSION_STORE is unconfigured"
+        )
+        return {"error": "session store not configured"}, 503
+
+    entries: list[ReviewSessionIndexEntry] = []
+    for sid in store.list_ids():
+        try:
+            session = store.load(sid)
+        except Exception:
+            current_app.logger.warning(
+                "GET /review-sessions: skipping unreadable manifest for session %r", sid
+            )
+            continue
+        entries.append(_index_entry(session))
+
+    entries.sort(key=lambda e: e.created_at, reverse=True)
+    payload = ReviewSessionListResponse(sessions=entries)
+    return payload.model_dump(mode="json"), 200
 
 
 @review_sessions_bp.post("")

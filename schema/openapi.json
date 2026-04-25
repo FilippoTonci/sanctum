@@ -508,6 +508,46 @@
       }
     },
     "/review-sessions": {
+      "get": {
+        "summary": "List persisted review sessions (newest first).",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSessionListResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ]
+      },
       "post": {
         "summary": "Create a review session from a document.",
         "responses": {
@@ -1935,6 +1975,99 @@
           "end"
         ],
         "title": "ReviewProposal",
+        "type": "object"
+      },
+      "ReviewSessionIndexEntry": {
+        "additionalProperties": false,
+        "description": "Thin per-session record for `GET /review-sessions`.\n\nThe desktop landing page needs an authoritative list of resumable\nsessions without paying for a full segment + proposal dump per\nsession \u2014 this projection includes only what the recent-sessions\nlist renders: identity, source provenance, status, timestamps, and\nthe three decision counts (accepted / rejected / pending).\n\n`pending_count` is `len(proposals) - {proposals with a ProposalDecision}`;\nuser-added decisions are always counted as accepted because there is\nno \"undecided user-added\" state.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "source_path": {
+            "title": "Source Path",
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "docx",
+              "xlsx",
+              "pdf",
+              "pptx"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "committed",
+              "abandoned"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "committed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Committed At"
+          },
+          "accepted_count": {
+            "title": "Accepted Count",
+            "type": "integer"
+          },
+          "rejected_count": {
+            "title": "Rejected Count",
+            "type": "integer"
+          },
+          "pending_count": {
+            "title": "Pending Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "source_path",
+          "format",
+          "status",
+          "created_at",
+          "committed_at",
+          "accepted_count",
+          "rejected_count",
+          "pending_count"
+        ],
+        "title": "ReviewSessionIndexEntry",
+        "type": "object"
+      },
+      "ReviewSessionListResponse": {
+        "additionalProperties": false,
+        "description": "Body for `GET /review-sessions` \u2014 chronologically-ordered index.\n\nSessions sort newest-first by `created_at`. The list is unbounded\ntoday; the desktop's Recent Sessions UI can render with virtual\nscrolling if the local store grows large. Pagination is a no-op\naffordance the API can add later without a contract break.",
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewSessionIndexEntry"
+            },
+            "title": "Sessions",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "title": "ReviewSessionListResponse",
         "type": "object"
       },
       "ReviewSessionResponse": {

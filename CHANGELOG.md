@@ -53,6 +53,14 @@ the break.
 
 ### Added
 
+- `GET /review-sessions` — newest-first index of every persisted
+  review session, projected into a thin `ReviewSessionIndexEntry`
+  shape (id, source_path, format, status, created_at, committed_at,
+  accepted/rejected/pending counts). Used by the desktop's Recent
+  Sessions landing page; one round-trip replaces the alternative
+  of caching session ids client-side and N+1 GET-by-id calls. A
+  manifest that fails to load is logged and skipped — one bad
+  session won't blank the whole listing. (Phase 3 WS1.5 substep 2.)
 - `start: int` and `end: int` fields on `ReviewProposal` and
   `UserAddedDecision` (response side). Carried verbatim from the
   originating `DetectionResult` for analyzer-derived proposals; supplied

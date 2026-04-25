@@ -395,6 +395,43 @@ class AddUserAddedDecisionRequest(_StrictRequest):
         return self
 
 
+class ReviewSessionIndexEntry(_Frozen):
+    """Thin per-session record for `GET /review-sessions`.
+
+    The desktop landing page needs an authoritative list of resumable
+    sessions without paying for a full segment + proposal dump per
+    session — this projection includes only what the recent-sessions
+    list renders: identity, source provenance, status, timestamps, and
+    the three decision counts (accepted / rejected / pending).
+
+    `pending_count` is `len(proposals) - {proposals with a ProposalDecision}`;
+    user-added decisions are always counted as accepted because there is
+    no "undecided user-added" state.
+    """
+
+    id: str
+    source_path: str
+    format: DocumentFormat
+    status: Literal["open", "committed", "abandoned"]
+    created_at: datetime
+    committed_at: datetime | None
+    accepted_count: int
+    rejected_count: int
+    pending_count: int
+
+
+class ReviewSessionListResponse(_Frozen):
+    """Body for `GET /review-sessions` — chronologically-ordered index.
+
+    Sessions sort newest-first by `created_at`. The list is unbounded
+    today; the desktop's Recent Sessions UI can render with virtual
+    scrolling if the local store grows large. Pagination is a no-op
+    affordance the API can add later without a contract break.
+    """
+
+    sessions: list[ReviewSessionIndexEntry]
+
+
 class CommitReviewSessionRequest(_StrictRequest):
     """Body for `POST /review-sessions/{id}/commit`.
 
