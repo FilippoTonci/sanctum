@@ -303,6 +303,7 @@ def test_commit_persists_only_accepted_and_user_added_pseudonyms(
 
         anchor = next(s for s in created["segments"] if s["text"].strip())
         ua_original = anchor["text"].split()[0]
+        ua_start = anchor["text"].index(ua_original)
         status, ua_body = _request(
             "POST",
             f"{base}/review-sessions/{session_id}/decisions/user-added",
@@ -311,6 +312,8 @@ def test_commit_persists_only_accepted_and_user_added_pseudonyms(
                 "segment_anchor": anchor["id"],
                 "entity_type": "PERSON",
                 "original": ua_original,
+                "start": ua_start,
+                "end": ua_start + len(ua_original),
             },
         )
         assert status == 201, ua_body

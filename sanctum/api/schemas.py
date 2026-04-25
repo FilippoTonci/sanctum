@@ -366,11 +366,20 @@ class AddUserAddedDecisionRequest(_StrictRequest):
     drift early (e.g., a cached session id whose segments have changed
     underneath it — this can't happen in Flow B but the validator
     documents the contract).
+
+    ``start`` / ``end`` are inclusive/exclusive char offsets within the
+    referenced segment's text. Required: an ``original`` string alone
+    is ambiguous when the segment contains the same string twice
+    (*"Smith met Smith"*). The route handler additionally checks
+    ``segment.text[start:end] == original`` so a stale offset cannot
+    silently flag the wrong span at commit time.
     """
 
     segment_anchor: str
     entity_type: str
     original: str
+    start: int = Field(ge=0)
+    end: int = Field(gt=0)
     operator: str | None = None
     operator_params: dict[str, Any] | None = None
     custom_replacement: str | None = None
@@ -378,7 +387,9 @@ class AddUserAddedDecisionRequest(_StrictRequest):
     _reject_api_unsupported_operator = field_validator("operator")(_reject_api_unsupported_operator)
 
     @model_validator(mode="after")
-    def _operator_params_requires_operator(self) -> AddUserAddedDecisionRequest:
+    def _validate_decision(self) -> AddUserAddedDecisionRequest:
+        if self.end <= self.start:
+            raise ValueError(f"end ({self.end}) must be > start ({self.start})")
         if self.operator_params is not None and self.operator is None:
             raise ValueError("operator_params requires operator to be set")
         return self

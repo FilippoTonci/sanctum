@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DetectionResult(BaseModel):
@@ -93,6 +93,15 @@ class ReviewProposal(BaseModel):
     ``segment_anchor`` is an opaque, adapter-specific pointer into the
     parsed ``StructuredDocument`` segments (e.g. docx paragraph+run
     indices, xlsx sheet+cell).
+
+    ``start`` / ``end`` are inclusive/exclusive char offsets within the
+    anchored segment's text. Carried verbatim from the originating
+    ``DetectionResult`` so a UI can highlight the exact span without
+    re-running ``str.find(original)`` — that fallback is ambiguous when
+    the segment contains the same string twice (e.g. *"Smith met
+    Smith"*). The fields exist on every analyzer-derived proposal; the
+    in-memory shim variants used by the preview path pass ``start=0``
+    and ``end=len(original)`` since they cover the whole synthetic span.
     """
 
     model_config = {"frozen": True}
@@ -102,6 +111,14 @@ class ReviewProposal(BaseModel):
     score: float
     original: str
     segment_anchor: str | None = None
+    start: int = Field(ge=0)
+    end: int = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _end_after_start(self) -> ReviewProposal:
+        if self.end <= self.start:
+            raise ValueError(f"ReviewProposal.end ({self.end}) must be > start ({self.start})")
+        return self
 
 
 # --- Phase 1.5 WS2 — server-owned review sessions ------------------------
@@ -170,9 +187,17 @@ class UserAddedDecision(BaseModel):
     segment_anchor: str
     entity_type: str
     original: str
+    start: int = Field(ge=0)
+    end: int = Field(gt=0)
     operator: str | None = None
     operator_params: dict[str, Any] | None = None
     custom_replacement: str | None = None
+
+    @model_validator(mode="after")
+    def _end_after_start(self) -> UserAddedDecision:
+        if self.end <= self.start:
+            raise ValueError(f"UserAddedDecision.end ({self.end}) must be > start ({self.start})")
+        return self
 
 
 SessionDecision = Annotated[

@@ -37,8 +37,28 @@ the break.
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING (request)**: `POST /review-sessions/{id}/decisions/user-added`
+  now requires `start: int` and `end: int` fields on the request body.
+  Old clients that send only `original` will be rejected with 400. The
+  offsets describe where in the segment text the user-added span lies;
+  the route also validates that `segment.text[start:end] == original`
+  so a stale offset cannot silently flag the wrong span at commit time.
+  Surfaced by Phase 3 WS4 (desktop review surface): an `original` string
+  alone is ambiguous when the segment contains the same string twice
+  (e.g. *"Smith met Smith"*) and the commit-time `str.find` would always
+  pick the first occurrence regardless of which one the user marked.
+  (Phase 3 WS1.5 substep 1.)
+
 ### Added
 
+- `start: int` and `end: int` fields on `ReviewProposal` and
+  `UserAddedDecision` (response side). Carried verbatim from the
+  originating `DetectionResult` for analyzer-derived proposals; supplied
+  by the request body for user-added decisions. Lets the UI highlight
+  the exact span without re-running `str.find(original)`. (Phase 3
+  WS1.5 substep 1.)
 - `/health` now returns `sanctum_commit`: the build-time commit SHA of
   the bundled backend (or `"dev"` when unset). The Phase 3 desktop app
   compares this against the SHA it was built with to detect corrupt

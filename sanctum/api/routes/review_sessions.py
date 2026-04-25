@@ -268,6 +268,11 @@ def _compute_previews(session: ReviewSession, engine: SanctumEngine) -> dict[str
             entity_type=ua.entity_type,
             score=1.0,
             original=ua.original,
+            # See `_run_single_detection_for_preview` in engine.py for
+            # the rationale: shim proposals exist only to call
+            # `compute_preview`, which never reads start/end.
+            start=ua.start,
+            end=ua.end,
         )
         previews[ua.id] = _safe_preview(
             proposal=shim,
@@ -433,10 +438,32 @@ def add_user_added_decision(session_id: str) -> tuple[dict, int]:
     if open_err is not None:
         return open_err
 
-    known_anchors = {s.id for s in session.segments}
-    if req.segment_anchor not in known_anchors:
+    segments_by_id = {s.id: s for s in session.segments}
+    target_segment = segments_by_id.get(req.segment_anchor)
+    if target_segment is None:
         return (
             {"error": f"segment_anchor {req.segment_anchor!r} not found in session"},
+            400,
+        )
+
+    if req.end > len(target_segment.text):
+        return (
+            {
+                "error": (
+                    f"end ({req.end}) exceeds segment text length " f"({len(target_segment.text)})"
+                )
+            },
+            400,
+        )
+    actual = target_segment.text[req.start : req.end]
+    if actual != req.original:
+        return (
+            {
+                "error": (
+                    f"original {req.original!r} does not match segment "
+                    f"slice [{req.start}:{req.end}] = {actual!r}"
+                )
+            },
             400,
         )
 
@@ -444,6 +471,8 @@ def add_user_added_decision(session_id: str) -> tuple[dict, int]:
         segment_anchor=req.segment_anchor,
         entity_type=req.entity_type,
         original=req.original,
+        start=req.start,
+        end=req.end,
         operator=req.operator,
         operator_params=req.operator_params,
         custom_replacement=req.custom_replacement,

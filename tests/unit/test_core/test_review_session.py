@@ -33,6 +33,8 @@ def _session(**overrides: object) -> ReviewSession:
                 entity_type="PERSON",
                 score=0.9,
                 original="Alice",
+                start=0,
+                end=5,
             )
         ],
         "created_at": datetime(2026, 4, 24, tzinfo=timezone.utc),
@@ -62,11 +64,15 @@ class TestAddDecision:
             segment_anchor="body/p0/r0",
             entity_type="PERSON",
             original="Bob",
+            start=0,
+            end=3,
         )
         b = UserAddedDecision(
             segment_anchor="body/p0/r0",
             entity_type="PERSON",
             original="Chris",
+            start=4,
+            end=9,
         )
         session_fn.add_decision(session, a)
         session_fn.add_decision(session, b)

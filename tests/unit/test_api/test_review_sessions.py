@@ -426,12 +426,16 @@ class TestUserAddedDecisions:
                 "segment_anchor": "s0",
                 "entity_type": "PERSON",
                 "original": "Bob",
+                "start": 10,
+                "end": 13,
             },
         )
         assert r.status_code == 201
         body = r.get_json()
         assert body["decision"]["segment_anchor"] == "s0"
         assert body["decision"]["entity_type"] == "PERSON"
+        assert body["decision"]["start"] == 10
+        assert body["decision"]["end"] == 13
         assert "id" in body["decision"]
         assert body["preview"] == "[PERSON]"
 
@@ -446,6 +450,46 @@ class TestUserAddedDecisions:
                 "segment_anchor": "nonexistent",
                 "entity_type": "PERSON",
                 "original": "Bob",
+                "start": 0,
+                "end": 3,
+            },
+        )
+        assert r.status_code == 400
+
+    def test_400_on_offsets_disagreeing_with_segment_text(
+        self, client: Any, tmp_input_path: Path, patched_adapter: Any
+    ) -> None:
+        # Segment s0 is "Alice met Bob"; original="Bob" but start/end pointing
+        # at "Alice" should be rejected so a stale offset can't silently flag
+        # the wrong span at commit time.
+        created = _create_session(client, tmp_input_path)
+        r = client.post(
+            f"/review-sessions/{created['id']}/decisions/user-added",
+            headers={**LOOPBACK, **AUTH},
+            json={
+                "segment_anchor": "s0",
+                "entity_type": "PERSON",
+                "original": "Bob",
+                "start": 0,
+                "end": 5,
+            },
+        )
+        assert r.status_code == 400
+        assert "does not match" in r.get_json()["error"]
+
+    def test_400_on_offsets_past_segment_end(
+        self, client: Any, tmp_input_path: Path, patched_adapter: Any
+    ) -> None:
+        created = _create_session(client, tmp_input_path)
+        r = client.post(
+            f"/review-sessions/{created['id']}/decisions/user-added",
+            headers={**LOOPBACK, **AUTH},
+            json={
+                "segment_anchor": "s0",
+                "entity_type": "PERSON",
+                "original": "ZZZ",
+                "start": 10,
+                "end": 999,
             },
         )
         assert r.status_code == 400
@@ -461,6 +505,8 @@ class TestUserAddedDecisions:
                 "segment_anchor": "s0",
                 "entity_type": "PERSON",
                 "original": "Bob",
+                "start": 10,
+                "end": 13,
             },
         )
         ua_id = r_add.get_json()["decision"]["id"]

@@ -22,6 +22,8 @@ def _proposal(**overrides: object) -> ReviewProposal:
         "score": 0.9,
         "original": "Alice Smith",
         "segment_anchor": "s0",
+        "start": 0,
+        "end": 11,
     }
     defaults.update(overrides)
     return ReviewProposal(**defaults)  # type: ignore[arg-type]

@@ -30,6 +30,8 @@ def _session(session_id: str = "sess-t0", **overrides: object) -> ReviewSession:
                 entity_type="PERSON",
                 score=0.9,
                 original="Alice",
+                start=0,
+                end=5,
             )
         ],
         "created_at": datetime(2026, 4, 24, tzinfo=timezone.utc),
