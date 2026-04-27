@@ -100,13 +100,32 @@ class SessionStore:
     def delete(self, session_id: str) -> None:
         """Remove the session directory. Idempotent.
 
-        Used for both commit cleanup and explicit abandon. A missing
-        directory is not an error — simplifies the API layer's error
-        handling for the abandon/commit endpoints.
+        A missing directory is not an error. Reserved for tests and a
+        future "purge history" UI; the abandon and commit paths use
+        ``shed_input`` so the manifest survives for the listing endpoint.
         """
         session_dir = self._session_dir(session_id)
         if session_dir.exists():
             shutil.rmtree(session_dir)
+
+    def shed_input(self, session_id: str) -> None:
+        """Drop the stored input bytes; keep the manifest intact. Idempotent.
+
+        Called when a session reaches a terminal status (``committed``
+        or ``abandoned``). The original document carries the user's PII
+        plaintext and has no further use once the session is closed —
+        but the manifest (decisions, counts, status, timestamps) is
+        non-sensitive metadata that the desktop's Recent Sessions list
+        relies on. Removing only ``input.*`` lets us shed the bytes
+        without erasing the session's audit trail.
+
+        A missing input file or session dir is not an error.
+        """
+        session_dir = self._session_dir(session_id)
+        if not session_dir.exists():
+            return
+        for input_file in session_dir.glob("input.*"):
+            input_file.unlink()
 
     def list_ids(self) -> list[str]:
         """Enumerate existing session ids. Empty list if root is missing."""

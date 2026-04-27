@@ -306,8 +306,11 @@ class TestCommitReviewSession:
         assert path == out_path
         assert returned == out_path
         assert doc.segments[0].text == "[PERSON] met Bob"
-        # Session dir is cleaned.
-        assert not store.exists("sess-commit")
+        # Manifest survives terminal transition; only input bytes shed.
+        assert store.exists("sess-commit")
+        restored = store.load("sess-commit")
+        assert restored.status == "committed"
+        assert not list((store.root / "sess-commit").glob("input.*"))
 
     def test_rejected_proposal_leaves_original(self, tmp_path: Path) -> None:
         segments = [TextSegment(id="s0", text="Alice met Bob")]

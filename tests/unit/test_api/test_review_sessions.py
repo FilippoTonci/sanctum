@@ -618,7 +618,7 @@ class TestUserAddedDecisions:
 
 
 class TestCommit:
-    def test_happy_path_writes_file_and_deletes_session(
+    def test_happy_path_writes_file_and_keeps_manifest(
         self,
         client: Any,
         tmp_input_path: Path,
@@ -645,8 +645,14 @@ class TestCommit:
         assert body["output_path"] == str(tmp_output_path)
         assert body["committed_at"] is not None
         fake_writer.write.assert_called_once()
-        # Session dir cleaned up.
-        assert not session_store.exists(created["id"])
+        # Manifest persists with status=committed; only input bytes shed.
+        assert session_store.exists(created["id"])
+        restored = session_store.load(created["id"])
+        assert restored.status == "committed"
+        from sanctum.core.exceptions import ReviewSessionNotFoundError
+
+        with pytest.raises(ReviewSessionNotFoundError):
+            session_store.load_input_bytes(created["id"])
 
     def test_400_without_attested(
         self,
@@ -696,13 +702,15 @@ class TestCommit:
             headers={**LOOPBACK, **AUTH},
             json={"output_path": str(tmp_output_path), "attested": True},
         )
-        # Second call — session dir was deleted on first commit, so 404.
+        # Second call — manifest survives (Recent Sessions audit trail);
+        # status check on the route surfaces the mismatch as 409.
         r = client.post(
             f"/review-sessions/{created['id']}/commit",
             headers={**LOOPBACK, **AUTH},
             json={"output_path": str(tmp_output_path), "attested": True},
         )
-        assert r.status_code == 404
+        assert r.status_code == 409
+        assert "committed" in r.get_json()["error"]
 
 
 # ================ DELETE (abandon) =========================================
@@ -722,7 +730,16 @@ class TestAbandon:
             headers={**LOOPBACK, **AUTH},
         )
         assert r.status_code == 204
-        assert not session_store.exists(created["id"])
+        # Manifest persists with status=abandoned so the desktop's
+        # Recent Sessions list can show the audit trail; only the
+        # input bytes are shed.
+        assert session_store.exists(created["id"])
+        restored = session_store.load(created["id"])
+        assert restored.status == "abandoned"
+        from sanctum.core.exceptions import ReviewSessionNotFoundError
+
+        with pytest.raises(ReviewSessionNotFoundError):
+            session_store.load_input_bytes(created["id"])
 
     def test_404_on_unknown_session(self, client: Any) -> None:
         r = client.delete("/review-sessions/nope", headers={**LOOPBACK, **AUTH})

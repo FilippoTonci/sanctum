@@ -316,9 +316,13 @@ def test_commit_writes_final_file_with_no_sanctum_trailers(
     # can't exercise the real docx writer.
     assert "sanctum:" not in text, "final file must be trailer-free"
 
-    # Session dir cleaned on successful commit.
-    status, _ = _request("GET", f"{base}/review-sessions/{session_id}", token=token)
-    assert status == 404
+    # Manifest survives so the desktop's Recent Sessions list keeps the
+    # audit trail; status flips to ``committed`` and the input bytes are
+    # shed (covered by the unit-store tests).
+    status, body = _request("GET", f"{base}/review-sessions/{session_id}", token=token)
+    assert status == 200
+    assert body["status"] == "committed"
+    assert body["committed_at"] is not None
 
 
 def test_commit_requires_attested(server: tuple[str, str], tmp_path: Path) -> None:
@@ -339,7 +343,7 @@ def test_commit_requires_attested(server: tuple[str, str], tmp_path: Path) -> No
     assert "attested" in body["error"]
 
 
-def test_abandon_cleans_up_session(server: tuple[str, str]) -> None:
+def test_abandon_marks_session_terminal_and_keeps_manifest(server: tuple[str, str]) -> None:
     base, token = server
     _, created = _request(
         "POST",
@@ -350,8 +354,59 @@ def test_abandon_cleans_up_session(server: tuple[str, str]) -> None:
     session_id = created["id"]
     status, _ = _request("DELETE", f"{base}/review-sessions/{session_id}", token=token)
     assert status == 204
-    status, _ = _request("GET", f"{base}/review-sessions/{session_id}", token=token)
-    assert status == 404
+    # Manifest survives — the desktop's Recent Sessions list reads it
+    # to show what the user decided to skip.
+    status, body = _request("GET", f"{base}/review-sessions/{session_id}", token=token)
+    assert status == 200
+    assert body["status"] == "abandoned"
+
+
+def test_listing_includes_committed_and_abandoned_sessions(
+    server: tuple[str, str], tmp_path: Path
+) -> None:
+    """Regression test: terminal sessions must keep appearing in the
+    listing endpoint that powers the desktop's Recent Sessions UI.
+
+    Pre-fix, both abandon and commit deleted the on-disk manifest, so
+    the listing collapsed to "open sessions only" — which silently
+    erased the user's audit trail every time they closed a session.
+    """
+    base, token = server
+    # One session that we'll abandon.
+    _, abandoned = _request(
+        "POST",
+        f"{base}/review-sessions",
+        token=token,
+        body={"input_path": str(_FIXTURE), "default_operator": "replace"},
+    )
+    _request("DELETE", f"{base}/review-sessions/{abandoned['id']}", token=token)
+
+    # One session that we'll commit (after accepting all proposals).
+    _, committed = _request(
+        "POST",
+        f"{base}/review-sessions",
+        token=token,
+        body={"input_path": str(_FIXTURE), "default_operator": "replace"},
+    )
+    for proposal in committed["proposals"]:
+        _request(
+            "PATCH",
+            f"{base}/review-sessions/{committed['id']}/decisions/{proposal['detection_id']}",
+            token=token,
+            body={"status": "accept"},
+        )
+    _request(
+        "POST",
+        f"{base}/review-sessions/{committed['id']}/commit",
+        token=token,
+        body={"output_path": str(tmp_path / "out.docx"), "attested": True},
+    )
+
+    status, body = _request("GET", f"{base}/review-sessions", token=token)
+    assert status == 200
+    by_id = {s["id"]: s for s in body["sessions"]}
+    assert by_id[abandoned["id"]]["status"] == "abandoned"
+    assert by_id[committed["id"]]["status"] == "committed"
 
 
 def test_process_file_review_true_creates_session_and_is_retrievable(
