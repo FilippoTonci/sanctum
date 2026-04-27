@@ -146,6 +146,51 @@ def test_exists_reflects_save_and_delete(tmp_path: Path) -> None:
     assert not store.exists(session.id)
 
 
+def test_shed_input_removes_input_bytes_only(tmp_path: Path) -> None:
+    store = SessionStore(root=tmp_path)
+    session = _session()
+    store.save(session, input_bytes=b"PK\x03\x04fake-docx")
+    store.shed_input(session.id)
+    session_dir = tmp_path / session.id
+    assert session_dir.exists()
+    assert (session_dir / "manifest.json").exists()
+    assert not list(session_dir.glob("input.*"))
+
+
+def test_shed_input_preserves_loaded_session(tmp_path: Path) -> None:
+    store = SessionStore(root=tmp_path)
+    session = _session()
+    session.decisions.append(ProposalDecision(proposal_id="abcdef012345", status="accept"))
+    store.save(session, input_bytes=b"hello")
+    store.shed_input(session.id)
+    restored = store.load(session.id)
+    assert restored.id == session.id
+    assert restored.decisions == session.decisions
+
+
+def test_shed_input_is_idempotent(tmp_path: Path) -> None:
+    store = SessionStore(root=tmp_path)
+    session = _session()
+    store.save(session, input_bytes=b"hello")
+    store.shed_input(session.id)
+    store.shed_input(session.id)  # second call must not raise
+    assert (tmp_path / session.id / "manifest.json").exists()
+
+
+def test_shed_input_no_op_on_missing_session(tmp_path: Path) -> None:
+    store = SessionStore(root=tmp_path)
+    store.shed_input("never-existed")  # must not raise
+
+
+def test_shed_input_then_load_input_bytes_raises(tmp_path: Path) -> None:
+    store = SessionStore(root=tmp_path)
+    session = _session()
+    store.save(session, input_bytes=b"hello")
+    store.shed_input(session.id)
+    with pytest.raises(ReviewSessionNotFoundError):
+        store.load_input_bytes(session.id)
+
+
 def test_list_ids_enumerates_sessions(tmp_path: Path) -> None:
     store = SessionStore(root=tmp_path)
     store.save(_session("aaa"))

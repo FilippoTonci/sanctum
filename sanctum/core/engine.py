@@ -318,7 +318,8 @@ class SanctumEngine:
             session,
             committed_at if committed_at is not None else datetime.now(timezone.utc),
         )
-        session_store.delete(session_id)
+        session_store.save(session)
+        session_store.shed_input(session_id)
         return output_path
 
 

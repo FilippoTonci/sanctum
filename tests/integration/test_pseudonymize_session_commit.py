@@ -441,7 +441,8 @@ def test_second_session_reuses_existing_pseudonym(
 
 
 def test_abandon_leaves_store_untouched(server: tuple[str, str], store_path: Path) -> None:
-    """Abandon deletes the session dir but does not write to the mapping store."""
+    """Abandon transitions the session to ``abandoned`` and does not write
+    to the mapping store."""
     base, token = server
     _unlock(base, token, store_path)
     try:
@@ -472,13 +473,14 @@ def test_abandon_leaves_store_untouched(server: tuple[str, str], store_path: Pat
     assert _read_store_entries(store_path) == {}
 
 
-def test_double_commit_404s(server: tuple[str, str], store_path: Path, tmp_path: Path) -> None:
+def test_double_commit_409s(server: tuple[str, str], store_path: Path, tmp_path: Path) -> None:
     """A second commit on the same session id is refused.
 
-    Session dir is torn down on successful commit, so the second call
-    404s. Same "one commit" invariant as the WS2 unit suite — just
-    enforced via the store's existence check rather than the status
-    field.
+    The manifest survives terminal transitions so the desktop's Recent
+    Sessions list keeps its audit trail; the status check on the commit
+    route surfaces the "already committed" mismatch as 409. Same "one
+    commit" invariant as the WS2 unit suite — just enforced via the
+    status field rather than the store's existence check.
     """
     base, token = server
     _unlock(base, token, store_path)
@@ -512,7 +514,8 @@ def test_double_commit_404s(server: tuple[str, str], store_path: Path, tmp_path:
             token=token,
             body={"output_path": str(tmp_path / "second.docx"), "attested": True},
         )
-        assert status == 404, body
+        assert status == 409, body
+        assert "committed" in body["error"]
     finally:
         _lock(base, token)
 

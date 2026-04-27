@@ -676,9 +676,10 @@ def commit_session(session_id: str) -> tuple[dict, int]:
         )
         return {"error": f"anonymization failed: {exc}"}, 500
 
-    # Engine mutated the stored session with the same ``committed_at`` we
-    # pinned above and deleted the on-disk dir. Echoing our local copy
-    # avoids a reload for a timestamp we already own.
+    # Engine mutated the stored session with the same ``committed_at``
+    # we pinned above and shed the input bytes. The manifest survives
+    # so the desktop's Recent Sessions list keeps its audit trail.
+    # Echoing our local copy avoids a reload for a timestamp we own.
     payload = CommitReviewSessionResponse(
         session_id=session_id,
         output_path=str(out_path),
@@ -711,5 +712,6 @@ def abandon(session_id: str) -> tuple[dict, int] | tuple[str, int]:
         )
 
     abandon_session(session)
-    store.delete(session_id)
+    store.save(session)
+    store.shed_input(session_id)
     return "", 204
