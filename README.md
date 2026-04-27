@@ -153,7 +153,7 @@ Sanctum explicitly labels which threshold has been met for every document proces
 
 ## 🚀 Getting Started
 
-> **Note:** Phase 0 is complete and Phase 1 is well underway — CLI, structured document adapters (`.docx` / `.xlsx` / `.pdf` / `.pptx`), encrypted mapping store, and a localhost Flask API are functional. A packaged desktop GUI is planned for Phase 3.
+> **Note:** Phases 0, 1, and 1.5 are shipped — CLI, structured document adapters (`.docx` / `.xlsx` / `.pdf` / `.pptx`), encrypted mapping store, localhost Flask API, and the human-in-the-loop review session API are all functional. The Phase 3 desktop GUI ([`sanctum-desktop`](https://github.com/FilippoTonci/sanctum-desktop)) consumes the review-session API directly and runs end-to-end on Linux today; signed installers and the macOS / Windows release pipeline are next.
 
 ### Prerequisites
 
@@ -297,12 +297,12 @@ Sanctum is designed to help professionals meet the requirements of:
 - [ ] Audit trail and decision trace export (JSON/PDF)
 - [ ] Locale-specific recognizers (UK, EU, India)
 
-### Phase 3 — Desktop GUI & Packaging *(MVP — separate `sanctum-desktop` Electron repo)*
-- [ ] Standalone desktop GUI (Electron wrapper around Python core, own repo + release cadence)
-- [ ] Drag-and-drop document import (`.docx`, `.pdf`, `.xlsx`)
-- [ ] Selective redaction by entity type in the GUI (replaces the skipped Phase 1.5 WS3 reference UI — the Electron app consumes the same `/review-sessions` API directly)
+### Phase 3 — Desktop GUI & Packaging *(MVP — separate [`sanctum-desktop`](https://github.com/FilippoTonci/sanctum-desktop) Electron repo, in development)*
+- [x] Standalone desktop GUI (Electron + React wrapper around the Python core; own repo + release cadence) — **runs end-to-end pre-alpha**
+- [x] Drag-and-drop `.docx` document import — `.pdf` / `.xlsx` deferred to Phase 3.5
+- [x] Selective redaction by entity type in the GUI (replaces the skipped Phase 1.5 WS3 reference UI — the Electron app consumes the same `/review-sessions` API directly)
 - [ ] `.pdf` burn-in redaction (structural removal, not just visual)
-- [ ] Packaged installers for Windows (`.exe`) and macOS (`.dmg`)
+- [ ] Signed packaged installers for Windows (`.exe`) and macOS (`.dmg`)
 
 ### Phase 4 — Store Release & GA
 - [ ] `.xlsx` cell-level anonymization

@@ -25,6 +25,17 @@ plan as it evolves. Map that structure onto git:
 - If a substep surfaces unrelated cleanup, split it into its own commit (or
   its own PR if it crosses WS boundaries) — don't smuggle it in.
 
+## Keep the README roadmap in sync
+
+When a substep / WS / Phase item lands, **edit the matching `[ ]` → `[x]`
+in `README.md` (this repo) and in [`sanctum-desktop/README.md`](https://github.com/FilippoTonci/sanctum-desktop/blob/main/README.md)
+when the work touches the desktop GUI**. Update the status callout near
+the top of each README too if the high-level state shifted (e.g. "WSx
+about to land" → "WSx shipped"). Bundle the README change into the same
+commit as the substep when it's small; otherwise commit it right after.
+Don't tick a box for work that's merged but not yet released — installers
+require signed builds before the user-facing line items flip.
+
 ## Architecture — hexagonal (ports & adapters)
 
 ```
