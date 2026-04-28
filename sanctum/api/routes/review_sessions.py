@@ -5,6 +5,9 @@ Server-side state for the HITL review flow (Phase 1.5 WS2). Clients:
 - ``POST /review-sessions`` — analyze, build proposals, persist session.
 - ``GET /review-sessions/{id}`` — full session dump + per-proposal + per-
   user-added previews.
+- ``GET /review-sessions/{id}/input`` — the original input bytes; used
+  by the desktop to resume an open session. ``410 Gone`` after the
+  session reaches a terminal status (commit / abandon) sheds them.
 - ``PATCH /review-sessions/{id}/decisions/{proposal_id}`` — accept /
   reject a proposal; set operator / params / custom_replacement.
 - ``POST /review-sessions/{id}/decisions/user-added`` — add a span the
@@ -23,9 +26,10 @@ authoritative cache.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from io import BytesIO
 from typing import Any
 
-from flask import Blueprint, current_app
+from flask import Blueprint, Response, current_app, send_file
 
 from sanctum.api._internal import parse_body, validate_local_path
 from sanctum.api.auth import require_bearer_token
@@ -438,6 +442,85 @@ def get_session(session_id: str) -> tuple[dict, int]:
     assert session is not None
 
     return _session_response(session, engine), 200
+
+
+# Mimetypes the input route advertises per session format. ``send_file``
+# falls back to ``application/octet-stream`` for anything not in this
+# table; that's defensible for unknown formats but the four we support
+# get their canonical types so the desktop's ``Blob`` round-trips with
+# a usable ``type`` field for ``docx-preview`` etc.
+_FORMAT_MIMETYPES: dict[str, str] = {
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "pdf": "application/pdf",
+}
+
+
+@review_sessions_bp.get("/<session_id>/input")
+@require_bearer_token
+def get_session_input(session_id: str) -> tuple[dict, int] | Response:
+    """Return the original input bytes for an OPEN session.
+
+    Used by the desktop's "resume from Recent Sessions" flow: after
+    fetching the session JSON, the renderer fetches the input bytes
+    from this endpoint and feeds them into ``docx-preview`` (etc.)
+    instead of relying on the user re-locating the original file. The
+    bytes live under the session directory at ``input.<format>``,
+    pinned by ``SessionStore.save`` at create time.
+
+    Terminal sessions (committed / abandoned) have shed the bytes —
+    see ``SessionStore.shed_input`` — so this returns ``410 Gone`` for
+    them. The session manifest survives that shed for the listing
+    endpoint, so callers can still see the row in Recent Sessions but
+    won't be able to resume it.
+    """
+    store = _get_store()
+    if store is None:
+        current_app.logger.error(
+            "/review-sessions/<id>/input called but SANCTUM_SESSION_STORE is unconfigured"
+        )
+        return {"error": "session store not configured"}, 503
+
+    session, load_err = _load_session(store, session_id)
+    if load_err is not None:
+        return load_err
+    assert session is not None
+
+    if session.status != "open":
+        return (
+            {
+                "error": (
+                    f"session is {session.status}; input bytes were shed at terminal status "
+                    "and are no longer available"
+                )
+            },
+            410,
+        )
+
+    try:
+        input_bytes = store.load_input_bytes(session_id)
+    except ReviewSessionNotFoundError:
+        # Session manifest is OPEN but input.* is missing — either a
+        # disk-level corruption or someone shed_input'd by hand. Treat
+        # the same as a terminal-shed scenario from the caller's POV;
+        # they can't recover by retrying so 410 is honest.
+        current_app.logger.warning(
+            "GET /review-sessions/%s/input: open session has no stored input bytes",
+            session_id,
+        )
+        return (
+            {"error": "session input bytes are missing on disk"},
+            410,
+        )
+
+    mimetype = _FORMAT_MIMETYPES.get(session.format, "application/octet-stream")
+    return send_file(
+        BytesIO(input_bytes),
+        mimetype=mimetype,
+        as_attachment=False,
+        download_name=f"{session_id}.{session.format}",
+    )
 
 
 @review_sessions_bp.patch("/<session_id>/decisions/<proposal_id>")

@@ -535,3 +535,134 @@ def test_user_added_purges_overlapping_proposals(server: tuple[str, str]) -> Non
     # Previews map drops the removed proposal ids too — only surviving
     # proposals + the new UA decision get a preview slot.
     assert expected_removed.isdisjoint(fetched["previews"].keys())
+
+
+def _request_raw(url: str, *, token: str | None = None) -> tuple[int, bytes, dict[str, str]]:
+    """Binary GET — used to fetch the input bytes route without JSON-decoding.
+
+    Returns ``(status, body_bytes, response_headers)``. Callers assert on
+    the bytes (round-trip) and on the ``Content-Type`` header.
+    """
+    netloc = url.split("/", 3)[2]
+    headers: dict[str, str] = {"Host": netloc}
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, method="GET", headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=15.0) as r:
+            return r.status, r.read(), {k.lower(): v for k, v in r.headers.items()}
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read(), {k.lower(): v for k, v in exc.headers.items()}
+
+
+def test_get_input_returns_bytes_for_open_session(server: tuple[str, str]) -> None:
+    """Phase 3 WS5 — desktop resume reads the original input via this route.
+
+    Round-trips the NDA fixture: bytes returned by the route must be
+    byte-equal to the file the session was created from, and the
+    Content-Type must be the canonical docx mimetype so the desktop's
+    ``Blob`` round-trips with a usable ``type`` field.
+    """
+    base, token = server
+    _, created = _request(
+        "POST",
+        f"{base}/review-sessions",
+        token=token,
+        body={"input_path": str(_FIXTURE), "default_operator": "replace"},
+    )
+    session_id = created["id"]
+    expected = _FIXTURE.read_bytes()
+
+    status, body, headers = _request_raw(f"{base}/review-sessions/{session_id}/input", token=token)
+    assert status == 200
+    assert body == expected
+    assert (
+        headers["content-type"]
+        == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
+
+def test_get_input_returns_410_after_abandon(server: tuple[str, str]) -> None:
+    """Terminal sessions shed their input bytes — surface as 410 Gone, not 404.
+
+    404 would imply "this session never existed"; 410 carries the
+    intended meaning that the desktop UI can render distinctly: the
+    row is real, but its source document is gone for compliance
+    reasons. Recent Sessions can disable the resume button on terminal
+    rows on the strength of ``session.status`` alone, but a defensive
+    fetch must still degrade gracefully.
+    """
+    base, token = server
+    _, created = _request(
+        "POST",
+        f"{base}/review-sessions",
+        token=token,
+        body={"input_path": str(_FIXTURE), "default_operator": "replace"},
+    )
+    session_id = created["id"]
+    abandon_status, _ = _request("DELETE", f"{base}/review-sessions/{session_id}", token=token)
+    assert abandon_status == 204
+
+    status, body_bytes, _ = _request_raw(f"{base}/review-sessions/{session_id}/input", token=token)
+    assert status == 410
+    body = json.loads(body_bytes)
+    assert body["error"].startswith("session is abandoned")
+
+
+def test_get_input_returns_410_after_commit(server: tuple[str, str], tmp_path: Path) -> None:
+    """Same shed-input invariant on the commit path."""
+    base, token = server
+    _, created = _request(
+        "POST",
+        f"{base}/review-sessions",
+        token=token,
+        body={"input_path": str(_FIXTURE), "default_operator": "replace"},
+    )
+    session_id = created["id"]
+    for proposal in created["proposals"]:
+        _request(
+            "PATCH",
+            f"{base}/review-sessions/{session_id}/decisions/{proposal['detection_id']}",
+            token=token,
+            body={"status": "accept"},
+        )
+    commit_status, _ = _request(
+        "POST",
+        f"{base}/review-sessions/{session_id}/commit",
+        token=token,
+        body={
+            "output_path": str(tmp_path / "out.docx"),
+            "attested": True,
+        },
+    )
+    assert commit_status == 200
+
+    status, body_bytes, _ = _request_raw(f"{base}/review-sessions/{session_id}/input", token=token)
+    assert status == 410
+    body = json.loads(body_bytes)
+    assert body["error"].startswith("session is committed")
+
+
+def test_get_input_returns_404_for_unknown_session(server: tuple[str, str]) -> None:
+    base, token = server
+    status, body_bytes, _ = _request_raw(
+        f"{base}/review-sessions/does-not-exist/input", token=token
+    )
+    assert status == 404
+    body = json.loads(body_bytes)
+    assert "not found" in body["error"]
+
+
+def test_get_input_requires_auth(server: tuple[str, str]) -> None:
+    """No-bearer must 401 just like the rest of the family — the input
+    bytes carry the user's PII plaintext, so an auth bypass here is a
+    larger hole than dropping a JSON dump."""
+    base, _ = server
+    _, created = _request(
+        "POST",
+        f"{base}/review-sessions",
+        token=_TOKEN,
+        body={"input_path": str(_FIXTURE), "default_operator": "replace"},
+    )
+    status, _, _ = _request_raw(f"{base}/review-sessions/{created['id']}/input", token=None)
+    assert status == 401
