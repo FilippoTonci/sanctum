@@ -352,10 +352,18 @@ class DecisionWithPreviewResponse(_Frozen):
     Returning the preview on the mutation response spares the UI a
     follow-up GET just to refresh one cell. The full session is still
     fetched via GET when the reviewer navigates across proposals.
+
+    ``removed_proposal_ids`` is non-empty only on POST user-added when
+    the new span overlapped existing model proposals (sanctum#31). The
+    overlapped proposals — and any decision that referenced them — have
+    been dropped server-side; the desktop should mirror that locally
+    without a session refetch. Empty for PATCH and for non-overlapping
+    user-added spans.
     """
 
     decision: SessionDecision
     preview: str
+    removed_proposal_ids: list[str] = Field(default_factory=list)
 
 
 class AddUserAddedDecisionRequest(_StrictRequest):

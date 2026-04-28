@@ -39,6 +39,17 @@ the break.
 
 ### Changed
 
+- `POST /review-sessions/{id}/decisions/user-added` now purges any
+  model proposal whose char range overlaps the user-added span on the
+  same `segment_anchor` — and any decision attached to it. The user-
+  added span is the new source of truth for that range; previously,
+  overlapped proposals were left `pending` and could double-anonymize
+  at commit time. Adjacent ranges (sharing no characters) are left
+  alone. The response gains a `removed_proposal_ids: list[str]` field
+  so callers can update local state without a session refetch; the
+  field is empty for non-overlapping spans and for PATCH responses.
+  No restoration on UA delete: removing the user-added decision later
+  does not bring the purged proposals back. (Fixes #31.)
 - **BREAKING (request)**: `POST /review-sessions/{id}/decisions/user-added`
   now requires `start: int` and `end: int` fields on the request body.
   Old clients that send only `original` will be rejected with 400. The

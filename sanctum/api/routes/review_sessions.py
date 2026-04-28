@@ -61,7 +61,7 @@ from sanctum.core.protocols import MappingStore
 from sanctum.core.review.preview_store import PreviewMappingStore
 from sanctum.core.review.previews import compute_preview
 from sanctum.core.review.session import abandon as abandon_session
-from sanctum.core.review.session import add_decision
+from sanctum.core.review.session import add_decision, apply_user_added_with_overlap_purge
 from sanctum.core.review.store import SessionStore
 from sanctum.documents import adapter_for
 
@@ -521,7 +521,7 @@ def add_user_added_decision(session_id: str) -> tuple[dict, int]:
         return (
             {
                 "error": (
-                    f"end ({req.end}) exceeds segment text length " f"({len(target_segment.text)})"
+                    f"end ({req.end}) exceeds segment text length ({len(target_segment.text)})"
                 )
             },
             400,
@@ -549,7 +549,7 @@ def add_user_added_decision(session_id: str) -> tuple[dict, int]:
         custom_replacement=req.custom_replacement,
     )
     try:
-        add_decision(session, decision)
+        removed_proposal_ids = apply_user_added_with_overlap_purge(session, decision)
     except ReviewSessionAlreadyCommittedError:
         return (
             {"error": f"session is {session.status}; mutations are no longer permitted"},
@@ -558,7 +558,11 @@ def add_user_added_decision(session_id: str) -> tuple[dict, int]:
     store.save(session)
 
     preview = _compute_previews(session, engine)[decision.id]
-    payload = DecisionWithPreviewResponse(decision=decision, preview=preview)
+    payload = DecisionWithPreviewResponse(
+        decision=decision,
+        preview=preview,
+        removed_proposal_ids=removed_proposal_ids,
+    )
     return payload.model_dump(mode="json"), 201
 
 
