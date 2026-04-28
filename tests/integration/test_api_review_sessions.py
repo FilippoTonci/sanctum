@@ -477,3 +477,61 @@ def test_user_added_decision_round_trip(server: tuple[str, str]) -> None:
         token=token,
     )
     assert status == 204
+
+
+def test_user_added_purges_overlapping_proposals(server: tuple[str, str]) -> None:
+    """sanctum#31 — a UA span subsumes overlapping model proposals.
+
+    Pick the segment that hosts the most proposals, draw a UA span that
+    covers the leftmost-to-rightmost proposal on it, and verify the
+    overlapped proposal ids come back in ``removed_proposal_ids`` and
+    are gone from the session on the next GET.
+    """
+    base, token = server
+    _, created = _request(
+        "POST",
+        f"{base}/review-sessions",
+        token=token,
+        body={"input_path": str(_FIXTURE), "default_operator": "replace"},
+    )
+    session_id = created["id"]
+
+    by_anchor: dict[str, list[dict[str, Any]]] = {}
+    for p in created["proposals"]:
+        by_anchor.setdefault(p["segment_anchor"], []).append(p)
+    anchor, proposals_on_anchor = max(by_anchor.items(), key=lambda kv: len(kv[1]))
+    assert len(proposals_on_anchor) >= 2, (
+        "fixture invariant: the NDA contract should produce at least one segment "
+        "with multiple proposals — adjust the fixture if this fails"
+    )
+    span_start = min(p["start"] for p in proposals_on_anchor)
+    span_end = max(p["end"] for p in proposals_on_anchor)
+    expected_removed = {p["detection_id"] for p in proposals_on_anchor}
+
+    segment_text = next(s["text"] for s in created["segments"] if s["id"] == anchor)
+    span_text = segment_text[span_start:span_end]
+
+    status, body = _request(
+        "POST",
+        f"{base}/review-sessions/{session_id}/decisions/user-added",
+        token=token,
+        body={
+            "segment_anchor": anchor,
+            "entity_type": "ORGANIZATION",
+            "original": span_text,
+            "start": span_start,
+            "end": span_end,
+        },
+    )
+    assert status == 201, body
+    assert set(body["removed_proposal_ids"]) == expected_removed
+
+    status, fetched = _request("GET", f"{base}/review-sessions/{session_id}", token=token)
+    assert status == 200
+    surviving_ids = {p["detection_id"] for p in fetched["proposals"]}
+    assert expected_removed.isdisjoint(
+        surviving_ids
+    ), "overlapped proposals should be gone from the session after the UA"
+    # Previews map drops the removed proposal ids too — only surviving
+    # proposals + the new UA decision get a preview slot.
+    assert expected_removed.isdisjoint(fetched["previews"].keys())

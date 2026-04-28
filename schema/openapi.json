@@ -1479,7 +1479,7 @@
       },
       "DecisionWithPreviewResponse": {
         "additionalProperties": false,
-        "description": "Body for PATCH / POST user-added \u2014 echoes the decision + its preview.\n\nReturning the preview on the mutation response spares the UI a\nfollow-up GET just to refresh one cell. The full session is still\nfetched via GET when the reviewer navigates across proposals.",
+        "description": "Body for PATCH / POST user-added \u2014 echoes the decision + its preview.\n\nReturning the preview on the mutation response spares the UI a\nfollow-up GET just to refresh one cell. The full session is still\nfetched via GET when the reviewer navigates across proposals.\n\n``removed_proposal_ids`` is non-empty only on POST user-added when\nthe new span overlapped existing model proposals (sanctum#31). The\noverlapped proposals \u2014 and any decision that referenced them \u2014 have\nbeen dropped server-side; the desktop should mirror that locally\nwithout a session refetch. Empty for PATCH and for non-overlapping\nuser-added spans.",
         "properties": {
           "decision": {
             "discriminator": {
@@ -1502,6 +1502,13 @@
           "preview": {
             "title": "Preview",
             "type": "string"
+          },
+          "removed_proposal_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Removed Proposal Ids",
+            "type": "array"
           }
         },
         "required": [
