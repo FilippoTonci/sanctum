@@ -80,7 +80,7 @@ class Route:
     requires_auth: bool
     path_params: tuple[str, ...]
     request_body: type[BaseModel] | None
-    responses: dict[int, type[BaseModel] | None]
+    responses: dict[int, type[BaseModel] | _BinaryResponse | None]
 
 
 # Error shape used across the API for 4xx / 5xx responses. Kept here
@@ -89,6 +89,21 @@ class Route:
 class _ErrorResponse(BaseModel):
     error: str
     details: list[dict[str, Any]] | None = None
+
+
+@dataclasses.dataclass(frozen=True)
+class _BinaryResponse:
+    """Sentinel for routes that emit a binary (non-JSON) success body.
+
+    Lets ``GET /review-sessions/{id}/input`` etc. document a content
+    type without inventing a Pydantic model. The schema rendered for
+    this content is OpenAPI's standard binary form (``string`` /
+    ``binary``), and ``content_type`` is what the route actually sets
+    on the ``Content-Type`` header.
+    """
+
+    content_type: str
+    description: str = "Binary response"
 
 
 # Path parameter names (as they appear in Flask ``<name>`` placeholders)
@@ -254,6 +269,29 @@ ROUTES: list[Route] = [
         },
     ),
     Route(
+        method="get",
+        path="/review-sessions/{session_id}/input",
+        summary="Fetch the original input bytes for an open session.",
+        requires_auth=True,
+        path_params=("session_id",),
+        request_body=None,
+        responses={
+            200: _BinaryResponse(
+                # The four supported document formats share this slot —
+                # the runtime sets Content-Type per session.format. The
+                # spec lists docx as the canonical advertised type since
+                # it's the only format wired end-to-end today; the
+                # runtime is forward-compatible with the rest.
+                content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                description="Document bytes — Content-Type matches session.format.",
+            ),
+            401: _ErrorResponse,
+            404: _ErrorResponse,
+            410: _ErrorResponse,
+            503: _ErrorResponse,
+        },
+    ),
+    Route(
         method="patch",
         path="/review-sessions/{session_id}/decisions/{proposal_id}",
         summary="Accept or reject a proposal; override operator / params.",
@@ -340,7 +378,10 @@ def _collect_models() -> list[type[BaseModel]]:
         if r.request_body is not None:
             seen[r.request_body.__name__] = r.request_body
         for m in r.responses.values():
-            if m is not None:
+            # Skip both ``None`` (empty body, e.g. 204) and binary
+            # response sentinels — neither contributes a JSON model
+            # to the components pool.
+            if isinstance(m, type) and issubclass(m, BaseModel):
                 seen[m.__name__] = m
     # Deterministic ordering for stable diffs.
     return [seen[k] for k in sorted(seen)]
@@ -409,7 +450,14 @@ def _route_operation(r: Route) -> dict[str, Any]:
         }
     for status, model in r.responses.items():
         response: dict[str, Any] = {"description": _status_description(status)}
-        if model is not None:
+        if isinstance(model, _BinaryResponse):
+            response["description"] = model.description
+            response["content"] = {
+                model.content_type: {
+                    "schema": {"type": "string", "format": "binary"},
+                },
+            }
+        elif model is not None:
             response["content"] = {
                 "application/json": {
                     "schema": {"$ref": REF_TEMPLATE.format(model=model.__name__)},
@@ -429,6 +477,7 @@ _STATUS_DESCRIPTIONS = {
     401: "Unauthorized",
     404: "Not Found",
     409: "Conflict",
+    410: "Gone",
     413: "Payload Too Large",
     415: "Unsupported Media Type",
     500: "Internal Server Error",
