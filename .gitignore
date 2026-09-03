@@ -54,6 +54,13 @@ nosetests.xml
 .venv-bench
 notebooks/
 
+# Local config. `.env.example` says "copy to .env", and SANCTUM_PASSPHRASE
+# (the mapping-store passphrase) is read from the environment — so a real
+# secret lands here. Never track it.
+.env
+.env.local
+.env.*.local
+
 # IDE
 *.sw[po]
 *.iml
