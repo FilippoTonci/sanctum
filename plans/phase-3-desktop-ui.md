@@ -1005,6 +1005,23 @@ launch checklist.
    all three OS, Playwright smoke on a signed build),
    git-tag-driven release workflow, post-flight (GitHub release
    notes, update channel promotion).
+9. **Tester download site.** A static page carrying the
+   unsigned pre-release builds for developers and testers, per
+   open decision 3. Links the artifacts from the tag-driven
+   GitHub release rather than hosting its own copies — which
+   requires `sanctum-desktop` to be a public repo, since release
+   assets on a private one 404 for anonymous visitors. It states
+   plainly that they are unsigned, and gives the unblock step
+   each one needs — on macOS that is
+   `xattr -dr com.apple.quarantine`. Scope follows what the
+   release workflow actually emits: an arm64 `.dmg` and the Linux
+   `.AppImage` / `.deb`. There is no Windows artifact to host
+   until `build-windows` in `release.yml` loses its `if: false`,
+   so the site should say Windows is not available yet rather
+   than link a build that does not exist. Ships before substeps
+   4-6, and is superseded as the end-user channel once those
+   land. Its own repo — neither `sanctum` nor `sanctum-desktop`
+   is a home for marketing HTML.
 
 ### Files (sanctum-desktop repo)
 
@@ -1155,11 +1172,16 @@ lead time) must be kicked off no later than WS2.
 2. **Update server**. Sanctum needs a static file host for
    installers + models. S3 + CloudFront? Self-hosted on Hetzner?
    Both? Decide before WS6.
-3. **Public beta**: do we ship an unsigned / non-notarized
-   pre-release to a small cohort to validate the review UX
-   before investing in signing infrastructure? Tempting but
-   risks Windows SmartScreen + macOS Gatekeeper burning user
-   trust.
+3. **Public beta** — _resolved 2026-09-03: yes, unsigned._ A
+   download site distributes the unsigned / non-notarized builds
+   so other developers and testers can run the app before any
+   signing infrastructure exists. The audience is what makes this
+   safe: people who can be handed a `xattr -dr` line are not the
+   users whose trust Gatekeeper and SmartScreen would burn. The
+   conditions are that the site says the builds are unsigned,
+   carries the per-OS unblock steps, and is not the channel end
+   users are pointed at — that one waits on substeps 4-6 below.
+   Built as WS6 substep 9.
 4. **Dev-mode backend spawn**: WS3 substep 8 assumes a sibling
    `../sanctum` checkout. Is that how contributors will actually
    work, or do we want a `pip install -e .` path that points at
