@@ -74,3 +74,76 @@ def test_registry_dispatches_to_pptx_adapter() -> None:
     r, w = adapter_for(FIXTURE)
     assert isinstance(r, Reader)
     assert isinstance(w, Writer)
+
+
+# ---------- Phase 3.5 WS1: groups, notes, alt-text ----------
+
+EXPECTED_RICH_IDS = [
+    "slide0/shape0/p0/r0",
+    "slide0/shape1/p0/r0",
+    "slide0/shape1/p0/r1",
+    "slide0/notes/p0/r0",
+    "slide1/shape0/row0/col0/p0/r0",
+    "slide1/shape0/row0/col1/p0/r0",
+    "slide1/shape0/row1/col0/p0/r0",
+    "slide1/shape0/row1/col1/p0/r0",
+    "slide2/shape0/group0/p0/r0",
+    "slide2/shape0/group1/group0/p0/r0",
+    "slide2/shape1/alt",
+    "slide2/notes/p0/r0",
+]
+
+
+def test_reader_covers_groups_notes_and_alt_text(reader: Reader, rich_pptx: Path) -> None:
+    doc = reader.read(rich_pptx)
+    assert [s.id for s in doc.segments] == EXPECTED_RICH_IDS
+    by_id = {s.id: s.text for s in doc.segments}
+    assert by_id["slide0/notes/p0/r0"] == "Call Daniel Okafor first."
+    assert by_id["slide2/shape0/group1/group0/p0/r0"] == "Deputy: Olivia Brandt"
+    assert by_id["slide2/shape1/alt"] == "Photo of Samuel Achterberg"
+
+
+def test_reader_does_not_create_notes_slides(reader: Reader, rich_pptx: Path) -> None:
+    doc = reader.read(rich_pptx)
+    assert not doc.raw_handle.slides[1].has_notes_slide
+
+
+def test_writer_patches_groups_notes_and_alt_text(
+    reader: Reader, writer: Writer, rich_pptx: Path, tmp_path: Path
+) -> None:
+    doc = reader.read(rich_pptx)
+    edits = {
+        "slide0/notes/p0/r0": "Call <PERSON> first.",
+        "slide2/shape0/group1/group0/p0/r0": "Deputy: <PERSON>",
+        "slide2/shape1/alt": "Photo of <PERSON>",
+    }
+    mutated = doc.model_copy(
+        update={
+            "segments": [
+                s.model_copy(update={"text": edits[s.id]}) if s.id in edits else s
+                for s in doc.segments
+            ]
+        }
+    )
+    mutated.raw_handle = doc.raw_handle
+    out = tmp_path / "edited.pptx"
+    writer.write(mutated, out)
+
+    reread = {s.id: s.text for s in reader.read(out).segments}
+    for sid, text in edits.items():
+        assert reread[sid] == text
+    prs = Presentation(str(out))
+    assert "Olivia Brandt" not in prs.slides[2].shapes[0].shapes[1].shapes[0].text_frame.text
+
+
+def test_unedited_round_trip_keeps_slide_xml(
+    reader: Reader, writer: Writer, rich_pptx: Path, tmp_path: Path
+) -> None:
+    from lxml import etree
+
+    out = tmp_path / "same.pptx"
+    writer.write(reader.read(rich_pptx), out)
+    a, b = Presentation(str(rich_pptx)), Presentation(str(out))
+    for sa, sb in zip(a.slides, b.slides, strict=True):
+        assert etree.tostring(sa._element) == etree.tostring(sb._element)
+        assert sa.has_notes_slide == sb.has_notes_slide
