@@ -8,6 +8,9 @@ Server-side state for the HITL review flow (Phase 1.5 WS2). Clients:
 - ``GET /review-sessions/{id}/input`` — the original input bytes; used
   by the desktop to resume an open session. ``410 Gone`` after the
   session reaches a terminal status (commit / abandon) sheds them.
+- ``GET /review-sessions/{id}/layout`` — positioned layout per the Phase
+  3.5 shared layout contract (``pdf`` only here; stub for viewer work,
+  superseded by ``overnight/pdf-engine``).
 - ``PATCH /review-sessions/{id}/decisions/{proposal_id}`` — accept /
   reject a proposal; set operator / params / custom_replacement.
 - ``POST /review-sessions/{id}/decisions/user-added`` — add a span the
@@ -521,6 +524,52 @@ def get_session_input(session_id: str) -> tuple[dict, int] | Response:
         as_attachment=False,
         download_name=f"{session_id}.{session.format}",
     )
+
+
+@review_sessions_bp.get("/<session_id>/layout")
+@require_bearer_token
+def get_session_layout(session_id: str) -> tuple[dict, int]:
+    """Return the page layout for an OPEN session (Phase 3.5 shared layout contract).
+
+    Stub for viewer work (Phase 3.5 WS4); superseded by the positioned
+    reader on ``overnight/pdf-engine``. Only ``pdf`` is served, with
+    ``textline`` items; other formats answer 415. The layout is recomputed
+    from the pinned input bytes with the same routine the reader used, so
+    every ``segment_id`` matches a session segment.
+    """
+    store = _get_store()
+    if store is None:
+        return {"error": "session store not configured"}, 503
+
+    session, load_err = _load_session(store, session_id)
+    if load_err is not None:
+        return load_err
+    assert session is not None
+
+    if session.format != "pdf":
+        return {"error": f"layout is not available for {session.format!r} sessions"}, 415
+    if session.status != "open":
+        return {"error": f"session is {session.status}; input bytes were shed"}, 410
+
+    try:
+        input_bytes = store.load_input_bytes(session_id)
+    except ReviewSessionNotFoundError:
+        return {"error": "session input bytes are missing on disk"}, 410
+
+    import tempfile
+    from pathlib import Path
+
+    from sanctum.documents.pdf_adapter import layout as pdf_layout
+
+    with tempfile.TemporaryDirectory(prefix="sanctum-layout-") as tmp:
+        tmp_path = Path(tmp) / "input.pdf"
+        tmp_path.write_bytes(input_bytes)
+        try:
+            payload = pdf_layout(tmp_path)
+        except Exception as exc:  # pdfplumber raises a zoo of parser errors
+            current_app.logger.exception("GET /review-sessions/%s/layout failed", session_id)
+            return {"error": f"layout failed: {exc}"}, 500
+    return payload, 200
 
 
 @review_sessions_bp.patch("/<session_id>/decisions/<proposal_id>")

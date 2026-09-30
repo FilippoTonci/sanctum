@@ -744,3 +744,43 @@ class TestAbandon:
     def test_404_on_unknown_session(self, client: Any) -> None:
         r = client.delete("/review-sessions/nope", headers={**LOOPBACK, **AUTH})
         assert r.status_code == 404
+
+
+# ================ GET /review-sessions/<id>/layout =========================
+# Stub for viewer work (Phase 3.5 WS4); superseded by overnight/pdf-engine.
+
+_PDF_FIXTURE = Path("tests/fixtures/office/engagement_letter.pdf")
+
+
+class TestGetLayout:
+    def test_pdf_layout_matches_session_segments(self, client: Any, tmp_path: Path) -> None:
+        pdf = tmp_path / "letter.pdf"
+        pdf.write_bytes(_PDF_FIXTURE.read_bytes())
+        created = _create_session(client, pdf)
+
+        r = client.get(f"/review-sessions/{created['id']}/layout", headers={**LOOPBACK, **AUTH})
+        assert r.status_code == 200, r.get_json()
+        body = r.get_json()
+        assert body["format"] == "pdf"
+        assert body["pages"][0]["index"] == 0
+        assert body["pages"][0]["width"] == pytest.approx(612.0)
+
+        items = [it for page in body["pages"] for it in page["items"]]
+        assert items and all(it["kind"] == "textline" for it in items)
+        for it in items:
+            assert {"x", "y", "w", "h", "segment_id", "text", "size"} <= set(it)
+        by_id = {s["id"]: s["text"] for s in created["segments"]}
+        assert {it["segment_id"]: it["text"] for it in items} == by_id
+
+    def test_415_for_non_pdf(self, client: Any, tmp_input_path: Path, patched_adapter: Any) -> None:
+        created = _create_session(client, tmp_input_path)
+        r = client.get(f"/review-sessions/{created['id']}/layout", headers={**LOOPBACK, **AUTH})
+        assert r.status_code == 415
+
+    def test_404_for_unknown_session(self, client: Any) -> None:
+        r = client.get("/review-sessions/nope/layout", headers={**LOOPBACK, **AUTH})
+        assert r.status_code == 404
+
+    def test_requires_auth(self, client: Any) -> None:
+        r = client.get("/review-sessions/nope/layout", headers=LOOPBACK)
+        assert r.status_code == 401

@@ -96,3 +96,37 @@ def test_registry_dispatches_to_pdf_adapter() -> None:
     r, w = adapter_for(FIXTURE)
     assert isinstance(r, Reader)
     assert isinstance(w, Writer)
+
+
+# ---- line-level segmentation (stub for viewer work, Phase 3.5 WS4) ----
+
+
+def test_reader_segments_are_lines_with_bbox(reader: Reader) -> None:
+    doc = reader.read(FIXTURE)
+    assert all("/line" in seg.id for seg in doc.segments)
+    assert all("\n" not in seg.text for seg in doc.segments)
+    first = doc.segments[0]
+    assert first.id == "page0/line0"
+    x, y, w, h = first.metadata["bbox"]
+    assert w > 0 and h > 0
+
+
+def test_wide_gap_splits_two_columns(reader: Reader, tmp_path: Path) -> None:
+    from reportlab.pdfgen import canvas
+
+    path = tmp_path / "cols.pdf"
+    c = canvas.Canvas(str(path), pagesize=(600, 400))
+    c.setFont("Helvetica", 10)
+    c.drawString(50, 300, "Left column text")
+    c.drawString(320, 300, "Right column text")
+    c.showPage()
+    c.save()
+
+    from sanctum.documents.pdf_adapter import layout
+
+    doc = reader.read(path)
+    assert [s.text for s in doc.segments] == ["Left column text", "Right column text"]
+    items = layout(path)["pages"][0]["items"]
+    assert [it["segment_id"] for it in items] == ["page0/line0", "page0/line1"]
+    assert items[1]["x"] == pytest.approx(320, abs=0.5)
+    assert items[0]["y"] == pytest.approx(400 - 300 - 10 * 0.718, abs=2.5)
