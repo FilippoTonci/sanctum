@@ -28,9 +28,11 @@ authoritative cache.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timezone
+from functools import wraps
 from io import BytesIO
-from typing import Any
+from typing import Any, TypeVar
 
 from flask import Blueprint, Response, current_app, send_file
 
@@ -78,6 +80,8 @@ from sanctum.documents.layout import build_layout, supports_layout
 review_sessions_bp = Blueprint("review_sessions", __name__, url_prefix="/review-sessions")
 
 
+_R = TypeVar("_R")
+
 # ----- shared plumbing -----------------------------------------------------
 
 
@@ -89,6 +93,20 @@ def _get_engine() -> SanctumEngine | None:
 def _get_store() -> SessionStore | None:
     store = current_app.config.get("SANCTUM_SESSION_STORE")
     return store if isinstance(store, SessionStore) else None
+
+
+def _serialised(view: Callable[..., _R]) -> Callable[..., _R]:
+    """Run a mutating view under the per-session lock (load -> mutate -> save)."""
+
+    @wraps(view)
+    def wrapper(session_id: str, *args: Any, **kwargs: Any) -> _R:
+        store = _get_store()
+        if store is None:
+            return view(session_id, *args, **kwargs)
+        with store.locked(session_id):
+            return view(session_id, *args, **kwargs)
+
+    return wrapper
 
 
 def _engine_and_store() -> tuple[SanctumEngine, SessionStore] | tuple[None, tuple[dict, int]]:
@@ -587,6 +605,7 @@ def get_session_layout(session_id: str) -> tuple[dict, int]:
 
 @review_sessions_bp.patch("/<session_id>/decisions/<proposal_id>")
 @require_bearer_token
+@_serialised
 def patch_proposal_decision(session_id: str, proposal_id: str) -> tuple[dict, int]:
     engine_or_err = _engine_and_store()
     if engine_or_err[0] is None:
@@ -635,6 +654,7 @@ def patch_proposal_decision(session_id: str, proposal_id: str) -> tuple[dict, in
 
 @review_sessions_bp.post("/<session_id>/decisions/user-added")
 @require_bearer_token
+@_serialised
 def add_user_added_decision(session_id: str) -> tuple[dict, int]:
     engine_or_err = _engine_and_store()
     if engine_or_err[0] is None:
@@ -713,6 +733,7 @@ def add_user_added_decision(session_id: str) -> tuple[dict, int]:
 
 @review_sessions_bp.delete("/<session_id>/decisions/user-added/<ua_id>")
 @require_bearer_token
+@_serialised
 def delete_user_added_decision(session_id: str, ua_id: str) -> tuple[dict, int] | tuple[str, int]:
     _, store_err = _engine_and_store()
     if store_err is not None and isinstance(store_err, tuple):
@@ -744,6 +765,7 @@ def delete_user_added_decision(session_id: str, ua_id: str) -> tuple[dict, int] 
 
 @review_sessions_bp.post("/<session_id>/commit")
 @require_bearer_token
+@_serialised
 def commit_session(session_id: str) -> tuple[dict, int]:
     engine_or_err = _engine_and_store()
     if engine_or_err[0] is None:
@@ -847,6 +869,7 @@ def commit_session(session_id: str) -> tuple[dict, int]:
 
 @review_sessions_bp.delete("/<session_id>")
 @require_bearer_token
+@_serialised
 def abandon(session_id: str) -> tuple[dict, int] | tuple[str, int]:
     store = _get_store()
     if store is None:
