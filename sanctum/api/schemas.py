@@ -8,7 +8,7 @@ import. Models accumulate here as routes land in subsequent substeps.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Final, Literal
+from typing import Annotated, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -459,3 +459,114 @@ class CommitReviewSessionResponse(_Frozen):
     session_id: str
     output_path: str
     committed_at: datetime
+
+
+# ----- review-surface layout (Phase 3.5 shared layout contract) -----------
+#
+# ``GET /review-sessions/{id}/layout`` — see ``plans/phase-3-5-pptx-pdf.md``
+# "Shared layout contract". Geometry is in points (1/72 in), top-left
+# origin; items are in paint order, back to front. Fields marked
+# "addition" are optional extensions recorded in the prototype report.
+
+
+class LayoutRun(_Frozen):
+    """One run of a textbox paragraph; ``text`` equals the segment's text."""
+
+    segment_id: str
+    text: str
+    size: float
+    bold: bool = False
+    italic: bool = False
+    color: str | None = None
+    font: str | None = None
+
+
+class LayoutParagraph(_Frozen):
+    align: Literal["left", "center", "right", "justify"] = "left"
+    runs: list[LayoutRun]
+
+
+class LayoutTextboxItem(_Frozen):
+    """pptx shape / table-cell text frame."""
+
+    kind: Literal["textbox"]
+    x: float
+    y: float
+    w: float
+    h: float
+    paragraphs: list[LayoutParagraph]
+    # addition: vertical anchor of the text frame.
+    anchor: Literal["top", "middle", "bottom"] = "top"
+
+
+class LayoutTextlineItem(_Frozen):
+    """pdf: one extracted line."""
+
+    kind: Literal["textline"]
+    x: float
+    y: float
+    w: float
+    h: float
+    segment_id: str
+    text: str
+    size: float
+
+
+class LayoutAltText(_Frozen):
+    """addition: a picture's alt-text segment."""
+
+    segment_id: str
+    text: str
+
+
+class LayoutImageItem(_Frozen):
+    kind: Literal["image"]
+    x: float
+    y: float
+    w: float
+    h: float
+    # data: URI; ``null`` when the image format can't be shown in a browser
+    # (EMF/WMF/TIFF) — the renderer draws a placeholder box instead.
+    src: str | None
+    # addition: alt-text segment, if the picture has non-empty alt-text.
+    alt: LayoutAltText | None = None
+
+
+class LayoutShapeItem(_Frozen):
+    """Background rects (slide background, filled shapes, table cells) — pptx only."""
+
+    kind: Literal["shape"]
+    x: float
+    y: float
+    w: float
+    h: float
+    fill: str | None
+
+
+LayoutItem = LayoutTextboxItem | LayoutTextlineItem | LayoutImageItem | LayoutShapeItem
+
+
+class LayoutPage(_Frozen):
+    index: int
+    width: float
+    height: float
+    items: list[Annotated[LayoutItem, Field(discriminator="kind")]]
+    # addition: speaker notes (pptx), same paragraph shape as textboxes.
+    notes: list[LayoutParagraph] | None = None
+
+
+class LayoutUnscanned(_Frozen):
+    """Content the adapter does not scan, named so the UI can warn about it."""
+
+    where: str
+    what: str
+    # addition: 0-based page index, or null for document-level entries.
+    page: int | None = None
+
+
+class ReviewSessionLayoutResponse(_Frozen):
+    """Body for ``GET /review-sessions/{id}/layout``."""
+
+    format: Literal["pptx", "pdf"]
+    pages: list[LayoutPage]
+    unscanned: list[LayoutUnscanned] = Field(default_factory=list)
