@@ -18,7 +18,7 @@ from sanctum.analyzer.recognizers import AnyDomainEmailRecognizer
 from sanctum.anonymizer.adapter import PresidioAnonymizer
 from sanctum.core.engine import SanctumEngine
 from sanctum.core.exceptions import LeakCheckError
-from sanctum.core.models import OperatorPolicy, ProposalDecision
+from sanctum.core.models import DetectionResult, OperatorPolicy, ProposalDecision
 from sanctum.core.review.session import add_decision
 from sanctum.core.review.store import SessionStore
 from sanctum.documents import pptx_adapter
@@ -200,22 +200,58 @@ def test_committed_pptx_has_no_author(engine: SanctumEngine, tmp_path: Path) -> 
         assert b"Jennifer Martin" not in b"".join(z.read(n) for n in z.namelist())
 
 
-def test_name_left_in_a_docx_header_fails_the_leak_check(
-    engine: SanctumEngine, tmp_path: Path
-) -> None:
-    # Headers are not anonymized yet, but they are part of extract_text, so a
-    # replaced name that also sits in the header is caught and the output deleted.
+def _docx_with_header(path: Path, header_runs: list[str]) -> Path:
     d = docx.Document()
     para = d.add_paragraph()
     for i, text in enumerate(SPLIT_RUNS):
         para.add_run(text).bold = i % 2 == 1
     header = d.sections[0].header.paragraphs[0]
-    header.add_run("Prepared for Jen").bold = True
-    header.add_run("nifer Martin")
-    src = tmp_path / "in.docx"
-    d.save(str(src))
+    for i, text in enumerate(header_runs):
+        header.add_run(text).bold = i % 2 == 0
+    d.save(str(path))
+    return path
+
+
+def test_name_in_a_docx_header_is_redacted(engine: SanctumEngine, tmp_path: Path) -> None:
+    # Header runs are segments like body runs: detected (even split across
+    # runs), redacted, and written back, so the leak check passes.
+    src = _docx_with_header(tmp_path / "in.docx", ["Prepared for Jen", "nifer Martin"])
     out = tmp_path / "out.docx"
     replace = {"DEFAULT": OperatorPolicy(operator_name="replace")}
-    with pytest.raises(LeakCheckError):
+    engine.process_document(Reader(), Writer(), src, out, operator_policies=replace)
+    written = docx.Document(str(out))
+    assert written.paragraphs[0].text == "Dear <PERSON>, thanks."
+    assert written.sections[0].header.paragraphs[0].text == "Prepared for <PERSON>"
+
+
+class _BodyOnlyAnalyzer:
+    """Finds "Jennifer Martin" only in text that starts with "Dear" (i.e. not the header)."""
+
+    def analyze(
+        self,
+        text: str,
+        language: str = "en",
+        entities: list[str] | None = None,
+        score_threshold: float | None = None,
+    ) -> list[DetectionResult]:
+        i = text.find("Jennifer Martin")
+        if not text.startswith("Dear") or i < 0:
+            return []
+        return [
+            DetectionResult(
+                entity_type="PERSON", start=i, end=i + 15, score=0.9, text_span="Jennifer Martin"
+            )
+        ]
+
+
+def test_name_missed_in_a_docx_header_fails_closed(tmp_path: Path) -> None:
+    # If detection misses the header copy of a name it replaced in the body,
+    # the leak check still sees the header and refuses the output.
+    engine = SanctumEngine(analyzer=_BodyOnlyAnalyzer(), anonymizer=PresidioAnonymizer())
+    src = _docx_with_header(tmp_path / "in.docx", ["Prepared for Jennifer Martin"])
+    out = tmp_path / "out.docx"
+    replace = {"DEFAULT": OperatorPolicy(operator_name="replace")}
+    with pytest.raises(LeakCheckError) as exc_info:
         engine.process_document(Reader(), Writer(), src, out, operator_policies=replace)
+    assert "Jennifer Martin" in exc_info.value.leaks
     assert not out.exists()

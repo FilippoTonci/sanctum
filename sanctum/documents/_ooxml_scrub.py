@@ -134,7 +134,10 @@ def remove_comments(package: Any) -> None:
 
 def remove_thumbnail(package: Any) -> None:
     """Drop the package-level thumbnail (an image of the unredacted first page)."""
-    # python-docx exposes the package's relationships as ``rels``, python-pptx as ``_rels``.
+    # python-docx exposes the package's relationships as ``rels``, python-pptx only as the
+    # private ``_rels``. If a python-pptx upgrade renames it, this breaks loudly, and the
+    # zip assertions in tests/unit/test_documents/test_ooxml_scrub.py (no
+    # docProps/thumbnail* in the output) guard the behaviour.
     rels = package.rels if hasattr(package, "rels") else package._rels
     for rel_id, rel in list(rels.items()):
         if rel.reltype == _THUMBNAIL_RELTYPE:
