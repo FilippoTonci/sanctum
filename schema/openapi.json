@@ -2526,7 +2526,7 @@
         "type": "object"
       },
       "ReviewProposal": {
-        "description": "A single detection presented to the reviewer (Flow B).\n\nPure detection record \u2014 no replacement, no operator. Under Flow B\nthe reviewer chooses the operator at decision time; replacements\ncome from the anonymizer at commit time (or from a server-computed\npreview for the UI). The proposal just tells the reviewer *what*\nSanctum found and *where*.\n\n``detection_id`` is a stable content-addressed hash (see\n``sanctum.core.review.identifiers.make_detection_id``) that doubles\nas the session's proposal id so ``ProposalDecision.proposal_id``\nreferences stay stable across session reads.\n\n``segment_anchor`` is an opaque, adapter-specific pointer into the\nparsed ``StructuredDocument`` segments (e.g. docx paragraph+run\nindices, xlsx sheet+cell).\n\n``start`` / ``end`` are inclusive/exclusive char offsets within the\nanchored segment's text. Carried verbatim from the originating\n``DetectionResult`` so a UI can highlight the exact span without\nre-running ``str.find(original)`` \u2014 that fallback is ambiguous when\nthe segment contains the same string twice (e.g. *\"Smith met\nSmith\"*). The fields exist on every analyzer-derived proposal; the\nin-memory shim variants used by the preview path pass ``start=0``\nand ``end=len(original)`` since they cover the whole synthetic span.",
+        "description": "A single detection presented to the reviewer (Flow B).\n\nPure detection record \u2014 no replacement, no operator. Under Flow B\nthe reviewer chooses the operator at decision time; replacements\ncome from the anonymizer at commit time (or from a server-computed\npreview for the UI). The proposal just tells the reviewer *what*\nSanctum found and *where*.\n\n``detection_id`` is a stable content-addressed hash (see\n``sanctum.core.review.identifiers.make_detection_id``) that doubles\nas the session's proposal id so ``ProposalDecision.proposal_id``\nreferences stay stable across session reads.\n\n``segment_anchor`` is an opaque, adapter-specific pointer into the\nparsed ``StructuredDocument`` segments (e.g. docx paragraph+run\nindices, xlsx sheet+cell).\n\n``start`` / ``end`` are inclusive/exclusive char offsets within the\nanchored segment's text. Carried verbatim from the originating\n``DetectionResult`` so a UI can highlight the exact span without\nre-running ``str.find(original)`` \u2014 that fallback is ambiguous when\nthe segment contains the same string twice (e.g. *\"Smith met\nSmith\"*). The fields exist on every analyzer-derived proposal; the\nin-memory shim variants used by the preview path pass ``start=0``\nand ``end=len(original)`` since they cover the whole synthetic span.\n\nLinked pieces: a finding that spans several segments (a name split\nacross Word runs or PDF lines) becomes one proposal per segment piece,\nall sharing ``group_id``. ``group_index`` 0 is the head: it renders the\nreplacement; the other pieces render \"\". ``group_original`` is the\nwhole finding's text. Single-piece findings leave these at defaults.\nPieces of one group are always decided together (see\n``sanctum.core.review.session.add_decision``).",
         "properties": {
           "detection_id": {
             "title": "Detection Id",
@@ -2565,6 +2565,36 @@
             "exclusiveMinimum": 0,
             "title": "End",
             "type": "integer"
+          },
+          "group_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group Id"
+          },
+          "group_index": {
+            "default": 0,
+            "minimum": 0,
+            "title": "Group Index",
+            "type": "integer"
+          },
+          "group_original": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Group Original"
           }
         },
         "required": [
@@ -2870,7 +2900,7 @@
         "type": "object"
       },
       "TextSegment": {
-        "description": "One atomic unit of text extracted from a structured document.\n\nSegments are the grain at which anonymization happens. A segment id is\nadapter-specific and stable across read/write round trips: the same\nrun, cell, or text frame produces the same id every time.",
+        "description": "One atomic unit of text extracted from a structured document.\n\nSegments are the grain at which anonymization happens. A segment id is\nadapter-specific and stable across read/write round trips: the same\nrun, cell, or text frame produces the same id every time.\n\n``block`` groups segments that form one paragraph for detection;\n``join_before`` is the text placed between the previous segment of the\nsame block and this one when the block is joined (e.g. \" \" between PDF\nlines, \"\" between Word runs). ``None`` = analysed alone.",
         "properties": {
           "id": {
             "title": "Id",
@@ -2884,6 +2914,23 @@
             "additionalProperties": true,
             "title": "Metadata",
             "type": "object"
+          },
+          "block": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Block"
+          },
+          "join_before": {
+            "default": "",
+            "title": "Join Before",
+            "type": "string"
           }
         },
         "required": [
