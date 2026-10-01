@@ -150,3 +150,30 @@ def test_layout_unsupported_for_docx(client: Any) -> None:
     session = _create(client, fixture)
     r = client.get(f"/review-sessions/{session['id']}/layout", headers=HEADERS)
     assert r.status_code == 415
+
+
+def test_names_broken_across_lines_are_proposed_and_removed(
+    client: Any, letter: Path, tmp_path: Path
+) -> None:
+    """ "Dr Evelyn / Marchetti" and "Priya / Raghunathan" wrap across lines;
+    paragraph grouping finds them as linked findings and commit removes them."""
+    session = _create(client, letter)
+    proposals = session["proposals"]
+    for surname in ("Marchetti", "Raghunathan"):
+        linked = [p for p in proposals if surname in p["original"] and p.get("group_id")]
+        assert linked, surname
+    for p in proposals:
+        client.patch(
+            f"/review-sessions/{session['id']}/decisions/{p['detection_id']}",
+            headers=HEADERS,
+            json={"status": "accept"},
+        )
+    out = tmp_path / "redacted.pdf"
+    r = client.post(
+        f"/review-sessions/{session['id']}/commit",
+        headers=HEADERS,
+        json={"output_path": str(out), "attested": True},
+    )
+    assert r.status_code == 200, r.get_json()
+    text = extract_all_text(out.read_bytes())
+    assert "Marchetti" not in text and "Raghunathan" not in text
