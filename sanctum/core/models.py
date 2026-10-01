@@ -53,11 +53,18 @@ class TextSegment(BaseModel):
     Segments are the grain at which anonymization happens. A segment id is
     adapter-specific and stable across read/write round trips: the same
     run, cell, or text frame produces the same id every time.
+
+    ``block`` groups segments that form one paragraph for detection;
+    ``join_before`` is the text placed between the previous segment of the
+    same block and this one when the block is joined (e.g. " " between PDF
+    lines, "" between Word runs). ``None`` = analysed alone.
     """
 
     id: str
     text: str
     metadata: dict[str, Any] = Field(default_factory=dict)
+    block: str | None = None
+    join_before: str = ""
 
 
 class StructuredDocument(BaseModel):
@@ -102,6 +109,14 @@ class ReviewProposal(BaseModel):
     Smith"*). The fields exist on every analyzer-derived proposal; the
     in-memory shim variants used by the preview path pass ``start=0``
     and ``end=len(original)`` since they cover the whole synthetic span.
+
+    Linked pieces: a finding that spans several segments (a name split
+    across Word runs or PDF lines) becomes one proposal per segment piece,
+    all sharing ``group_id``. ``group_index`` 0 is the head: it renders the
+    replacement; the other pieces render "". ``group_original`` is the
+    whole finding's text. Single-piece findings leave these at defaults.
+    Pieces of one group are always decided together (see
+    ``sanctum.core.review.session.add_decision``).
     """
 
     model_config = {"frozen": True}
@@ -113,6 +128,9 @@ class ReviewProposal(BaseModel):
     segment_anchor: str | None = None
     start: int = Field(ge=0)
     end: int = Field(gt=0)
+    group_id: str | None = None
+    group_index: int = Field(default=0, ge=0)
+    group_original: str | None = None
 
     @model_validator(mode="after")
     def _end_after_start(self) -> ReviewProposal:

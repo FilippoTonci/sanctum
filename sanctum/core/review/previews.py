@@ -41,7 +41,13 @@ def compute_preview(
     additionally requires ``mapping_store`` — pass a
     ``PreviewMappingStore`` for preview (non-persisting) or the real
     store for commit.
+
+    For a linked finding (``proposal.group_id`` set), only the head piece
+    (``group_index`` 0) carries the replacement, rendered over the whole
+    ``group_original``; every other piece renders ``""``.
     """
+    if proposal.group_id is not None and proposal.group_index > 0:
+        return ""  # only the head piece of a linked finding carries the replacement
     if custom_replacement is not None:
         return custom_replacement
 
@@ -53,16 +59,17 @@ def compute_preview(
             )
         params.setdefault("store", mapping_store)
 
+    original = proposal.group_original or proposal.original
     synthetic = DetectionResult(
         entity_type=proposal.entity_type,
         start=0,
-        end=len(proposal.original),
+        end=len(original),
         score=proposal.score,
-        text_span=proposal.original,
+        text_span=original,
     )
     policy = OperatorPolicy(operator_name=operator, params=params)
     result = anonymizer.anonymize(
-        text=proposal.original,
+        text=original,
         detections=[synthetic],
         operator_policies={"DEFAULT": policy},
     )

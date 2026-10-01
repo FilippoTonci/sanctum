@@ -8,7 +8,7 @@ no Presidio, no Office libs.
 
 from sanctum.core.review.identifiers import make_detection_id
 from sanctum.core.review.previews import compute_preview
-from sanctum.core.review.proposals import build_proposals
+from sanctum.core.review.proposals import build_proposals, build_proposals_from_findings
 from sanctum.core.review.session import abandon, add_decision, commit
 from sanctum.core.review.store import SessionStore
 
@@ -17,6 +17,7 @@ __all__ = [
     "abandon",
     "add_decision",
     "build_proposals",
+    "build_proposals_from_findings",
     "commit",
     "compute_preview",
     "make_detection_id",

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 from docx import Document
 
-from sanctum.documents.structured import build_document, build_segment
+from sanctum.documents.structured import build_document, build_segment, run_block
 
 if TYPE_CHECKING:
     from docx.document import Document as DocxDocument
@@ -46,7 +46,7 @@ class Reader:
 
         for i, para in enumerate(doc.paragraphs):
             for seg_id, run in _iter_paragraph_runs(para, f"body/p{i}"):
-                segments.append(build_segment(seg_id, run.text))
+                segments.append(build_segment(seg_id, run.text, block=run_block(seg_id)))
 
         for t, table in enumerate(doc.tables):
             for r, row in enumerate(table.rows):
@@ -54,7 +54,9 @@ class Reader:
                     for p, para in enumerate(cell.paragraphs):
                         prefix = f"table/t{t}/row{r}/cell{c}/p{p}"
                         for seg_id, run in _iter_paragraph_runs(para, prefix):
-                            segments.append(build_segment(seg_id, run.text))
+                            segments.append(
+                                build_segment(seg_id, run.text, block=run_block(seg_id))
+                            )
 
         return build_document(
             source_path=path,
