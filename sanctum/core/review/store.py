@@ -14,11 +14,28 @@ transitions.
 
 from __future__ import annotations
 
+import os
 import shutil
+import tempfile
+import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from sanctum.core.exceptions import ReviewSessionNotFoundError
 from sanctum.core.models import ReviewSession
+
+_LOCKS: dict[tuple[str, str], threading.RLock] = {}
+_LOCKS_GUARD = threading.Lock()
+
+
+def _lock_for(root: Path, session_id: str) -> threading.RLock:
+    key = (str(root.resolve()), session_id)
+    with _LOCKS_GUARD:
+        lock = _LOCKS.get(key)
+        if lock is None:
+            lock = _LOCKS[key] = threading.RLock()
+        return lock
 
 
 def _default_root() -> Path:
@@ -46,6 +63,18 @@ class SessionStore:
     def exists(self, session_id: str) -> bool:
         return self._manifest_path(session_id).exists()
 
+    @contextmanager
+    def locked(self, session_id: str) -> Iterator[None]:
+        """Serialise load → mutate → save for one session within this process.
+
+        Locks are process-wide and keyed by (store root, session id), so two
+        ``SessionStore`` instances over the same directory share them. The
+        engine serves one desktop over a single process, so a thread lock is
+        sufficient; it is re-entrant so helpers may nest it.
+        """
+        with _lock_for(self._root, session_id):
+            yield
+
     def save(
         self,
         session: ReviewSession,
@@ -64,8 +93,16 @@ class SessionStore:
         session_dir.chmod(0o700)
 
         manifest = self._manifest_path(session.id)
-        manifest.write_text(session.model_dump_json())
-        manifest.chmod(0o600)
+        # Atomic: readers (unlocked GETs) see the old or the new manifest, never a torn one.
+        fd, tmp = tempfile.mkstemp(dir=str(session_dir), prefix=".manifest-", suffix=".json")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(session.model_dump_json())
+            os.chmod(tmp, 0o600)
+            os.replace(tmp, manifest)
+        except BaseException:
+            Path(tmp).unlink(missing_ok=True)
+            raise
 
         if input_bytes is not None:
             input_file = session_dir / f"input.{session.format}"
