@@ -509,6 +509,53 @@ def test_user_added_decision_round_trip(server: tuple[str, str]) -> None:
     assert status == 204
 
 
+def _add_user_added_preview(base: str, token: str, session_body: dict[str, Any]) -> str:
+    created = session_body
+    anchor_segment = next(s for s in created["segments"] if s["text"].strip())
+    original = anchor_segment["text"].split()[0]
+    start = anchor_segment["text"].index(original)
+    status, body = _request(
+        "POST",
+        f"{base}/review-sessions/{created['id']}/decisions/user-added",
+        token=token,
+        body={
+            "segment_anchor": anchor_segment["id"],
+            "entity_type": "USER_ADDED",
+            "original": original,
+            "start": start,
+            "end": start + len(original),
+        },
+    )
+    assert status == 201, body
+    return str(body["preview"])
+
+
+def test_user_added_default_preview_is_redacted_marker(server: tuple[str, str]) -> None:
+    base, token = server
+    _, created = _request(
+        "POST",
+        f"{base}/review-sessions",
+        token=token,
+        body={"input_path": str(_FIXTURE), "default_operator": "replace"},
+    )
+    assert _add_user_added_preview(base, token, created) == "[REDACTED]"
+
+
+def test_user_added_preview_honours_session_new_value(server: tuple[str, str]) -> None:
+    base, token = server
+    _, created = _request(
+        "POST",
+        f"{base}/review-sessions",
+        token=token,
+        body={
+            "input_path": str(_FIXTURE),
+            "default_operator": "replace",
+            "default_operator_params": {"new_value": "███"},
+        },
+    )
+    assert _add_user_added_preview(base, token, created) == "███"
+
+
 def test_user_added_purges_overlapping_proposals(server: tuple[str, str]) -> None:
     """sanctum#31 — a UA span subsumes overlapping model proposals.
 
