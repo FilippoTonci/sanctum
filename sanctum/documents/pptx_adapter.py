@@ -19,7 +19,8 @@ UI renders are the ids the Writer patches, by construction.
 
 Not scanned (reported by ``pptx_layout.unscanned_content``): charts,
 SmartArt, embedded OLE objects, comments, text on slide masters/layouts,
-and document properties.
+and document properties. The Writer removes comments and the thumbnail and
+blanks the identifying document properties before saving (see ``_ooxml_scrub``).
 """
 
 from __future__ import annotations
@@ -31,6 +32,8 @@ from typing import TYPE_CHECKING, Any
 
 from pptx import Presentation
 
+from sanctum.core.blocks import block_texts
+from sanctum.documents._ooxml_scrub import scrub_package
 from sanctum.documents.structured import build_document, build_segment, run_block
 
 if TYPE_CHECKING:
@@ -253,4 +256,13 @@ class Writer:
                 continue
             target.set(segment.text)
 
+        scrub_package(prs.part.package, prs.core_properties)
         prs.save(str(path))
+
+    def extract_text(self, path: Path) -> str:
+        """Every scanned piece of text in ``path`` (shapes, tables, alt-text, notes).
+
+        One paragraph per line; runs of a paragraph are joined the way
+        detection joins them, so a name split across runs reads back whole.
+        """
+        return "\n".join(block_texts(Reader().read(path).segments))

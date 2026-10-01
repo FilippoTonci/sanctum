@@ -148,6 +148,34 @@ def _docx_full_text(path: Path) -> str:
     return "\n".join(parts)
 
 
+def _redact_unflagged_miller(base: str, token: str, created: dict[str, Any]) -> None:
+    """Manually redact the "Miller" that detection misses.
+
+    The NDA fixture names "Miller, Henderson and Johnson" twice. NER flags
+    "Miller" as a PERSON in the signature block but not in the parties
+    paragraph, so accepting every proposal replaces one occurrence and leaves
+    the other. Since E7 the post-write leak check covers .docx and refuses
+    that commit; a manual redaction of the survivor is the remedy its error
+    names.
+    """
+    flagged = {p["segment_anchor"] for p in created["proposals"] if p["original"] == "Miller"}
+    seg = next(s for s in created["segments"] if "Miller" in s["text"] and s["id"] not in flagged)
+    start = seg["text"].index("Miller")
+    status, body = _request(
+        "POST",
+        f"{base}/review-sessions/{created['id']}/decisions/user-added",
+        token=token,
+        body={
+            "segment_anchor": seg["id"],
+            "entity_type": "PERSON",
+            "original": "Miller",
+            "start": start,
+            "end": start + len("Miller"),
+        },
+    )
+    assert status == 201, body
+
+
 # ---------- tests ----------
 
 
@@ -295,6 +323,7 @@ def test_commit_writes_final_file_with_no_sanctum_trailers(
             token=token,
             body={"status": "accept"},
         )
+    _redact_unflagged_miller(base, token, created)
 
     out_path = tmp_path / "committed.docx"
     status, body = _request(
@@ -395,6 +424,7 @@ def test_listing_includes_committed_and_abandoned_sessions(
             token=token,
             body={"status": "accept"},
         )
+    _redact_unflagged_miller(base, token, committed)
     _request(
         "POST",
         f"{base}/review-sessions/{committed['id']}/commit",
@@ -626,6 +656,7 @@ def test_get_input_returns_410_after_commit(server: tuple[str, str], tmp_path: P
             token=token,
             body={"status": "accept"},
         )
+    _redact_unflagged_miller(base, token, created)
     commit_status, _ = _request(
         "POST",
         f"{base}/review-sessions/{session_id}/commit",
