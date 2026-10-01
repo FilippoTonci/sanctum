@@ -38,22 +38,35 @@ def add_decision(session: ReviewSession, decision: SessionDecision) -> None:
     """Append or replace a decision on the session.
 
     A ``ProposalDecision`` whose ``proposal_id`` already carries a decision
-    replaces the earlier one. ``UserAddedDecision`` always appends — user-
+    replaces the earlier one. A decision on any piece of a linked finding
+    (``ReviewProposal.group_id``) is recorded for every piece of the group,
+    so the pieces are always decided together. ``UserAddedDecision`` always appends — user-
     added spans are addressed by identity, not id, so there's no natural
     overwrite key.
     """
     _require_open(session)
     if isinstance(decision, ProposalDecision):
-        known = {p.detection_id for p in session.proposals}
-        if decision.proposal_id not in known:
+        by_id = {p.detection_id: p for p in session.proposals}
+        target = by_id.get(decision.proposal_id)
+        if target is None:
             raise ReviewSessionInvalidDecisionError(
                 f"Proposal id {decision.proposal_id!r} not found in session {session.id!r}."
             )
+        member_ids = (
+            [p.detection_id for p in session.proposals if p.group_id == target.group_id]
+            if target.group_id is not None
+            else [target.detection_id]
+        )
+        members = set(member_ids)
         session.decisions = [
             d
             for d in session.decisions
-            if not (isinstance(d, ProposalDecision) and d.proposal_id == decision.proposal_id)
+            if not (isinstance(d, ProposalDecision) and d.proposal_id in members)
         ]
+        session.decisions.extend(
+            decision.model_copy(update={"proposal_id": pid}) for pid in member_ids
+        )
+        return
     session.decisions.append(decision)
 
 
@@ -65,7 +78,9 @@ def apply_user_added_with_overlap_purge(session: ReviewSession, ua: UserAddedDec
     range ``[p.start, p.end)`` overlaps ``[ua.start, ua.end)`` is removed
     from ``session.proposals``, along with any ``ProposalDecision`` that
     referenced it. Adjacent ranges (``p.end == ua.start`` or
-    ``p.start == ua.end``) share no characters and are left alone.
+    ``p.start == ua.end``) share no characters and are left alone. When an
+    overlapped proposal is a piece of a linked finding, every piece of that
+    finding is removed with it.
 
     No record of the removed proposals is kept — the user-added
     decision is the new source of truth for that span. Removing the UA
@@ -77,10 +92,17 @@ def apply_user_added_with_overlap_purge(session: ReviewSession, ua: UserAddedDec
     """
     _require_open(session)
 
+    overlapped = [
+        p
+        for p in session.proposals
+        if p.segment_anchor == ua.segment_anchor and p.start < ua.end and p.end > ua.start
+    ]
+    hit_ids = {p.detection_id for p in overlapped}
+    hit_groups = {p.group_id for p in overlapped if p.group_id is not None}
     removed: list[str] = []
     survivors: list[ReviewProposal] = []
     for p in session.proposals:
-        if p.segment_anchor == ua.segment_anchor and p.start < ua.end and p.end > ua.start:
+        if p.detection_id in hit_ids or (p.group_id is not None and p.group_id in hit_groups):
             removed.append(p.detection_id)
         else:
             survivors.append(p)
