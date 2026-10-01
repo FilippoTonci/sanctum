@@ -187,9 +187,9 @@ class TestCreateReviewSession:
             TextSegment(id="s2", text="Carol said hi"),
         ]
         # Analyzer fixture: every call returns a single PERSON at 0-5.
-        # With text "Alice met Bob" / "Carol said hi" only the first
-        # token's position is accurate; that's fine for the Flow B
-        # proposal shape (original text is what matters, not offsets).
+        # The proposal's original is the analysed text at those offsets
+        # (block-level detection slices the text it analysed), so the
+        # second segment yields "Carol", not the mock's text_span.
         det = DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice")
         engine, analyzer, _ = _engine([det])
 
@@ -215,7 +215,7 @@ class TestCreateReviewSession:
         assert analyzer.analyze.call_count == 2
         # One proposal per analyzed segment.
         assert [p.segment_anchor for p in session.proposals] == ["s0", "s2"]
-        assert [p.original for p in session.proposals] == ["Alice", "Alice"]
+        assert [p.original for p in session.proposals] == ["Alice", "Carol"]
 
         # Persisted — manifest + input bytes on disk under 0700/0600.
         assert session_store.exists("sess-1")
@@ -512,7 +512,13 @@ class TestCommitLeakCheck:
         self._commit(engine, reader, writer, store, tmp_path / "out.txt")
         seg = writer.docs[0].segments[0]
         assert seg.metadata["replacements"] == [
-            {"start": 0, "end": 5, "original": "Alice", "text": "[PERSON]"}
+            {
+                "start": 0,
+                "end": 5,
+                "original": "Alice",
+                "text": "[PERSON]",
+                "leak_original": "Alice",
+            }
         ]
 
     def test_clean_output_commits(self, tmp_path: Path) -> None:

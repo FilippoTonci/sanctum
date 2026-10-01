@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from sanctum.core.blocks import detect_blocks, splice
 from sanctum.core.exceptions import (
     AnalysisError,
     AnonymizationError,
@@ -33,7 +34,7 @@ from sanctum.core.protocols import (
     StructuredDocumentWriter,
 )
 from sanctum.core.review.previews import compute_preview
-from sanctum.core.review.proposals import build_proposals
+from sanctum.core.review.proposals import build_proposals_from_findings
 from sanctum.core.review.session import commit as commit_session
 
 if TYPE_CHECKING:
@@ -118,16 +119,19 @@ class SanctumEngine:
         score_threshold: float | None = None,
         operator_policies: dict[str, OperatorPolicy] | None = None,
     ) -> list[AnonymizationResult]:
-        """Read a structured document, anonymize each text segment, write back.
+        """Read a structured document, anonymize every finding, write back.
 
-        Each segment is analyzed and anonymized independently. This trades
-        cross-segment detection coverage (an entity that straddles two runs
-        won't be caught) for structural fidelity: runs, cells, and shapes
-        all keep their formatting because we never flatten the document.
+        Detection runs per block (see ``sanctum.core.blocks``): segments that
+        share a ``block`` key (the runs of one paragraph) are joined and
+        analysed together, so an entity that straddles two runs is caught.
+        Each finding is rendered once over its whole text; the replacement
+        lands in the first segment it covers and the rest of the finding is
+        removed from the following segments, so runs, cells and shapes keep
+        their formatting because we never flatten the document.
 
-        Returns one AnonymizationResult per non-empty segment. Segments
-        whose text is empty after stripping are skipped silently — they
-        cost nothing and produce no useful detections.
+        Returns one AnonymizationResult per finding (its ``original_text`` is
+        the finding's text, with a single detection covering it). Blocks
+        whose text is empty after stripping are skipped silently.
 
         This is the fire-and-forget pipeline (CLI ``--no-review``, API
         ``review=false``). The human-in-the-loop review path lives on
@@ -138,32 +142,39 @@ class SanctumEngine:
         except Exception as exc:
             raise DocumentError(f"Failed to read {input_path}: {exc}") from exc
 
+        findings = detect_blocks(
+            doc.segments,
+            lambda text: self.analyze(
+                text, language=language, entities=entities, score_threshold=score_threshold
+            ),
+        )
+
         results: list[AnonymizationResult] = []
-        new_segments: list[TextSegment] = []
+        edits: dict[str, list[tuple[int, int, str]]] = {}
         replaced_originals: list[str] = []
-        for segment in doc.segments:
-            if not segment.text.strip():
-                new_segments.append(segment)
-                continue
-
-            detections = self.analyze(
-                segment.text,
-                language=language,
-                entities=entities,
-                score_threshold=score_threshold,
+        for f in findings:
+            whole = DetectionResult(
+                entity_type=f.entity_type,
+                start=0,
+                end=len(f.original),
+                score=f.score,
+                text_span=f.original,
             )
-            if not detections:
-                new_segments.append(segment)
-                continue
-
             result = self.anonymize(
-                segment.text,
-                detections=detections,
-                operator_policies=operator_policies,
+                f.original, detections=[whole], operator_policies=operator_policies
             )
             results.append(result)
-            replaced_originals.extend(segment.text[d.start : d.end] for d in detections)
-            new_segments.append(segment.model_copy(update={"text": result.anonymized_text}))
+            for i, piece in enumerate(f.pieces):
+                edits.setdefault(piece.segment_id, []).append(
+                    (piece.start, piece.end, result.anonymized_text if i == 0 else "")
+                )
+            replaced_originals.append(f.original)
+        new_segments = [
+            seg.model_copy(update={"text": splice(seg.text, edits[seg.id])})
+            if seg.id in edits
+            else seg
+            for seg in doc.segments
+        ]
 
         mutated = doc.model_copy(update={"segments": new_segments})
         # Preserve the opaque raw handle: ``model_copy`` carries it through
@@ -212,20 +223,13 @@ class SanctumEngine:
         except Exception as exc:
             raise DocumentError(f"Failed to read {input_path}: {exc}") from exc
 
-        detections_by_segment: dict[str, list[DetectionResult]] = {}
-        for segment in doc.segments:
-            if not segment.text.strip():
-                continue
-            detections = self.analyze(
-                segment.text,
-                language=language,
-                entities=entities,
-                score_threshold=score_threshold,
-            )
-            if detections:
-                detections_by_segment[segment.id] = detections
-
-        proposals = build_proposals(doc, detections_by_segment)
+        findings = detect_blocks(
+            doc.segments,
+            lambda text: self.analyze(
+                text, language=language, entities=entities, score_threshold=score_threshold
+            ),
+        )
+        proposals = build_proposals_from_findings(findings)
 
         session = ReviewSession(
             id=session_id if session_id is not None else str(uuid.uuid4()),
@@ -339,9 +343,13 @@ def _originals_to_verify(session: ReviewSession, segments: list[TextSegment]) ->
     original text): those are expected to survive. Undecided proposals are
     *not* exempt — an accepted value that also appears unreviewed is
     exactly the leak this check exists to catch.
+
+    A linked finding is checked as a whole: its head piece's replacement
+    carries the finding's ``group_original`` as ``leak_original`` and the
+    tail pieces carry ``None`` (a tail piece can be as short as one space).
     """
     kept = {
-        prop.original
+        prop.group_original or prop.original
         for prop in session.proposals
         for d in session.decisions
         if isinstance(d, ProposalDecision)
@@ -351,8 +359,9 @@ def _originals_to_verify(session: ReviewSession, segments: list[TextSegment]) ->
     originals: list[str] = []
     for seg in segments:
         for rep in seg.metadata.get("replacements", []):
-            if rep["original"] not in kept:
-                originals.append(rep["original"])
+            value = rep.get("leak_original", rep["original"])
+            if value is not None and value not in kept:
+                originals.append(value)
     return originals
 
 
@@ -423,11 +432,18 @@ def _apply_decisions_to_segments(
             new_segments.append(segment)
             continue
 
-        replacements: list[tuple[int, int, str]] = []
+        # (start, end, replacement, leak_original) — see _originals_to_verify.
+        replacements: list[tuple[int, int, str, str | None]] = []
 
         cursor = 0
         for prop in segment_proposals:
-            idx = segment.text.find(prop.original, cursor)
+            if segment.text[prop.start : prop.end] == prop.original:
+                # The recorded offsets still match: use them. Linked pieces
+                # can be as short as a single space, which ``find`` would
+                # resolve to the wrong place.
+                idx = prop.start
+            else:
+                idx = segment.text.find(prop.original, cursor)
             if idx < 0:
                 # Session went stale against the stored bytes — skip
                 # rather than corrupt. The store.py invariant is that
@@ -448,17 +464,24 @@ def _apply_decisions_to_segments(
                 if decision.operator_params is not None
                 else session.default_operator_params
             )
-            replacement = _render_replacement(
-                entity_type=prop.entity_type,
-                original=prop.original,
-                score=prop.score,
-                operator=operator,
-                operator_params=operator_params,
-                custom_replacement=decision.custom_replacement,
-                anonymizer=anonymizer,
-                mapping_store=mapping_store,
-            )
-            replacements.append((start, end, replacement))
+            leak_original: str | None
+            if prop.group_id is not None and prop.group_index > 0:
+                # Tail of a linked finding: the head carries the replacement.
+                replacement = ""
+                leak_original = None
+            else:
+                replacement = _render_replacement(
+                    entity_type=prop.entity_type,
+                    original=prop.group_original or prop.original,
+                    score=prop.score,
+                    operator=operator,
+                    operator_params=operator_params,
+                    custom_replacement=decision.custom_replacement,
+                    anonymizer=anonymizer,
+                    mapping_store=mapping_store,
+                )
+                leak_original = prop.group_original or prop.original
+            replacements.append((start, end, replacement, leak_original))
 
         for ua in segment_user_added:
             idx = segment.text.find(ua.original)
@@ -483,12 +506,9 @@ def _apply_decisions_to_segments(
                 anonymizer=anonymizer,
                 mapping_store=mapping_store,
             )
-            replacements.append((start, end, replacement))
+            replacements.append((start, end, replacement, ua.original))
 
-        replacements.sort(key=lambda r: r[0], reverse=True)
-        new_text = segment.text
-        for start, end, repl in replacements:
-            new_text = new_text[:start] + repl + new_text[end:]
+        new_text = splice(segment.text, ((s, e, r) for s, e, r, _ in replacements))
 
         # Exact spans (offsets into the *original* segment text) ride along
         # in metadata for writers that need geometry (PDF paints each span)
@@ -496,8 +516,8 @@ def _apply_decisions_to_segments(
         # keeps its own copy of the unmutated segments.
         metadata = dict(segment.metadata)
         metadata["replacements"] = [
-            {"start": s, "end": e, "original": segment.text[s:e], "text": r}
-            for s, e, r in sorted(replacements, key=lambda r: r[0])
+            {"start": s, "end": e, "original": segment.text[s:e], "text": r, "leak_original": lo}
+            for s, e, r, lo in sorted(replacements, key=lambda r: r[0])
         ]
         new_segments.append(segment.model_copy(update={"text": new_text, "metadata": metadata}))
 

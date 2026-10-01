@@ -31,7 +31,7 @@ from typing import TYPE_CHECKING, Any
 
 from pptx import Presentation
 
-from sanctum.documents.structured import build_document, build_segment
+from sanctum.documents.structured import build_document, build_segment, run_block
 
 if TYPE_CHECKING:
     from pptx.presentation import Presentation as PptxPresentation
@@ -225,7 +225,8 @@ class Reader:
     def read(self, path: Path) -> StructuredDocument:
         prs: PptxPresentation = Presentation(str(path))
         segments: list[TextSegment] = [
-            build_segment(seg_id, target.get()) for seg_id, target in iter_presentation_targets(prs)
+            build_segment(seg_id, target.get(), block=run_block(seg_id))
+            for seg_id, target in iter_presentation_targets(prs)
         ]
         return build_document(
             source_path=path,

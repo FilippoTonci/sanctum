@@ -48,3 +48,20 @@ def test_structured_document_allows_arbitrary_raw_handle():
     )
     doc.raw_handle = _Anything()
     assert isinstance(doc.raw_handle, _Anything)
+
+
+def test_run_block_is_the_paragraph_of_a_run_id():
+    from sanctum.documents.structured import run_block
+
+    assert run_block("body/p3/r2") == "body/p3"
+    assert run_block("table/t0/row1/cell2/p0/r11") == "table/t0/row1/cell2/p0"
+    assert run_block("slide0/shape1/p0/r0") == "slide0/shape1/p0"
+    assert run_block("slide0/shape4/alt") is None
+    assert run_block("sheet=Sheet1/A1") is None
+    assert run_block("page0/line3") is None
+
+
+def test_build_segment_carries_block_and_join_before():
+    seg = build_segment("page0/line4", "Marchetti", block="page0/para1", join_before=" ", x=1)
+    assert (seg.block, seg.join_before, seg.metadata) == ("page0/para1", " ", {"x": 1})
+    assert build_segment("a", "b").block is None
