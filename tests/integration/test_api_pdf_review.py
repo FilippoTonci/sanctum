@@ -137,7 +137,9 @@ def test_commit_fails_with_422_when_a_replaced_value_survives(
         json={"output_path": str(out), "attested": True},
     )
     assert r.status_code == 422, r.get_json()
-    assert r.get_json()["details"] == [{"leak": samples.CLIENT}]
+    details = r.get_json()["details"]
+    assert [d["leak"] for d in details] == [samples.CLIENT]
+    assert all(isinstance(d["occurrences"], int) and d["occurrences"] >= 1 for d in details)
     assert not out.exists()
     r = client.get(f"/review-sessions/{session['id']}", headers=HEADERS)
     assert r.get_json()["status"] == "open"

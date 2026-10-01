@@ -845,7 +845,8 @@ def commit_session(session_id: str) -> tuple[dict, int]:
         # log line only counts leaks; the values go back to the (local,
         # authenticated) caller, which already holds them in the session.
         current_app.logger.warning("POST /review-sessions/%s/commit: %s", session_id, exc)
-        return {"error": str(exc), "details": [{"leak": v} for v in exc.leaks]}, 422
+        details = [{"leak": v, "occurrences": exc.occurrences.get(v, 1)} for v in exc.leaks]
+        return {"error": str(exc), "details": details}, 422
     except DocumentError as exc:
         current_app.logger.exception("POST /review-sessions/%s/commit: DocumentError", session_id)
         return {"error": f"document failure: {exc}"}, 500
