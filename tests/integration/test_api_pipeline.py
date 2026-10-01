@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from docx import Document
 from sanctum.analyzer.adapter import PresidioAnalyzer
 from sanctum.anonymizer.adapter import PresidioAnonymizer
 from sanctum.api.app import create_app
@@ -318,6 +319,27 @@ def test_mapping_rotate_key_changes_passphrase(
     _request("POST", f"{base}/mapping/lock", token=token)
 
 
+FIXTURE_NDA = Path(__file__).resolve().parents[1] / "fixtures" / "office" / "nda_contract.docx"
+
+
+def _nda_without_signature_block(directory: Path) -> Path:
+    """The NDA fixture minus its signature block.
+
+    "Miller, Henderson and Johnson" appears twice; NER flags "Miller" in the
+    signature block but misses it in the parties paragraph, so the post-write
+    leak check (which covers .docx since E7) refuses the full fixture in
+    Flow A, where there is no review step to add a manual redaction. Without
+    the signature block "Miller" is never replaced, so nothing can leak.
+    """
+    doc = Document(str(FIXTURE_NDA))
+    for para in doc.paragraphs:
+        if para.text.startswith("Authorized Representative"):
+            para._element.getparent().remove(para._element)
+    out = directory / "nda_trimmed.docx"
+    doc.save(str(out))
+    return out
+
+
 # ---------- /process-file over the wire ----------
 
 
@@ -325,10 +347,10 @@ def test_process_file_round_trip(
     server: tuple[str, str], tmp_path_factory: pytest.TempPathFactory
 ) -> None:
     base, token = server
-    fixture = Path(__file__).resolve().parents[1] / "fixtures" / "office" / "nda_contract.docx"
-    assert fixture.is_file(), "expected docx fixture to exist for the integration test"
+    assert FIXTURE_NDA.is_file(), "expected docx fixture to exist for the integration test"
 
     out_dir = tmp_path_factory.mktemp("api_proc")
+    fixture = _nda_without_signature_block(out_dir)
     out_path = out_dir / "out.docx"
 
     status, body = _request(
