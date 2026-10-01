@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from sanctum.core.blocks import detect_blocks, splice
+from sanctum.core.blocks import detect_blocks, fragment_words, splice
 from sanctum.core.exceptions import (
     AnalysisError,
     AnonymizationError,
@@ -169,6 +169,9 @@ class SanctumEngine:
                     (piece.start, piece.end, result.anonymized_text if i == 0 else "")
                 )
             replaced_originals.append(f.original)
+            if len(f.pieces) > 1:
+                for piece in f.pieces:
+                    replaced_originals.extend(fragment_words(piece.text, f.original))
         new_segments = [
             seg.model_copy(update={"text": splice(seg.text, edits[seg.id])})
             if seg.id in edits
@@ -347,21 +350,30 @@ def _originals_to_verify(session: ReviewSession, segments: list[TextSegment]) ->
     A linked finding is checked as a whole: its head piece's replacement
     carries the finding's ``group_original`` as ``leak_original`` and the
     tail pieces carry ``None`` (a tail piece can be as short as one space).
+    Every piece, head included, also carries ``leak_extra``: its whole words
+    that are whole words of the finding (see ``fragment_words``), so a piece
+    the writer failed to replace ("Dear <PERSON>Martin") is still caught.
+    Those words are kept, like the whole original, when the group was
+    rejected.
     """
-    kept = {
-        prop.group_original or prop.original
-        for prop in session.proposals
+    rejected = {
+        d.proposal_id
         for d in session.decisions
-        if isinstance(d, ProposalDecision)
-        and d.status == "reject"
-        and d.proposal_id == prop.detection_id
+        if isinstance(d, ProposalDecision) and d.status == "reject"
     }
+    kept: set[str] = set()
+    for prop in session.proposals:
+        if prop.detection_id not in rejected:
+            continue
+        kept.add(prop.group_original or prop.original)
+        if prop.group_original is not None:
+            kept.update(fragment_words(prop.original, prop.group_original))
     originals: list[str] = []
     for seg in segments:
         for rep in seg.metadata.get("replacements", []):
             value = rep.get("leak_original", rep["original"])
-            if value is not None and value not in kept:
-                originals.append(value)
+            candidates = [value, *rep.get("leak_extra", [])]
+            originals.extend(v for v in candidates if v is not None and v not in kept)
     return originals
 
 
@@ -432,8 +444,9 @@ def _apply_decisions_to_segments(
             new_segments.append(segment)
             continue
 
-        # (start, end, replacement, leak_original) — see _originals_to_verify.
-        replacements: list[tuple[int, int, str, str | None]] = []
+        # (start, end, replacement, leak_original, leak_extra) — see
+        # _originals_to_verify.
+        replacements: list[tuple[int, int, str, str | None, list[str]]] = []
 
         cursor = 0
         for prop in segment_proposals:
@@ -481,7 +494,12 @@ def _apply_decisions_to_segments(
                     mapping_store=mapping_store,
                 )
                 leak_original = prop.group_original or prop.original
-            replacements.append((start, end, replacement, leak_original))
+            leak_extra = (
+                fragment_words(prop.original, prop.group_original)
+                if prop.group_original is not None
+                else []
+            )
+            replacements.append((start, end, replacement, leak_original, leak_extra))
 
         for ua in segment_user_added:
             idx = segment.text.find(ua.original)
@@ -506,9 +524,9 @@ def _apply_decisions_to_segments(
                 anonymizer=anonymizer,
                 mapping_store=mapping_store,
             )
-            replacements.append((start, end, replacement, ua.original))
+            replacements.append((start, end, replacement, ua.original, []))
 
-        new_text = splice(segment.text, ((s, e, r) for s, e, r, _ in replacements))
+        new_text = splice(segment.text, ((s, e, r) for s, e, r, _, _ in replacements))
 
         # Exact spans (offsets into the *original* segment text) ride along
         # in metadata for writers that need geometry (PDF paints each span)
@@ -516,8 +534,15 @@ def _apply_decisions_to_segments(
         # keeps its own copy of the unmutated segments.
         metadata = dict(segment.metadata)
         metadata["replacements"] = [
-            {"start": s, "end": e, "original": segment.text[s:e], "text": r, "leak_original": lo}
-            for s, e, r, lo in sorted(replacements, key=lambda r: r[0])
+            {
+                "start": s,
+                "end": e,
+                "original": segment.text[s:e],
+                "text": r,
+                "leak_original": lo,
+                "leak_extra": extra,
+            }
+            for s, e, r, lo, extra in sorted(replacements, key=lambda r: r[0])
         ]
         new_segments.append(segment.model_copy(update={"text": new_text, "metadata": metadata}))
 

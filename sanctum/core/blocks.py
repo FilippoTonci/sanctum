@@ -10,6 +10,7 @@ joined text once, and maps every finding back to the segment pieces it covers.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 
@@ -30,6 +31,28 @@ class BlockFinding:
     score: float
     original: str  # the joined text of the finding (may include join_before)
     pieces: tuple[Piece, ...]
+
+
+_WORD = re.compile(r"\w+")
+_MIN_FRAGMENT_WORD = 3
+
+
+def fragment_words(piece_text: str, original: str) -> list[str]:
+    """Whole words of a piece that are also whole words of the finding's text.
+
+    Used by the leak check for linked findings: if one piece of a split
+    name survives in the output ("Dear <PERSON>Martin"), the whole-name
+    check cannot see it, but the piece's whole words can. Words shorter
+    than three characters, and fragments cut mid-word by a segment
+    boundary ("Jen" of "Jennifer"), are left out so unrelated text does
+    not trip the check.
+    """
+    whole = set(_WORD.findall(original))
+    out: list[str] = []
+    for word in _WORD.findall(piece_text):
+        if len(word) >= _MIN_FRAGMENT_WORD and word in whole and word not in out:
+            out.append(word)
+    return out
 
 
 @dataclass(frozen=True)

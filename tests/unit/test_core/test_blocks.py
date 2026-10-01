@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sanctum.core.blocks import Piece, detect_blocks, splice
+from sanctum.core.blocks import Piece, detect_blocks, fragment_words, splice
 from sanctum.core.models import DetectionResult, TextSegment
 
 
@@ -72,3 +72,15 @@ def test_blocks_group_by_key_not_adjacency() -> None:
 def test_splice_applies_edits_right_to_left() -> None:
     assert splice("Dear Jen", [(5, 8, "<PERSON>")]) == "Dear <PERSON>"
     assert splice("abc", [(0, 1, "X"), (2, 3, "")]) == "Xb"
+
+
+def test_fragment_words_are_whole_words_shared_with_the_finding() -> None:
+    assert fragment_words("Jennifer", "Jennifer Martin") == ["Jennifer"]
+    assert fragment_words(" ", "Jennifer Martin") == []
+    assert fragment_words("Martin", "Jennifer Martin") == ["Martin"]
+    # cut mid-word by run boundaries: nothing new to look for
+    assert fragment_words("Jen", "Jennifer Martin") == []
+    assert fragment_words("nifer Mar", "Jennifer Martin") == []
+    assert fragment_words("tin", "Jennifer Martin") == []
+    # words under three characters are left out
+    assert fragment_words("Li Wei", "Li Wei") == ["Wei"]
