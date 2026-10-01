@@ -78,9 +78,16 @@ def apply_user_added_with_overlap_purge(session: ReviewSession, ua: UserAddedDec
     range ``[p.start, p.end)`` overlaps ``[ua.start, ua.end)`` is removed
     from ``session.proposals``, along with any ``ProposalDecision`` that
     referenced it. Adjacent ranges (``p.end == ua.start`` or
-    ``p.start == ua.end``) share no characters and are left alone. When an
-    overlapped proposal is a piece of a linked finding, every piece of that
-    finding is removed with it.
+    ``p.start == ua.end``) share no characters and are left alone.
+
+    When an overlapped proposal is a piece of a linked finding, only the
+    overlapped pieces go (Ruling 12). The finding's other pieces stay, with
+    their decisions, so a hand-mark on "Jennifer" never un-redacts "Martin":
+    whitespace-only pieces are dropped (they carry no PII), the rest are
+    trimmed of edge whitespace and renumbered so the first one becomes the
+    head that renders the replacement. Their ``group_original`` stays, so the
+    leak check still looks for the whole finding and its words. The rendered
+    output may then carry two replacement tokens for one name.
 
     No record of the removed proposals is kept — the user-added
     decision is the new source of truth for that span. Removing the UA
@@ -101,9 +108,27 @@ def apply_user_added_with_overlap_purge(session: ReviewSession, ua: UserAddedDec
     hit_groups = {p.group_id for p in overlapped if p.group_id is not None}
     removed: list[str] = []
     survivors: list[ReviewProposal] = []
+    next_index: dict[str, int] = {}
     for p in session.proposals:
-        if p.detection_id in hit_ids or (p.group_id is not None and p.group_id in hit_groups):
+        group = p.group_id if p.group_id in hit_groups else None
+        if p.detection_id in hit_ids or (group is not None and not p.original.strip()):
             removed.append(p.detection_id)
+        elif group is not None:
+            index = next_index.get(group, 0)
+            next_index[group] = index + 1
+            lead = len(p.original) - len(p.original.lstrip())
+            text = p.original.strip()
+            start = p.start + lead
+            survivors.append(
+                p.model_copy(
+                    update={
+                        "group_index": index,
+                        "original": text,
+                        "start": start,
+                        "end": start + len(text),
+                    }
+                )
+            )
         else:
             survivors.append(p)
 

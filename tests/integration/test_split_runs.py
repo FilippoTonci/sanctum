@@ -18,8 +18,13 @@ from sanctum.analyzer.recognizers import AnyDomainEmailRecognizer
 from sanctum.anonymizer.adapter import PresidioAnonymizer
 from sanctum.core.engine import SanctumEngine
 from sanctum.core.exceptions import LeakCheckError
-from sanctum.core.models import DetectionResult, OperatorPolicy, ProposalDecision
-from sanctum.core.review.session import add_decision
+from sanctum.core.models import (
+    DetectionResult,
+    OperatorPolicy,
+    ProposalDecision,
+    UserAddedDecision,
+)
+from sanctum.core.review.session import add_decision, apply_user_added_with_overlap_purge
 from sanctum.core.review.store import SessionStore
 from sanctum.documents import pptx_adapter
 from sanctum.documents.docx_adapter import Reader, Writer
@@ -255,3 +260,28 @@ def test_name_missed_in_a_docx_header_fails_closed(tmp_path: Path) -> None:
         engine.process_document(Reader(), Writer(), src, out, operator_policies=replace)
     assert "Jennifer Martin" in exc_info.value.leaks
     assert not out.exists()
+
+
+def test_hand_marking_part_of_a_linked_name_keeps_the_rest_redacted(
+    engine: SanctumEngine, tmp_path: Path
+) -> None:
+    # C1 / Ruling 12: marking "Jennifer" by hand must not un-redact "Martin".
+    store = SessionStore(root=tmp_path / "sessions")
+    src = make_docx(tmp_path / "in.docx", ["Dear Jennifer", " Martin, thanks."])
+    session = engine.create_review_session(
+        Reader(), src, default_operator="replace", session_store=store
+    )
+    assert {p.group_original for p in session.proposals if p.group_id} == {"Jennifer Martin"}
+    accept_all(store, session.id)
+    with store.locked(session.id):
+        s = store.load(session.id)
+        ua = UserAddedDecision(
+            segment_anchor="body/p0/r0", entity_type="PERSON", original="Jennifer", start=5, end=13
+        )
+        apply_user_added_with_overlap_purge(s, ua)
+        store.save(s)
+        assert [p.original for p in s.proposals] == ["Martin"]
+    out = tmp_path / "out.docx"
+    engine.commit_review_session(Reader(), Writer(), session.id, out, store)
+    text = docx.Document(str(out)).paragraphs[0].text
+    assert "Martin" not in text and "Jennifer" not in text
