@@ -84,7 +84,7 @@ plus an opaque `raw_handle` the matching Writer uses to project mutations
 back.
 
 Segment granularity (by design, affects detection):
-- docx: per-run  •  xlsx: per-string-cell  •  pdf: per-page  •  pptx: per-text-frame
+- docx: per-run  •  xlsx: per-string-cell  •  pdf: per-line (`page{i}/line{j}`)  •  pptx: per-text-frame
 
 **Round-trip fidelity is a hard constraint**: read → write with no edits must
 be byte-equivalent. Add an integration test for any new adapter.
