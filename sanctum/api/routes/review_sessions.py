@@ -8,6 +8,10 @@ Server-side state for the HITL review flow (Phase 1.5 WS2). Clients:
 - ``GET /review-sessions/{id}/input`` — the original input bytes; used
   by the desktop to resume an open session. ``410 Gone`` after the
   session reaches a terminal status (commit / abandon) sheds them.
+- ``GET /review-sessions/{id}/layout`` — positioned layout (Phase 3.5
+  shared layout contract) for formats whose adapter exports
+  ``build_layout`` (pdf today); ``501`` for the others, ``410`` once the
+  input bytes are shed.
 - ``PATCH /review-sessions/{id}/decisions/{proposal_id}`` — accept /
   reject a proposal; set operator / params / custom_replacement.
 - ``POST /review-sessions/{id}/decisions/user-added`` — add a span the
@@ -25,8 +29,10 @@ authoritative cache.
 
 from __future__ import annotations
 
+import tempfile
 from datetime import datetime, timezone
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 from flask import Blueprint, Response, current_app, send_file
@@ -41,6 +47,7 @@ from sanctum.api.schemas import (
     DecisionWithPreviewResponse,
     PatchProposalDecisionRequest,
     ReviewSessionIndexEntry,
+    ReviewSessionLayoutResponse,
     ReviewSessionListResponse,
     ReviewSessionResponse,
 )
@@ -50,6 +57,7 @@ from sanctum.core.exceptions import (
     AnonymizationError,
     DocumentError,
     InvalidOperatorParamsError,
+    LeakCheckError,
     ReviewSessionAlreadyCommittedError,
     ReviewSessionInvalidDecisionError,
     ReviewSessionNotFoundError,
@@ -68,6 +76,7 @@ from sanctum.core.review.session import abandon as abandon_session
 from sanctum.core.review.session import add_decision, apply_user_added_with_overlap_purge
 from sanctum.core.review.store import SessionStore
 from sanctum.documents import adapter_for
+from sanctum.documents.registry import layout_builder_for
 
 review_sessions_bp = Blueprint("review_sessions", __name__, url_prefix="/review-sessions")
 
@@ -523,6 +532,58 @@ def get_session_input(session_id: str) -> tuple[dict, int] | Response:
     )
 
 
+@review_sessions_bp.get("/<session_id>/layout")
+@require_bearer_token
+def get_session_layout(session_id: str) -> tuple[dict, int]:
+    """Return the positioned layout the review surface renders from.
+
+    Built on demand from the session's stored input bytes by the format
+    adapter's ``build_layout`` — the same extraction the reader used at
+    create time, so every ``segment_id`` matches a session segment. Like
+    ``/input`` this needs the input bytes, so terminal sessions get
+    ``410``. Formats without a layout builder get ``501``.
+    """
+    store = _get_store()
+    if store is None:
+        current_app.logger.error(
+            "/review-sessions/<id>/layout called but SANCTUM_SESSION_STORE is unconfigured"
+        )
+        return {"error": "session store not configured"}, 503
+
+    session, load_err = _load_session(store, session_id)
+    if load_err is not None:
+        return load_err
+    assert session is not None
+
+    if session.status != "open":
+        return (
+            {"error": f"session is {session.status}; layout needs the shed input bytes"},
+            410,
+        )
+
+    try:
+        builder = layout_builder_for(Path(f"input.{session.format}"))
+    except UnsupportedDocumentFormatError as exc:
+        return {"error": f"layout is not available for {session.format}: {exc}"}, 501
+
+    try:
+        input_bytes = store.load_input_bytes(session_id)
+    except ReviewSessionNotFoundError:
+        return {"error": "session input bytes are missing on disk"}, 410
+
+    with tempfile.TemporaryDirectory(prefix="sanctum-layout-") as tmp:
+        tmp_path = Path(tmp) / f"input.{session.format}"
+        tmp_path.write_bytes(input_bytes)
+        try:
+            raw = builder(tmp_path)
+        except DocumentError as exc:
+            current_app.logger.exception("GET /review-sessions/%s/layout failed", session_id)
+            return {"error": f"document failure: {exc}"}, 500
+
+    payload = ReviewSessionLayoutResponse.model_validate(raw)
+    return payload.model_dump(mode="json"), 200
+
+
 @review_sessions_bp.patch("/<session_id>/decisions/<proposal_id>")
 @require_bearer_token
 def patch_proposal_decision(session_id: str, proposal_id: str) -> tuple[dict, int]:
@@ -754,6 +815,14 @@ def commit_session(session_id: str) -> tuple[dict, int]:
     except InvalidOperatorParamsError as exc:
         current_app.logger.info("/commit: invalid operator params: %s", exc)
         return {"error": f"invalid operator_params: {exc}"}, 400
+    except LeakCheckError as exc:
+        # The output was deleted and the session is still open. 422: the
+        # request was well-formed but the decisions leave a replaced value
+        # visible; the reviewer can add a manual redaction and retry. The
+        # log line only counts leaks; the values go back to the (local,
+        # authenticated) caller, which already holds them in the session.
+        current_app.logger.warning("POST /review-sessions/%s/commit: %s", session_id, exc)
+        return {"error": str(exc), "details": [{"leak": v} for v in exc.leaks]}, 422
     except DocumentError as exc:
         current_app.logger.exception("POST /review-sessions/%s/commit: DocumentError", session_id)
         return {"error": f"document failure: {exc}"}, 500

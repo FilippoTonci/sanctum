@@ -8,7 +8,7 @@ import. Models accumulate here as routes land in subsequent substeps.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Final, Literal
+from typing import Annotated, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -459,3 +459,97 @@ class CommitReviewSessionResponse(_Frozen):
     session_id: str
     output_path: str
     committed_at: datetime
+
+
+# ----- GET /review-sessions/{id}/layout (Phase 3.5 shared layout contract) -----
+#
+# Coordinates are points (1/72 in), top-left origin, relative to the page
+# (PDF: CropBox after /Rotate; PPTX: slide). Items are in paint order,
+# back to front. Every ``segment_id`` is a segment of the session.
+
+
+class LayoutTextLine(_Frozen):
+    """PDF: one extracted line; the viewer overlays it on the page raster."""
+
+    kind: Literal["textline"] = "textline"
+    x: float
+    y: float
+    w: float
+    h: float
+    segment_id: str
+    text: str
+    size: float
+
+
+class LayoutRun(_Frozen):
+    segment_id: str
+    text: str
+    size: float | None = None
+    bold: bool | None = None
+    italic: bool | None = None
+    color: str | None = None
+    font: str | None = None
+
+
+class LayoutParagraph(_Frozen):
+    align: Literal["left", "center", "right", "justify"] = "left"
+    runs: list[LayoutRun]
+
+
+class LayoutTextBox(_Frozen):
+    """PPTX: a shape or table-cell text frame."""
+
+    kind: Literal["textbox"] = "textbox"
+    x: float
+    y: float
+    w: float
+    h: float
+    paragraphs: list[LayoutParagraph]
+
+
+class LayoutImage(_Frozen):
+    kind: Literal["image"] = "image"
+    x: float
+    y: float
+    w: float
+    h: float
+    src: str  # data: URI
+
+
+class LayoutShape(_Frozen):
+    """PPTX only: background rectangles."""
+
+    kind: Literal["shape"] = "shape"
+    x: float
+    y: float
+    w: float
+    h: float
+    fill: str | None = None
+
+
+LayoutItem = Annotated[
+    LayoutTextLine | LayoutTextBox | LayoutImage | LayoutShape,
+    Field(discriminator="kind"),
+]
+
+
+class LayoutPage(_Frozen):
+    index: int
+    width: float
+    height: float
+    items: list[LayoutItem]
+
+
+class LayoutUnscanned(_Frozen):
+    """Content Sanctum did not scan, named so the UI can tell the reviewer."""
+
+    where: str
+    what: str
+
+
+class ReviewSessionLayoutResponse(_Frozen):
+    """Body for `GET /review-sessions/{id}/layout`."""
+
+    format: Literal["pptx", "pdf"]
+    pages: list[LayoutPage]
+    unscanned: list[LayoutUnscanned] = Field(default_factory=list)

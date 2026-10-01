@@ -7,8 +7,9 @@ python-docx/openpyxl/pdfplumber/python-pptx import cost.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sanctum.core.exceptions import UnsupportedDocumentFormatError
 
@@ -27,14 +28,10 @@ _SUFFIX_MAP = {
 }
 
 
-def adapter_for(path: Path) -> AdapterPair:
-    """Return ``(reader, writer)`` for the given file's extension.
+LayoutBuilder = Callable[[Path], dict[str, Any]]
 
-    Raises:
-        UnsupportedDocumentFormatError: if no adapter is registered for the
-            file's suffix, or the module exists but does not yet expose
-            ``Reader``/``Writer`` classes (i.e., adapter not implemented).
-    """
+
+def _import_adapter(path: Path) -> Any:
     suffix = path.suffix.lower()
     module_name = _SUFFIX_MAP.get(suffix)
     if module_name is None:
@@ -45,11 +42,40 @@ def adapter_for(path: Path) -> AdapterPair:
     import importlib
 
     try:
-        module = importlib.import_module(module_name)
+        return importlib.import_module(module_name)
     except ImportError as exc:
         raise UnsupportedDocumentFormatError(
             f"Adapter module '{module_name}' not importable: {exc}"
         ) from exc
+
+
+def layout_builder_for(path: Path) -> LayoutBuilder:
+    """Return the adapter's ``build_layout(path) -> dict`` for ``path``'s format.
+
+    Adapters opt in to the review-surface layout contract (``GET
+    /review-sessions/<id>/layout``) by exporting a module-level
+    ``build_layout``. Raises :class:`UnsupportedDocumentFormatError` when
+    the format has no adapter or the adapter has no layout builder yet.
+    """
+    module = _import_adapter(path)
+    builder = getattr(module, "build_layout", None)
+    if builder is None:
+        raise UnsupportedDocumentFormatError(
+            f"No layout builder for '{path.suffix.lower()}' files yet."
+        )
+    return builder  # type: ignore[no-any-return]
+
+
+def adapter_for(path: Path) -> AdapterPair:
+    """Return ``(reader, writer)`` for the given file's extension.
+
+    Raises:
+        UnsupportedDocumentFormatError: if no adapter is registered for the
+            file's suffix, or the module exists but does not yet expose
+            ``Reader``/``Writer`` classes (i.e., adapter not implemented).
+    """
+    module = _import_adapter(path)
+    module_name = module.__name__
 
     try:
         reader_cls = module.Reader
