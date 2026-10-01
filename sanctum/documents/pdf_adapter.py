@@ -49,13 +49,18 @@ class Reader:
     def read(self, path: Path) -> StructuredDocument:
         extraction = _extract_file(path)
         segments: list[TextSegment] = []
+        started: set[str] = set()
         for line in extraction.lines:
             geom = extraction.pages[line.page]
             x0, top, x1, bottom = line.bbox
+            join = " " if line.block in started else ""
+            started.add(line.block)
             segments.append(
                 build_segment(
                     line.segment_id,
                     line.text,
+                    block=line.block,
+                    join_before=join,
                     page=line.page,
                     x=_r(x0),
                     y=_r(top),

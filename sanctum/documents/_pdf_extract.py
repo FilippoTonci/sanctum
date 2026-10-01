@@ -66,6 +66,7 @@ class PdfLine:
     char_boxes: list[Box]
     bbox: Box
     size: float
+    block: str = ""  # paragraph key, ``page{i}/para{k}`` (set by _assign_blocks)
 
 
 @dataclass
@@ -143,6 +144,7 @@ def extract(source_bytes: bytes) -> PdfExtraction:
             upright = [w for w in words if w.get("upright", True)]
             skipped = len(words) - len(upright)
             page_lines = _build_lines(i, upright, ox, oy)
+            _assign_blocks(i, page_lines)
             lines.extend(page_lines)
 
             where = f"page {i + 1}"
@@ -224,6 +226,36 @@ def _word_size(word: dict[str, Any]) -> float:
     if sizes:
         return statistics.median(sizes)
     return float(word["bottom"]) - float(word["top"])
+
+
+def _assign_blocks(page_index: int, lines: list[PdfLine]) -> None:
+    """Group a page's lines into paragraphs: same column, small vertical gap.
+
+    A line joins an open paragraph when its x-range overlaps the paragraph's
+    last line, it starts at most 0.8 line-heights below that line's bottom,
+    and the font sizes are within 20%. Otherwise it opens a new paragraph.
+    Grouping is by key, so interleaved column order does not matter.
+    """
+    open_paras: list[tuple[str, PdfLine]] = []
+    count = 0
+    for line in lines:
+        x0, top, x1, _ = line.bbox
+        chosen: str | None = None
+        for i, (key, last) in enumerate(open_paras):
+            lx0, _, lx1, lbottom = last.bbox
+            height = max(last.bbox[3] - last.bbox[1], line.bbox[3] - line.bbox[1])
+            overlaps = min(x1, lx1) - max(x0, lx0) > 0
+            gap = top - lbottom
+            similar = abs(line.size - last.size) <= 0.2 * max(line.size, last.size)
+            if overlaps and -0.2 * height <= gap <= 0.8 * height and similar:
+                chosen = key
+                open_paras[i] = (key, line)
+                break
+        if chosen is None:
+            chosen = f"page{page_index}/para{count}"
+            count += 1
+            open_paras.append((chosen, line))
+        line.block = chosen
 
 
 def _make_line(
