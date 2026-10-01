@@ -56,13 +56,20 @@ class PdfWriteRefusedError(DocumentError):
 class LeakCheckError(DocumentError):
     """Raised when a replaced original string survives in the written output.
 
-    ``leaks`` holds the surviving originals. The message deliberately does
+    ``leaks`` holds the surviving originals and ``occurrences`` how many
+    times each still appears. The message deliberately does
     not include them so the exception is safe to log.
     """
 
-    def __init__(self, message: str, leaks: list[str] | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        leaks: list[str] | None = None,
+        occurrences: dict[str, int] | None = None,
+    ) -> None:
         super().__init__(message)
         self.leaks: list[str] = list(leaks or [])
+        self.occurrences: dict[str, int] = dict(occurrences or {})
 
 
 class MappingStoreError(SanctumError):
