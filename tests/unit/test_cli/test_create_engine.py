@@ -30,7 +30,7 @@ def test_create_engine_defaults_to_spacy_backend() -> None:
     mock_factory.assert_not_called()
     # The analyzer was instantiated with empty extra/remove lists.
     _, kwargs = mock_analyzer_cls.call_args
-    assert kwargs["extra_recognizers"] == []
+    assert [type(r).__name__ for r in kwargs["extra_recognizers"]] == ["AnyDomainEmailRecognizer"]
     assert kwargs["remove_recognizer_names"] == []
 
 
@@ -62,5 +62,7 @@ def test_create_engine_gliner_backend_swaps_recognizer() -> None:
 
     mock_factory.assert_called_once_with(model_name="urchade/gliner_medium-v2.1", threshold=0.4)
     _, kwargs = mock_analyzer_cls.call_args
-    assert kwargs["extra_recognizers"] == [fake_recognizer]
+    extra = kwargs["extra_recognizers"]
+    assert [type(r).__name__ for r in extra] == ["AnyDomainEmailRecognizer", "MagicMock"]
+    assert extra[1] is fake_recognizer
     assert kwargs["remove_recognizer_names"] == ["SpacyRecognizer"]

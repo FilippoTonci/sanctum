@@ -13,6 +13,7 @@ import pytest
 from pptx import Presentation
 from pptx.util import Inches
 from sanctum.analyzer.adapter import PresidioAnalyzer
+from sanctum.analyzer.recognizers import AnyDomainEmailRecognizer
 from sanctum.anonymizer.adapter import PresidioAnonymizer
 from sanctum.core.engine import SanctumEngine
 from sanctum.core.models import OperatorPolicy, ProposalDecision
@@ -140,3 +141,20 @@ def test_rc3_manifest_without_new_fields_still_commits(
     out = tmp_path / "out.docx"
     engine.commit_review_session(Reader(), Writer(), session.id, out, store)
     assert "Cameron" not in docx.Document(str(out)).paragraphs[0].text
+
+
+def test_split_internal_domain_email_is_one_email_finding(tmp_path: Path) -> None:
+    # Production wiring: the any-domain email recognizer is registered (see _create_engine).
+    engine = SanctumEngine(
+        analyzer=PresidioAnalyzer(extra_recognizers=[AnyDomainEmailRecognizer()]),
+        anonymizer=PresidioAnonymizer(),
+    )
+    store = SessionStore(root=tmp_path / "sessions")
+    src = make_docx(tmp_path / "in.docx", ["Contact j.al", "brecht@northgate.local today"])
+    session = engine.create_review_session(
+        Reader(), src, default_operator="replace", session_store=store
+    )
+    emails = [p for p in session.proposals if p.entity_type == "EMAIL_ADDRESS"]
+    assert emails
+    assert {p.group_original for p in emails} == {"j.albrecht@northgate.local"}
+    assert not [p for p in session.proposals if p.entity_type == "URL"]
