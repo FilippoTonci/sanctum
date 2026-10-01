@@ -66,6 +66,19 @@ class StructuredDocumentWriter(Protocol):
 
 
 @runtime_checkable
+class OutputTextExtractor(Protocol):
+    """Re-extracts every piece of text from a file the writer produced.
+
+    Implemented by structured-document writers that support the post-write
+    leak check (``sanctum.core.leak_check``). The extraction should be as
+    exhaustive as the format allows (body text, headers, metadata values),
+    since anything it misses is invisible to the check.
+    """
+
+    def extract_text(self, path: Path) -> str: ...
+
+
+@runtime_checkable
 class MappingStore(Protocol):
     """Persistent original -> pseudonym store for reversible pseudonymization.
 

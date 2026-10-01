@@ -10,8 +10,10 @@ from sanctum.core.exceptions import (
     AnalysisError,
     AnonymizationError,
     DocumentError,
+    LeakCheckError,
     ReviewSessionAlreadyCommittedError,
 )
+from sanctum.core.leak_check import verify_no_leaks
 from sanctum.core.models import (
     AnonymizationResult,
     DetectionResult,
@@ -26,6 +28,7 @@ from sanctum.core.protocols import (
     Analyzer,
     Anonymizer,
     MappingStore,
+    OutputTextExtractor,
     StructuredDocumentReader,
     StructuredDocumentWriter,
 )
@@ -137,6 +140,7 @@ class SanctumEngine:
 
         results: list[AnonymizationResult] = []
         new_segments: list[TextSegment] = []
+        replaced_originals: list[str] = []
         for segment in doc.segments:
             if not segment.text.strip():
                 new_segments.append(segment)
@@ -158,6 +162,7 @@ class SanctumEngine:
                 operator_policies=operator_policies,
             )
             results.append(result)
+            replaced_originals.extend(segment.text[d.start : d.end] for d in detections)
             new_segments.append(segment.model_copy(update={"text": result.anonymized_text}))
 
         mutated = doc.model_copy(update={"segments": new_segments})
@@ -171,6 +176,7 @@ class SanctumEngine:
         except Exception as exc:
             raise DocumentError(f"Failed to write {output_path}: {exc}") from exc
 
+        _run_leak_check(writer, output_path, replaced_originals)
         return results
 
     def create_review_session(
@@ -311,6 +317,8 @@ class SanctumEngine:
                 writer.write(mutated, output_path)
             except Exception as exc:
                 raise DocumentError(f"Failed to write {output_path}: {exc}") from exc
+
+            _run_leak_check(writer, output_path, _originals_to_verify(session, new_segments))
         finally:
             tmp_path.unlink(missing_ok=True)
 
@@ -321,6 +329,55 @@ class SanctumEngine:
         session_store.save(session)
         session_store.shed_input(session_id)
         return output_path
+
+
+def _originals_to_verify(session: ReviewSession, segments: list[TextSegment]) -> list[str]:
+    """Originals the leak check must not find in the committed output.
+
+    Every replaced span's original, minus strings the reviewer explicitly
+    chose to keep somewhere else (a rejected proposal with the same
+    original text): those are expected to survive. Undecided proposals are
+    *not* exempt — an accepted value that also appears unreviewed is
+    exactly the leak this check exists to catch.
+    """
+    kept = {
+        prop.original
+        for prop in session.proposals
+        for d in session.decisions
+        if isinstance(d, ProposalDecision)
+        and d.status == "reject"
+        and d.proposal_id == prop.detection_id
+    }
+    originals: list[str] = []
+    for seg in segments:
+        for rep in seg.metadata.get("replacements", []):
+            if rep["original"] not in kept:
+                originals.append(rep["original"])
+    return originals
+
+
+def _run_leak_check(
+    writer: StructuredDocumentWriter, output_path: Path, originals: list[str]
+) -> None:
+    """Re-extract the written output and fail if a replaced original survives.
+
+    Only writers that implement :class:`OutputTextExtractor` are checked;
+    for the others this is a no-op (to be closed format by format, WS0.2).
+    On failure the output file is deleted so a leaking document never
+    stays on disk.
+    """
+    if not originals or not isinstance(writer, OutputTextExtractor):
+        return
+    try:
+        text = writer.extract_text(output_path)
+    except Exception as exc:
+        output_path.unlink(missing_ok=True)
+        raise DocumentError(f"Leak check could not re-read {output_path}: {exc}") from exc
+    try:
+        verify_no_leaks(text, originals, where=output_path.name)
+    except LeakCheckError:
+        output_path.unlink(missing_ok=True)
+        raise
 
 
 def _apply_decisions_to_segments(
@@ -433,7 +490,16 @@ def _apply_decisions_to_segments(
         for start, end, repl in replacements:
             new_text = new_text[:start] + repl + new_text[end:]
 
-        new_segments.append(segment.model_copy(update={"text": new_text}))
+        # Exact spans (offsets into the *original* segment text) ride along
+        # in metadata for writers that need geometry (PDF paints each span)
+        # and for the post-write leak check. Never persisted: the session
+        # keeps its own copy of the unmutated segments.
+        metadata = dict(segment.metadata)
+        metadata["replacements"] = [
+            {"start": s, "end": e, "original": segment.text[s:e], "text": r}
+            for s, e, r in sorted(replacements, key=lambda r: r[0])
+        ]
+        new_segments.append(segment.model_copy(update={"text": new_text, "metadata": metadata}))
 
     return new_segments
 

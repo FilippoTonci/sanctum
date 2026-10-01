@@ -14,6 +14,7 @@ from sanctum.core.exceptions import UnsupportedDocumentFormatError
 
 _LAYOUT_BUILDERS = {
     "pptx": "sanctum.documents.pptx_layout",
+    "pdf": "sanctum.documents.pdf_adapter",
 }
 
 
