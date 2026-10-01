@@ -33,12 +33,12 @@ Unmerged branches stay on GitHub for reference. The lane reports are in `~/Deskt
    - the Redact button state.
 4. **Leak check:**
    - It blocks the save, and the app explains why and offers "Redact these too".
-   - Very short originals (1–2 characters, or numbers under 3 digits) only match as whole tokens.
+   - Bare numbers of 1–2 digits are skipped by the leak check (a wrongly accepted "14" must not block a save because "14 Harbour Lane" survives). Everything else is matched as today: whole tokens, whitespace-normalised. *(Amended 2026-10-01: the check already matched whole tokens, so the first wording would not have fixed "14".)*
    - An accepted value that also appears somewhere unreviewed still counts as a leak.
    - Matching stays case-sensitive.
-5. **Detection gaps, both fixed:**
-   - an email recognizer that runs before NER, with overlapping spans merged;
-   - PDF names broken across lines (detect on paragraphs, then map back to lines).
+5. **Detection gaps, both fixed** *(amended 2026-10-01 after code reading)*:
+   - **Entities split across segments, in every format.** Detection ran per segment, and for .docx/.pptx a segment is one formatting run, so a name split across runs (formatting changes, spell-check, tracked edits) was missed or half-redacted. The same flaw caused the PDF line-break misses. Detection now runs on whole paragraphs ("blocks") and each finding is projected back onto the segments it covers; a finding spanning several segments becomes linked pieces that are always decided together.
+   - **Email addresses with non-public domains.** Presidio's email recognizer rejects domains without a real TLD (`.local`, `.internal`, `.corp`, and the agents' `.example` test data). Add a recognizer that accepts any well-formed domain.
 6. **Hidden data:** .docx and .pptx outputs have their core and app properties cleared and their comments removed, matching what PDF already does. Unscanned PPTX parts (charts, SmartArt, OLE objects, masters and layouts) stay flagged to the user and are not scanned in this release.
 7. **Version:** `0.2.0-rc.1`. It is published as a normal, non-pre-release GitHub release, as rc.3 was, because the site reads `releases/latest`.
 8. **Smaller defaults:**
@@ -58,8 +58,8 @@ Each repo gets an integration branch, `release/0.2.0`. Every step below is one P
 | E2 | Merge `overnight/pdf-engine` | Resolve conflicts in `api/routes/review_sessions.py`, `api/schemas.py`, `schema/openapi.json` and `scripts/generate_openapi.py`. Both branches implement `GET /review-sessions/<id>/layout`, and pdf-engine's returns 501 for non-PDF. This becomes one route that dispatches by format to the PDF or PPTX layout builder. The layout contract types merge as a superset: the pptx additions (`textbox.anchor`, `image.alt`, `page.notes`, `unscanned[].page`) plus the PDF `textline`. The optional `font` field that pdf-view's desktop reads is checked against the real reader and either added or made optional on the desktop side. |
 | E3 | Fix the SIGTERM integration tests | They fail because they need a `sanctum` executable on PATH. Fix the harness, for example by invoking the module through the venv's Python, so the suite is fully green from here on. |
 | E4 | Per-session lock | Serialise load → mutate → save for each session id in the review-session service or store. Test: concurrent decision updates on one session, with no lost writes. |
-| E5 | Leak-check refinements | Whole-token matching for short originals as in decision 4. The 422 `details` gain an occurrence count per value, `{"leak": "<value>", "occurrences": n}`. Values are still never logged. |
-| E6 | Detection | Add an email pattern recognizer with higher priority than NER, and merge overlapping or contained spans so `<URL>` fragments disappear. For PDF: run analysis on paragraph text built from consecutive lines, then project the spans back onto `page{i}/line{j}` segments, splitting a span that crosses lines into per-line pieces that share one decision group. Tests use the fixtures where misses were seen: `rich_letter.pdf` ("Dr Evelyn / Marchetti", "Priya / Raghunathan") and the synthetic pptx deck's emails. |
+| E5 | Leak-check refinements | Skip bare 1–2 digit numbers (decision 4). For linked pieces, check the joined original rather than each fragment, so a 2-letter fragment like "Dr" never trips the check. The 422 `details` gain an occurrence count per value, `{"leak": "<value>", "occurrences": n}`. Values are still never logged. |
+| E6 | Detection | (a) `TextSegment` gains `block` and `join_before`; docx/pptx group runs by paragraph, PDF groups lines into paragraphs. (b) A core module joins each block, runs analysis once, and projects spans back to per-segment pieces; multi-piece findings share a `group_id` on `ReviewProposal` (plus `group_index`, `group_original`). (c) Decisions on any piece apply to the whole group; only the first piece renders the replacement, the rest render empty. The fire-and-forget `process_document` path uses the same projection. (d) An email recognizer accepting any well-formed domain. Tests: split runs in docx/pptx, "Dr Evelyn / Marchetti" in `rich_letter.pdf`, emails on `.local` domains. |
 | E7 | Hidden data and leak check for docx/pptx | Clear core/app properties and remove comments in both writers. Implement `extract_text()` on the docx and pptx writers so they join the post-write leak check through the existing `OutputTextExtractor` port. |
 | E8 | Marked-by-hand replacement | User-added spans use the session's replacement parameters instead of `<USER_ADDED>`. |
 
@@ -78,8 +78,9 @@ Engine gate for every step:
 | D4 | PowerPoint review on studio | Port `PptxView`, `review/pptx-render.ts`, `review/use-review-surface.ts`, and `.pptx` support in DropZone, App and the API client. Studio's sidebar groups findings by slide for pptx sessions. Slide thumbnails, notes and alt-text panels are restyled with studio's tokens. |
 | D5 | PDF review on studio | Port `PdfView`, pdfjs-dist 6.3.289 (bundled, worker local), the `/layout` client, thumbnails and zoom into studio's canvas and toolbar. Verify against the E2 engine, not the placeholder. |
 | D6 | Leak-check flow | On a 422 from commit, show a sheet listing each remaining value with its occurrence count. "Redact these too" adds them as user findings (through the existing user-added decision endpoint) and retries the commit. Cancel returns to review. |
-| D7 | Studio fixes | Findings list as an overlay at narrow widths; Recents only discards sessions that are still open (no 409s); fonts load without CSP violations (no inlined data-URI fonts); the Redact button reflects the redacted state. |
-| D8 | Version and notes | `package.json` → `0.2.0-rc.1`; release notes covering what's new and the known issues below. |
+| D7 | Linked findings | Read `group_id` / `group_index` / `group_original` from proposals. The sidebar, inspector and counts show one row per group (labelled with `group_original`), highlights cover every piece, and redact/keep/edit/undo and bulk actions act on the whole group. Depends on E6. |
+| D8 | Studio fixes | Findings list as an overlay at narrow widths; Recents only discards sessions that are still open (no 409s); fonts load without CSP violations (no inlined data-URI fonts); the Redact button reflects the redacted state. |
+| D9 | Version and notes | `package.json` → `0.2.0-rc.1`; release notes covering what's new and the known issues below. |
 
 Desktop gate for every step:
 - `npm run typecheck`, `npm run lint`, `npm test` and `npm run build` pass;
@@ -94,7 +95,7 @@ Desktop gate for every step:
   - before/after screenshots for visual changes;
   - every judgement call made without asking, flagged for review.
 - PRs are opened in order. The product owner approves or comments, then the PR is merged into `release/0.2.0`.
-- Engine and desktop steps can interleave. D5 depends on E2, and D6 depends on E5.
+- Engine and desktop steps can interleave. D5 depends on E2, D6 on E5, and D7 on E6.
 
 ## Release gate and shipping
 
