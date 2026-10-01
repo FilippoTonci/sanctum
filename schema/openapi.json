@@ -1173,6 +1173,98 @@
           }
         ]
       }
+    },
+    "/review-sessions/{session_id}/layout": {
+      "get": {
+        "summary": "Positioned layout (pages, items, segment ids) for pptx review.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSessionLayoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "Gone",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Unsupported Media Type",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1671,6 +1763,425 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "LayoutAltText": {
+        "additionalProperties": false,
+        "description": "addition: a picture's alt-text segment.",
+        "properties": {
+          "segment_id": {
+            "title": "Segment Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "segment_id",
+          "text"
+        ],
+        "title": "LayoutAltText",
+        "type": "object"
+      },
+      "LayoutImageItem": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "const": "image",
+            "title": "Kind",
+            "type": "string"
+          },
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          },
+          "w": {
+            "title": "W",
+            "type": "number"
+          },
+          "h": {
+            "title": "H",
+            "type": "number"
+          },
+          "src": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Src"
+          },
+          "alt": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LayoutAltText"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "kind",
+          "x",
+          "y",
+          "w",
+          "h",
+          "src"
+        ],
+        "title": "LayoutImageItem",
+        "type": "object"
+      },
+      "LayoutPage": {
+        "additionalProperties": false,
+        "properties": {
+          "index": {
+            "title": "Index",
+            "type": "integer"
+          },
+          "width": {
+            "title": "Width",
+            "type": "number"
+          },
+          "height": {
+            "title": "Height",
+            "type": "number"
+          },
+          "items": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "image": "#/components/schemas/LayoutImageItem",
+                  "shape": "#/components/schemas/LayoutShapeItem",
+                  "textbox": "#/components/schemas/LayoutTextboxItem",
+                  "textline": "#/components/schemas/LayoutTextlineItem"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/LayoutTextboxItem"
+                },
+                {
+                  "$ref": "#/components/schemas/LayoutTextlineItem"
+                },
+                {
+                  "$ref": "#/components/schemas/LayoutImageItem"
+                },
+                {
+                  "$ref": "#/components/schemas/LayoutShapeItem"
+                }
+              ]
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "notes": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/LayoutParagraph"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Notes"
+          }
+        },
+        "required": [
+          "index",
+          "width",
+          "height",
+          "items"
+        ],
+        "title": "LayoutPage",
+        "type": "object"
+      },
+      "LayoutParagraph": {
+        "additionalProperties": false,
+        "properties": {
+          "align": {
+            "default": "left",
+            "enum": [
+              "left",
+              "center",
+              "right",
+              "justify"
+            ],
+            "title": "Align",
+            "type": "string"
+          },
+          "runs": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutRun"
+            },
+            "title": "Runs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "runs"
+        ],
+        "title": "LayoutParagraph",
+        "type": "object"
+      },
+      "LayoutRun": {
+        "additionalProperties": false,
+        "description": "One run of a textbox paragraph; ``text`` equals the segment's text.",
+        "properties": {
+          "segment_id": {
+            "title": "Segment Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "number"
+          },
+          "bold": {
+            "default": false,
+            "title": "Bold",
+            "type": "boolean"
+          },
+          "italic": {
+            "default": false,
+            "title": "Italic",
+            "type": "boolean"
+          },
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Color"
+          },
+          "font": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Font"
+          }
+        },
+        "required": [
+          "segment_id",
+          "text",
+          "size"
+        ],
+        "title": "LayoutRun",
+        "type": "object"
+      },
+      "LayoutShapeItem": {
+        "additionalProperties": false,
+        "description": "Background rects (slide background, filled shapes, table cells) \u2014 pptx only.",
+        "properties": {
+          "kind": {
+            "const": "shape",
+            "title": "Kind",
+            "type": "string"
+          },
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          },
+          "w": {
+            "title": "W",
+            "type": "number"
+          },
+          "h": {
+            "title": "H",
+            "type": "number"
+          },
+          "fill": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fill"
+          }
+        },
+        "required": [
+          "kind",
+          "x",
+          "y",
+          "w",
+          "h",
+          "fill"
+        ],
+        "title": "LayoutShapeItem",
+        "type": "object"
+      },
+      "LayoutTextboxItem": {
+        "additionalProperties": false,
+        "description": "pptx shape / table-cell text frame.",
+        "properties": {
+          "kind": {
+            "const": "textbox",
+            "title": "Kind",
+            "type": "string"
+          },
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          },
+          "w": {
+            "title": "W",
+            "type": "number"
+          },
+          "h": {
+            "title": "H",
+            "type": "number"
+          },
+          "paragraphs": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutParagraph"
+            },
+            "title": "Paragraphs",
+            "type": "array"
+          },
+          "anchor": {
+            "default": "top",
+            "enum": [
+              "top",
+              "middle",
+              "bottom"
+            ],
+            "title": "Anchor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "x",
+          "y",
+          "w",
+          "h",
+          "paragraphs"
+        ],
+        "title": "LayoutTextboxItem",
+        "type": "object"
+      },
+      "LayoutTextlineItem": {
+        "additionalProperties": false,
+        "description": "pdf: one extracted line.",
+        "properties": {
+          "kind": {
+            "const": "textline",
+            "title": "Kind",
+            "type": "string"
+          },
+          "x": {
+            "title": "X",
+            "type": "number"
+          },
+          "y": {
+            "title": "Y",
+            "type": "number"
+          },
+          "w": {
+            "title": "W",
+            "type": "number"
+          },
+          "h": {
+            "title": "H",
+            "type": "number"
+          },
+          "segment_id": {
+            "title": "Segment Id",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "size": {
+            "title": "Size",
+            "type": "number"
+          }
+        },
+        "required": [
+          "kind",
+          "x",
+          "y",
+          "w",
+          "h",
+          "segment_id",
+          "text",
+          "size"
+        ],
+        "title": "LayoutTextlineItem",
+        "type": "object"
+      },
+      "LayoutUnscanned": {
+        "additionalProperties": false,
+        "description": "Content the adapter does not scan, named so the UI can warn about it.",
+        "properties": {
+          "where": {
+            "title": "Where",
+            "type": "string"
+          },
+          "what": {
+            "title": "What",
+            "type": "string"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Page"
+          }
+        },
+        "required": [
+          "where",
+          "what"
+        ],
+        "title": "LayoutUnscanned",
+        "type": "object"
+      },
       "LockMappingResponse": {
         "additionalProperties": false,
         "description": "Body for `POST /mapping/lock` \u2014 the store is now locked.\n\n`store_path` is ``None`` only when `/lock` was a no-op (nothing was\nunlocked to begin with); the idempotent-success payload.",
@@ -2130,6 +2641,40 @@
           "pending_count"
         ],
         "title": "ReviewSessionIndexEntry",
+        "type": "object"
+      },
+      "ReviewSessionLayoutResponse": {
+        "additionalProperties": false,
+        "description": "Body for ``GET /review-sessions/{id}/layout``.",
+        "properties": {
+          "format": {
+            "enum": [
+              "pptx",
+              "pdf"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "pages": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutPage"
+            },
+            "title": "Pages",
+            "type": "array"
+          },
+          "unscanned": {
+            "items": {
+              "$ref": "#/components/schemas/LayoutUnscanned"
+            },
+            "title": "Unscanned",
+            "type": "array"
+          }
+        },
+        "required": [
+          "format",
+          "pages"
+        ],
+        "title": "ReviewSessionLayoutResponse",
         "type": "object"
       },
       "ReviewSessionListResponse": {
