@@ -295,7 +295,7 @@ ROUTES: list[Route] = [
     Route(
         method="get",
         path="/review-sessions/{session_id}/layout",
-        summary="Positioned layout (pages, items, segment ids) for pptx review.",
+        summary="Positioned layout (pages, items, segment ids) for pptx and pdf review.",
         requires_auth=True,
         path_params=("session_id",),
         request_body=None,
@@ -368,6 +368,8 @@ ROUTES: list[Route] = [
             401: _ErrorResponse,
             404: _ErrorResponse,
             409: _ErrorResponse,
+            # Post-write leak check failed; details = [{"leak": original}].
+            422: _ErrorResponse,
             500: _ErrorResponse,
             503: _ErrorResponse,
         },

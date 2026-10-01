@@ -121,6 +121,12 @@ def fixture_dir() -> Path:
     return Path(__file__).parent / "fixtures"
 
 
+@pytest.fixture()
+def sample_pdf_path(fixture_dir: Path) -> Path:
+    """A small PDF with a text layer (the pdf-engine lane's fixture)."""
+    return fixture_dir / "office" / "engagement_letter.pdf"
+
+
 # ---------- synthetic .pptx (Phase 3.5 WS1) ----------
 #
 # Built in-test rather than committed as a binary: groups (nested), a
