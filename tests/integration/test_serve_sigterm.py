@@ -75,6 +75,10 @@ def serve_env(tmp_path: Path) -> dict[str, str]:
     env = dict(os.environ)
     env["HOME"] = str(tmp_path)
     env["SANCTUM_COMMIT"] = "sigterm-test"
+    # Make the child import this checkout, not an editable install elsewhere.
+    env["PYTHONPATH"] = os.pathsep.join(
+        [str(_REPO_ROOT), *([env["PYTHONPATH"]] if env.get("PYTHONPATH") else [])]
+    )
     return env
 
 
@@ -83,7 +87,7 @@ def test_sanctum_serve_exits_cleanly_on_sigterm(serve_env: dict[str, str], tmp_p
     process exits within 10s without needing SIGKILL."""
     token = "sigterm-test-token-x"
     proc = subprocess.Popen(
-        ["sanctum", "serve", "--port", "0", "--token-stdin"],
+        [sys.executable, "-m", "sanctum.cli", "serve", "--port", "0", "--token-stdin"],
         cwd=str(_REPO_ROOT),
         env=serve_env,
         stdin=subprocess.PIPE,
@@ -129,7 +133,7 @@ def test_sanctum_serve_stops_accepting_after_sigterm(
     leaked a bound socket, a follow-up connect would still succeed."""
     token = "sigterm-test-token-y"
     proc = subprocess.Popen(
-        ["sanctum", "serve", "--port", "0", "--token-stdin"],
+        [sys.executable, "-m", "sanctum.cli", "serve", "--port", "0", "--token-stdin"],
         cwd=str(_REPO_ROOT),
         env=serve_env,
         stdin=subprocess.PIPE,
