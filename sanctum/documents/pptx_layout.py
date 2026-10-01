@@ -440,7 +440,7 @@ def _comments_unscanned(prs: Any) -> list[dict[str, Any]]:
             out.append(
                 {
                     "where": f"Slide {s_idx + 1}",
-                    "what": "Reviewer comments are not scanned",
+                    "what": "Reviewer comments are not scanned; they are removed from the output",
                     "page": s_idx,
                 }
             )
@@ -466,7 +466,7 @@ def _properties_unscanned(prs: Any) -> list[dict[str, Any]]:
     return [
         {
             "where": "Document properties",
-            "what": f"{', '.join(fields)} are not scanned and are kept in the output",
+            "what": f"{', '.join(fields)} are not scanned; they are blanked in the output",
             "page": None,
         }
     ]

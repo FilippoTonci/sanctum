@@ -6,6 +6,7 @@ Real Presidio stack. Every name below is invented.
 from __future__ import annotations
 
 import json
+import zipfile
 from pathlib import Path
 
 import docx
@@ -16,6 +17,7 @@ from sanctum.analyzer.adapter import PresidioAnalyzer
 from sanctum.analyzer.recognizers import AnyDomainEmailRecognizer
 from sanctum.anonymizer.adapter import PresidioAnonymizer
 from sanctum.core.engine import SanctumEngine
+from sanctum.core.exceptions import LeakCheckError
 from sanctum.core.models import OperatorPolicy, ProposalDecision
 from sanctum.core.review.session import add_decision
 from sanctum.core.review.store import SessionStore
@@ -158,3 +160,62 @@ def test_split_internal_domain_email_is_one_email_finding(tmp_path: Path) -> Non
     assert emails
     assert {p.group_original for p in emails} == {"j.albrecht@northgate.local"}
     assert not [p for p in session.proposals if p.entity_type == "URL"]
+
+
+def test_committed_docx_has_no_author_or_comments(engine: SanctumEngine, tmp_path: Path) -> None:
+    store = SessionStore(root=tmp_path / "sessions")
+    d = docx.Document()
+    d.core_properties.author = "Jennifer Martin"
+    d.core_properties.last_modified_by = "Jennifer Martin"
+    para = d.add_paragraph()
+    run = para.add_run("The contract was signed on Monday.")
+    d.add_comment(run, text="Ping Jennifer Martin", author="Jennifer Martin", initials="JM")
+    src = tmp_path / "in.docx"
+    d.save(str(src))
+    session = engine.create_review_session(
+        Reader(), src, default_operator="replace", session_store=store
+    )
+    accept_all(store, session.id)
+    out = tmp_path / "out.docx"
+    engine.commit_review_session(Reader(), Writer(), session.id, out, store)
+    with zipfile.ZipFile(out) as z:
+        assert not any(n.startswith("word/comments") for n in z.namelist())
+        assert b"Jennifer Martin" not in b"".join(z.read(n) for n in z.namelist())
+
+
+def test_committed_pptx_has_no_author(engine: SanctumEngine, tmp_path: Path) -> None:
+    store = SessionStore(root=tmp_path / "sessions")
+    src = make_pptx(tmp_path / "in.pptx", SPLIT_RUNS)
+    prs = Presentation(str(src))
+    prs.core_properties.author = "Jennifer Martin"
+    prs.save(str(src))
+    reader, writer = pptx_adapter.Reader(), pptx_adapter.Writer()
+    session = engine.create_review_session(
+        reader, src, default_operator="replace", session_store=store
+    )
+    accept_all(store, session.id)
+    out = tmp_path / "out.pptx"
+    engine.commit_review_session(reader, writer, session.id, out, store)
+    with zipfile.ZipFile(out) as z:
+        assert b"Jennifer Martin" not in b"".join(z.read(n) for n in z.namelist())
+
+
+def test_name_left_in_a_docx_header_fails_the_leak_check(
+    engine: SanctumEngine, tmp_path: Path
+) -> None:
+    # Headers are not anonymized yet, but they are part of extract_text, so a
+    # replaced name that also sits in the header is caught and the output deleted.
+    d = docx.Document()
+    para = d.add_paragraph()
+    for i, text in enumerate(SPLIT_RUNS):
+        para.add_run(text).bold = i % 2 == 1
+    header = d.sections[0].header.paragraphs[0]
+    header.add_run("Prepared for Jen").bold = True
+    header.add_run("nifer Martin")
+    src = tmp_path / "in.docx"
+    d.save(str(src))
+    out = tmp_path / "out.docx"
+    replace = {"DEFAULT": OperatorPolicy(operator_name="replace")}
+    with pytest.raises(LeakCheckError):
+        engine.process_document(Reader(), Writer(), src, out, operator_policies=replace)
+    assert not out.exists()

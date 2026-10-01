@@ -10,9 +10,14 @@ Segment IDs:
     body/p{i}/r{j}                                    body paragraph run
     table/t{t}/row{r}/cell{c}/p{p}/r{j}               table cell run
 
-Phase 1 does not read headers, footers, footnotes, or comments — they
-are preserved byte-for-byte in the raw handle but not anonymized. This
-is an explicit scope cut; lifting it is a Phase 2 task.
+Phase 1 does not read headers, footers or footnotes — they are
+preserved in the raw handle but not anonymized. This is an explicit
+scope cut; lifting it is a Phase 2 task. Headers and footers *are* part
+of :meth:`Writer.extract_text`, so the post-write leak check sees them.
+
+The Writer strips hidden identifying data before saving: the text core
+properties (author, last modified by, ...), Company/Manager in the app
+properties, every comment and the thumbnail (see ``_ooxml_scrub``).
 """
 
 from __future__ import annotations
@@ -22,10 +27,13 @@ from typing import TYPE_CHECKING
 
 from docx import Document
 
+from sanctum.core.blocks import block_texts
+from sanctum.documents._ooxml_scrub import scrub_package
 from sanctum.documents.structured import build_document, build_segment, run_block
 
 if TYPE_CHECKING:
     from docx.document import Document as DocxDocument
+    from docx.section import _Footer, _Header
     from docx.text.paragraph import Paragraph
     from docx.text.run import Run
 
@@ -35,6 +43,29 @@ if TYPE_CHECKING:
 def _iter_paragraph_runs(paragraph: Paragraph, prefix: str) -> list[tuple[str, Run]]:
     """Return ``[(segment_id, run), ...]`` for every run in ``paragraph``."""
     return [(f"{prefix}/r{j}", run) for j, run in enumerate(paragraph.runs)]
+
+
+def _header_footer_lines(handle: DocxDocument) -> list[str]:
+    """Paragraph texts of every header and footer, including their tables."""
+    lines: list[str] = []
+    for section in handle.sections:
+        parts: tuple[_Header | _Footer, ...] = (
+            section.header,
+            section.first_page_header,
+            section.even_page_header,
+            section.footer,
+            section.first_page_footer,
+            section.even_page_footer,
+        )
+        for part in parts:
+            if part.is_linked_to_previous:
+                continue  # no definition of its own; reading would create one
+            lines.extend(p.text for p in part.paragraphs)
+            for table in part.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        lines.extend(p.text for p in cell.paragraphs)
+    return lines
 
 
 class Reader:
@@ -89,7 +120,20 @@ class Writer:
                 continue
             run.text = segment.text
 
+        scrub_package(handle.part.package, handle.core_properties)
         handle.save(str(path))
+
+    def extract_text(self, path: Path) -> str:
+        """Every piece of text a reader of ``path`` could see, one paragraph per line.
+
+        Runs of a paragraph are joined the way detection joins them, so a
+        name split across runs reads back whole. Headers and footers are
+        included even though the Reader does not anonymize them yet.
+        """
+        doc = Reader().read(path)
+        lines = block_texts(doc.segments)
+        lines.extend(_header_footer_lines(doc.raw_handle))
+        return "\n".join(lines)
 
     @staticmethod
     def _build_run_index(handle: DocxDocument) -> dict[str, Run]:
