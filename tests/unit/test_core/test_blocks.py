@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sanctum.core.blocks import Piece, detect_blocks, fragment_words, splice
+from sanctum.core.blocks import Piece, block_texts, detect_blocks, fragment_words, splice
 from sanctum.core.models import DetectionResult, TextSegment
 
 
@@ -84,3 +84,14 @@ def test_fragment_words_are_whole_words_shared_with_the_finding() -> None:
     assert fragment_words("tin", "Jennifer Martin") == []
     # words under three characters are left out
     assert fragment_words("Li Wei", "Li Wei") == ["Wei"]
+
+
+def test_block_texts_join_each_block_with_join_before_in_document_order() -> None:
+    segments = [
+        seg("p0/r0", "Dear Jen", "p0"),
+        seg("p0/r1", "nifer", "p0"),
+        seg("solo", "alone", None),
+        seg("l0", "first line", "para"),
+        seg("l1", "second line", "para", join=" "),
+    ]
+    assert block_texts(segments) == ["Dear Jennifer", "alone", "first line second line"]

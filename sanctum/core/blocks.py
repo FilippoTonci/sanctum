@@ -84,6 +84,16 @@ def _join(segs: tuple[TextSegment, ...]) -> _Block:
     return _Block(segs, tuple(offsets), "".join(parts))
 
 
+def block_texts(segments: Sequence[TextSegment]) -> list[str]:
+    """The joined text of every block, in document order.
+
+    The same grouping and ``join_before`` joining that detection uses, so a
+    name split across Word runs reads back as one word ("Jen" + "nifer" ->
+    "Jennifer"). Used by the writers' ``extract_text`` for the leak check.
+    """
+    return [_join(group).text for group in _group(segments)]
+
+
 def _project(block: _Block, start: int, end: int) -> tuple[Piece, ...]:
     pieces: list[Piece] = []
     for seg, off in zip(block.segments, block.offsets, strict=True):
