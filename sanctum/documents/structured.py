@@ -8,11 +8,13 @@ from typing import Any
 
 from sanctum.core.models import DocumentFormat, StructuredDocument, TextSegment
 
-_RUN_SUFFIX = re.compile(r"/r\d+$")
+_RUN_SUFFIX = re.compile(r"/[rn]\d+$")
 
 
 def run_block(segment_id: str) -> str | None:
-    """Paragraph key for a ``.../p{p}/r{r}`` run id; None for non-run segments.
+    """Paragraph key for a ``.../p{p}/r{r}`` (or Word's nested ``.../n{k}``) run id.
+
+    None for non-run segments.
 
     The runs of one paragraph share a block, so detection sees the whole
     paragraph (see ``sanctum.core.blocks``). Runs are joined with no
