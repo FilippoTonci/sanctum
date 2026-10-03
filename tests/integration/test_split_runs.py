@@ -18,8 +18,13 @@ from sanctum.analyzer.recognizers import AnyDomainEmailRecognizer
 from sanctum.anonymizer.adapter import PresidioAnonymizer
 from sanctum.core.engine import SanctumEngine
 from sanctum.core.exceptions import LeakCheckError
-from sanctum.core.models import DetectionResult, OperatorPolicy, ProposalDecision
-from sanctum.core.review.session import add_decision
+from sanctum.core.models import (
+    DetectionResult,
+    OperatorPolicy,
+    ProposalDecision,
+    UserAddedDecision,
+)
+from sanctum.core.review.session import add_decision, apply_user_added_with_overlap_purge
 from sanctum.core.review.store import SessionStore
 from sanctum.documents import pptx_adapter
 from sanctum.documents.docx_adapter import Reader, Writer
@@ -255,3 +260,91 @@ def test_name_missed_in_a_docx_header_fails_closed(tmp_path: Path) -> None:
         engine.process_document(Reader(), Writer(), src, out, operator_policies=replace)
     assert "Jennifer Martin" in exc_info.value.leaks
     assert not out.exists()
+
+
+def test_hand_marking_part_of_a_linked_name_keeps_the_rest_redacted(
+    engine: SanctumEngine, tmp_path: Path
+) -> None:
+    # C1 / Ruling 12: marking "Jennifer" by hand must not un-redact "Martin".
+    store = SessionStore(root=tmp_path / "sessions")
+    src = make_docx(tmp_path / "in.docx", ["Dear Jennifer", " Martin, thanks."])
+    session = engine.create_review_session(
+        Reader(), src, default_operator="replace", session_store=store
+    )
+    assert {p.group_original for p in session.proposals if p.group_id} == {"Jennifer Martin"}
+    accept_all(store, session.id)
+    with store.locked(session.id):
+        s = store.load(session.id)
+        ua = UserAddedDecision(
+            segment_anchor="body/p0/r0", entity_type="PERSON", original="Jennifer", start=5, end=13
+        )
+        apply_user_added_with_overlap_purge(s, ua)
+        store.save(s)
+        assert [p.original for p in s.proposals] == ["Martin"]
+    out = tmp_path / "out.docx"
+    engine.commit_review_session(Reader(), Writer(), session.id, out, store)
+    text = docx.Document(str(out)).paragraphs[0].text
+    assert "Martin" not in text and "Jennifer" not in text
+
+
+def _add_user_added(store: SessionStore, session_id: str, ua: UserAddedDecision) -> None:
+    with store.locked(session_id):
+        s = store.load(session_id)
+        apply_user_added_with_overlap_purge(s, ua)
+        store.save(s)
+
+
+def test_user_added_span_lands_where_it_was_marked(engine: SanctumEngine, tmp_path: Path) -> None:
+    # I1: the second "Martin" is hand-marked; the span must land at offset 21,
+    # not on the first occurrence (which an accepted proposal already covers).
+    store = SessionStore(root=tmp_path / "sessions")
+    text = "Martin called. Later Martin left."
+    src = make_docx(tmp_path / "in.docx", [text])
+    session = engine.create_review_session(
+        Reader(), src, default_operator="replace", session_store=store
+    )
+    with store.locked(session.id):
+        s = store.load(session.id)
+        # Keep only the first "Martin" as a detected proposal, as in the review.
+        s.proposals = [p for p in s.proposals if p.original == "Martin" and p.start == 0]
+        assert len(s.proposals) == 1
+        add_decision(s, ProposalDecision(proposal_id=s.proposals[0].detection_id, status="accept"))
+        store.save(s)
+    _add_user_added(
+        store,
+        session.id,
+        UserAddedDecision(
+            segment_anchor="body/p0/r0",
+            entity_type="USER_ADDED",
+            original="Martin",
+            start=21,
+            end=27,
+        ),
+    )
+    out = tmp_path / "out.docx"
+    engine.commit_review_session(Reader(), Writer(), session.id, out, store)
+    assert docx.Document(str(out)).paragraphs[0].text == "<PERSON> called. Later [REDACTED] left."
+
+
+def test_user_added_span_commits_as_redacted_under_default_params(
+    engine: SanctumEngine, tmp_path: Path
+) -> None:
+    store = SessionStore(root=tmp_path / "sessions")
+    src = make_docx(tmp_path / "in.docx", ["Ask the plumber about code 4471 today."])
+    session = engine.create_review_session(
+        Reader(), src, default_operator="replace", session_store=store
+    )
+    _add_user_added(
+        store,
+        session.id,
+        UserAddedDecision(
+            segment_anchor="body/p0/r0",
+            entity_type="USER_ADDED",
+            original="plumber",
+            start=8,
+            end=15,
+        ),
+    )
+    out = tmp_path / "out.docx"
+    engine.commit_review_session(Reader(), Writer(), session.id, out, store)
+    assert "Ask the [REDACTED] about" in docx.Document(str(out)).paragraphs[0].text

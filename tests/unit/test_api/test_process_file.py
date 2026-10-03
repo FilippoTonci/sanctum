@@ -13,6 +13,7 @@ from sanctum.core.engine import SanctumEngine
 from sanctum.core.exceptions import (
     AnonymizationError,
     InvalidOperatorParamsError,
+    LeakCheckError,
     UnsupportedDocumentFormatError,
 )
 from sanctum.core.models import (
@@ -308,6 +309,34 @@ def test_process_file_500_on_document_error(tmp_path: Path):
 
     assert r.status_code == 500
     assert "document" in r.get_json()["error"]
+
+
+def test_process_file_422_on_leak_check_failure(tmp_path: Path):
+    # M3 / Ruling 15: same status and details shape as the review commit.
+    src = tmp_path / "in.docx"
+    src.write_bytes(b"x")
+    leak = LeakCheckError("1 replaced value(s) still appear", ["Jane Doe"], {"Jane Doe": 2})
+    with (
+        patch(
+            "sanctum.api.routes.pipeline.adapter_for",
+            return_value=(
+                _StubReader(StructuredDocument(source_path=src, format="docx", segments=[])),
+                _StubWriter(),
+            ),
+        ),
+        patch.object(SanctumEngine, "process_document", side_effect=leak),
+    ):
+        client = _client(_engine([], _empty_result()))
+        r = client.post(
+            "/process-file",
+            headers={**LOOPBACK, **AUTH},
+            json={"input_path": str(src), "output_path": str(tmp_path / "out.docx")},
+        )
+
+    assert r.status_code == 422
+    body = r.get_json()
+    assert body["details"] == [{"leak": "Jane Doe", "occurrences": 2}]
+    assert "Jane Doe" not in body["error"]
 
 
 def test_process_file_500_on_pipeline_error(tmp_path: Path):

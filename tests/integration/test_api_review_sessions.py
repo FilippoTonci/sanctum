@@ -216,6 +216,25 @@ def test_get_round_trips_session(server: tuple[str, str]) -> None:
     assert fetched["previews"] == created["previews"]
 
 
+def test_session_segments_expose_block_and_join_before(server: tuple[str, str]) -> None:
+    # Ruling 14: the desktop leak sheet searches block-joined text, so every
+    # segment in the create and GET responses carries block and join_before.
+    base, token = server
+    _, created = _request(
+        "POST",
+        f"{base}/review-sessions",
+        token=token,
+        body={"input_path": str(_FIXTURE), "default_operator": "replace"},
+    )
+    _, fetched = _request("GET", f"{base}/review-sessions/{created['id']}", token=token)
+    for body in (created, fetched):
+        assert body["segments"]
+        for seg in body["segments"]:
+            assert "block" in seg and "join_before" in seg, seg["id"]
+            assert seg["block"] == seg["id"].rsplit("/", 1)[0]
+            assert seg["join_before"] == ""
+
+
 def test_patch_decisions_update_previews(server: tuple[str, str]) -> None:
     """Accept with default / custom_replacement / reject — previews change."""
     base, token = server

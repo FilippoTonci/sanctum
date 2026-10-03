@@ -13,6 +13,10 @@ python-docx / python-pptx package just before saving:
   names and no dangling references.
 * :func:`remove_thumbnail` drops ``docProps/thumbnail.*``, a picture of
   the *original* first page/slide that Office saves with the file.
+* :func:`accept_tracked_changes` (Word only) accepts every tracked change:
+  deleted and moved-away content is removed, inserted and moved-in content
+  is kept as plain text, and formatting-change records are dropped. That
+  removes deleted text and every revision author's name (Ruling 13).
 
 Parts are written by walking the relationship graph, so dropping the
 relationship to a part is what keeps it out of the saved package.
@@ -142,6 +146,93 @@ def remove_thumbnail(package: Any) -> None:
     for rel_id, rel in list(rels.items()):
         if rel.reltype == _THUMBNAIL_RELTYPE:
             rels.pop(rel_id)
+
+
+# Tracked-change elements, by what accepting the change does to them.
+_REVISION_REMOVE = frozenset(
+    f"{{{_W}}}{tag}"
+    for tag in (
+        # deleted / moved-away content (and the run-property markers of the same name)
+        "del",
+        "moveFrom",
+        # range markers and cell-level revision markers, which carry the author
+        "moveFromRangeStart",
+        "moveFromRangeEnd",
+        "moveToRangeStart",
+        "moveToRangeEnd",
+        "customXmlInsRangeStart",
+        "customXmlInsRangeEnd",
+        "customXmlDelRangeStart",
+        "customXmlDelRangeEnd",
+        "customXmlMoveFromRangeStart",
+        "customXmlMoveFromRangeEnd",
+        "customXmlMoveToRangeStart",
+        "customXmlMoveToRangeEnd",
+        "cellIns",
+        "cellDel",
+        "cellMerge",
+        # previous-formatting records
+        "rPrChange",
+        "pPrChange",
+        "sectPrChange",
+        "tblPrChange",
+        "tblPrExChange",
+        "trPrChange",
+        "tcPrChange",
+        "tblGridChange",
+        "numberingChange",
+    )
+)
+# Inserted / moved-in content: keep the children, drop the wrapper (a bare
+# marker inside w:rPr / w:trPr has no children and simply disappears).
+_REVISION_UNWRAP = frozenset(f"{{{_W}}}{tag}" for tag in ("ins", "moveTo"))
+_WORD_XML_PREFIX = "/word/"
+
+
+def _accept_in_element(root: Any) -> bool:
+    """Accept the tracked changes under ``root`` in place; True if anything changed."""
+    hits = [el for el in root.iter(*_REVISION_REMOVE, *_REVISION_UNWRAP)]
+    changed = False
+    # Removals first: a w:del inside a w:ins goes with its content.
+    for el in hits:
+        if el.tag in _REVISION_REMOVE and el.getparent() is not None:
+            el.getparent().remove(el)
+            changed = True
+    for el in reversed(hits):  # innermost first, so nested wrappers unwrap cleanly
+        if el.tag not in _REVISION_UNWRAP:
+            continue
+        parent = el.getparent()
+        if parent is None:
+            continue
+        index = parent.index(el)
+        for child in reversed(list(el)):
+            parent.insert(index, child)
+        parent.remove(el)
+        changed = True
+    return changed
+
+
+def accept_tracked_changes(package: Any) -> None:
+    """Accept every tracked change in every Word XML part of ``package``.
+
+    Parts python-docx models (document, headers, footers, ...) are edited
+    through their element tree; other ``/word/*.xml`` parts (footnotes,
+    endnotes) are plain blob parts, re-parsed and re-serialised.
+    """
+    for part in list(package.iter_parts()):
+        element = getattr(part, "_element", None)
+        if element is not None:
+            _accept_in_element(element)
+            continue
+        name = str(part.partname)
+        if not (name.startswith(_WORD_XML_PREFIX) and name.endswith(".xml")):
+            continue
+        parser = etree.XMLParser(resolve_entities=False, no_network=True)
+        root = etree.fromstring(part.blob, parser)
+        if _accept_in_element(root):
+            part._blob = etree.tostring(
+                root, xml_declaration=True, encoding="UTF-8", standalone=True
+            )
 
 
 def scrub_package(package: Any, core_props: Any) -> None:

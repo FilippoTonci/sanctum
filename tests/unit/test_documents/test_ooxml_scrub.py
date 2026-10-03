@@ -277,3 +277,99 @@ def test_pptx_extract_text_joins_runs_and_reads_notes(tmp_path: Path) -> None:
     text = pptx_adapter.Writer().extract_text(path)
     assert text.splitlines() == ["Dear Jennifer Martin, thanks.", "Speaker note"]
     assert find_surviving_originals(text, [NAME]) == [NAME]
+
+
+# ----------------------------------------------------- package integrity (Ruling 16)
+#
+# Office is not available to open the scrubbed files, and neither is LibreOffice
+# here, so check what Word / PowerPoint would trip over: the file re-opens, every
+# internal relationship points at a part that exists, every r:id / r:embed a part
+# uses is one of its relationships, and [Content_Types].xml declares no missing part.
+# Opening one scrubbed .docx and .pptx in Office stays a manual pre-release check.
+
+_PKG_REL = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"
+_CT_OVERRIDE = "{http://schemas.openxmlformats.org/package/2006/content-types}Override"
+
+
+def _assert_package_is_consistent(path: Path) -> None:
+    from posixpath import dirname, join, normpath
+
+    from lxml import etree
+
+    with zipfile.ZipFile(path) as z:
+        names = set(z.namelist())
+        parts = {n: z.read(n) for n in names}
+
+    types = etree.fromstring(parts["[Content_Types].xml"])
+    for override in types.iter(_CT_OVERRIDE):
+        assert override.get("PartName").lstrip("/") in names, override.get("PartName")
+
+    for rels_name in (n for n in names if n.endswith(".rels")):
+        # word/_rels/document.xml.rels describes word/document.xml; _rels/.rels the package.
+        source = rels_name.replace("_rels/", "").removesuffix(".rels")
+        base = dirname(source)
+        rel_ids = set()
+        for rel in etree.fromstring(parts[rels_name]).iter(_PKG_REL):
+            rel_ids.add(rel.get("Id"))
+            if rel.get("TargetMode") == "External":
+                continue
+            target = rel.get("Target")
+            resolved = (
+                target.lstrip("/") if target.startswith("/") else normpath(join(base, target))
+            )
+            assert resolved in names, f"{rels_name}: {rel.get('Id')} -> {target} is missing"
+        if source in parts and source.endswith(".xml"):
+            used = set(
+                re.findall(rb'\br:(?:id|embed|link|pict|dm|lo|qs|cs)="([^"]+)"', parts[source])
+            )
+            missing = {u.decode() for u in used} - rel_ids
+            assert not missing, f"{source} refers to unknown relationships {missing}"
+
+
+_W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+
+def _add_link_and_tracked_change(path: Path) -> None:
+    from docx.opc.constants import RELATIONSHIP_TYPE as RT
+    from docx.oxml import parse_xml
+
+    d = docx.Document(str(path))
+    rid = d.part.relate_to(f"mailto:{NAME}@example.com", RT.HYPERLINK, is_external=True)
+    ns = f'xmlns:w="{_W_NS}" xmlns:r="{_R}"'
+    p = (
+        f'<w:p {ns}><w:hyperlink r:id="{rid}"><w:r><w:t>{NAME}</w:t></w:r></w:hyperlink>'
+        f'<w:ins w:id="21" w:author="{NAME}" w:date="2026-01-01T00:00:00Z"><w:r>'
+        f'<w:t xml:space="preserve"> added</w:t></w:r></w:ins>'
+        f'<w:del w:id="22" w:author="{NAME}" w:date="2026-01-01T00:00:00Z"><w:r>'
+        f"<w:delText>gone</w:delText></w:r></w:del></w:p>"
+    )
+    d.element.body[-1].addprevious(parse_xml(p))
+    d.save(str(path))
+
+
+def test_scrubbed_docx_reopens_with_no_dangling_parts(tmp_path: Path) -> None:
+    src = make_docx_with_hidden_data(tmp_path / "in.docx")
+    _add_link_and_tracked_change(src)
+    _assert_package_is_consistent(src)  # the check itself accepts a sound input
+    doc = docx_adapter.Reader().read(src)
+    redacted = [
+        s.model_copy(update={"text": "<PERSON>"}) if s.text == NAME else s for s in doc.segments
+    ]
+    assert redacted != doc.segments  # the link text really was redacted
+    mutated = doc.model_copy(update={"segments": redacted})
+    mutated.raw_handle = doc.raw_handle
+    out = tmp_path / "out.docx"
+    docx_adapter.Writer().write(mutated, out)
+    _assert_package_is_consistent(out)
+    reopened = docx.Document(str(out))
+    assert "<PERSON> added" in [p.text for p in reopened.paragraphs]
+    assert NAME.encode() not in _all_bytes(out)
+
+
+def test_scrubbed_pptx_reopens_with_no_dangling_parts(tmp_path: Path) -> None:
+    src = make_pptx_with_hidden_data(tmp_path / "in.pptx")
+    _assert_package_is_consistent(src)
+    out = roundtrip_pptx(src, tmp_path / "out.pptx")
+    _assert_package_is_consistent(out)
+    reopened = Presentation(str(out))
+    assert reopened.slides[0].shapes[0].text_frame.text == "Quarterly figures"

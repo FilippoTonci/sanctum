@@ -306,6 +306,12 @@ class ReviewSessionResponse(_Frozen):
     decision-touching PATCH — the session itself never persists a
     ``preview_cache`` field. This keeps session storage reviewable as
     "decisions in, replacements out" instead of a stale mirror.
+
+    Every segment carries ``block`` and ``join_before``. A commit 422 lists
+    leaked values only (``details: [{leak, occurrences}]``); to locate them,
+    join each block's segments in order with ``join_before`` between them
+    (the text detection and the leak check saw), search that, and add one
+    user-added span per segment the match covers.
     """
 
     id: str

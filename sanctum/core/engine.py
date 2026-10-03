@@ -151,6 +151,7 @@ class SanctumEngine:
 
         results: list[AnonymizationResult] = []
         edits: dict[str, list[tuple[int, int, str]]] = {}
+        spans: dict[str, list[dict[str, Any]]] = {}
         replaced_originals: list[str] = []
         for f in findings:
             whole = DetectionResult(
@@ -164,16 +165,37 @@ class SanctumEngine:
                 f.original, detections=[whole], operator_policies=operator_policies
             )
             results.append(result)
+            linked = len(f.pieces) > 1
             for i, piece in enumerate(f.pieces):
-                edits.setdefault(piece.segment_id, []).append(
-                    (piece.start, piece.end, result.anonymized_text if i == 0 else "")
+                text = result.anonymized_text if i == 0 else ""
+                edits.setdefault(piece.segment_id, []).append((piece.start, piece.end, text))
+                spans.setdefault(piece.segment_id, []).append(
+                    {
+                        "start": piece.start,
+                        "end": piece.end,
+                        "original": piece.text,
+                        "text": text,
+                        "leak_original": f.original if i == 0 else None,
+                        "leak_extra": fragment_words(piece.text, f.original) if linked else [],
+                    }
                 )
             replaced_originals.append(f.original)
-            if len(f.pieces) > 1:
+            if linked:
                 for piece in f.pieces:
                     replaced_originals.extend(fragment_words(piece.text, f.original))
+        # Same ``metadata["replacements"]`` the review commit attaches (see
+        # _apply_decisions_to_segments): writers use the exact spans (PDF) and
+        # the replaced originals (the .docx writer blanks alt text naming them).
         new_segments = [
-            seg.model_copy(update={"text": splice(seg.text, edits[seg.id])})
+            seg.model_copy(
+                update={
+                    "text": splice(seg.text, edits[seg.id]),
+                    "metadata": {
+                        **seg.metadata,
+                        "replacements": sorted(spans[seg.id], key=lambda r: r["start"]),
+                    },
+                }
+            )
             if seg.id in edits
             else seg
             for seg in doc.segments
@@ -273,8 +295,9 @@ class SanctumEngine:
           decision's operator (falling back to the session default).
           ``custom_replacement`` short-circuits the operator.
         - Rejected ``ProposalDecision`` → original text untouched.
-        - ``UserAddedDecision`` → anonymize the first occurrence of the
-          span's ``original`` within its anchored segment.
+        - ``UserAddedDecision`` → anonymize the span at its recorded
+          ``start``/``end`` (first occurrence of ``original`` only if those
+          offsets no longer match the segment).
 
         Replacements are applied right-to-left so positions stay valid.
         The session dir is deleted on success — input bytes + plaintext
@@ -416,8 +439,9 @@ def _apply_decisions_to_segments(
     Alice"``) disambiguated — the analyzer emits detections in document
     order, and the session preserves that order.
 
-    User-added decisions are anchored by segment id + original text; we
-    take the first occurrence. Overlap detection is intentionally out of
+    User-added decisions are placed at their recorded offsets when the
+    segment text there still equals ``original``, else at the first
+    occurrence. Overlap detection is intentionally out of
     scope here — the API layer can surface a 400 at PATCH time if needed.
     """
     proposals_by_segment: dict[str, list[ReviewProposal]] = {}
@@ -502,7 +526,13 @@ def _apply_decisions_to_segments(
             replacements.append((start, end, replacement, leak_original, leak_extra))
 
         for ua in segment_user_added:
-            idx = segment.text.find(ua.original)
+            # Place the span where the reviewer marked it; ``find`` is only a
+            # fallback for offsets that no longer match (it picks the first
+            # occurrence, which may be a different, already-handled one).
+            if segment.text[ua.start : ua.end] == ua.original:
+                idx = ua.start
+            else:
+                idx = segment.text.find(ua.original)
             if idx < 0:
                 continue
             start = idx

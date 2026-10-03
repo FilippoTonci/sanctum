@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from sanctum.anonymizer.adapter import PresidioAnonymizer
 from sanctum.core.blocks import BlockFinding, Piece
+from sanctum.core.engine import _apply_decisions_to_segments, _originals_to_verify
 from sanctum.core.models import (
     ProposalDecision,
     ReviewProposal,
@@ -97,19 +98,71 @@ def test_redeciding_a_group_replaces_every_piece_decision(
     )
 
 
-def test_user_added_overlapping_one_piece_purges_the_whole_group(
+def test_user_added_over_the_tail_keeps_the_head_decided(
     make_session: Callable[[list[ReviewProposal]], ReviewSession],
 ) -> None:
+    # Ruling 12: only the overlapped piece goes; the rest of the group keeps
+    # its decision. The whitespace-only piece carries no PII and goes too.
     session = make_session(build_proposals_from_findings([SPLIT, SOLO]))
-    group_ids = [p.detection_id for p in session.proposals[:3]]
-    add_decision(session, ProposalDecision(proposal_id=group_ids[0], status="accept"))
+    head, space, tail = session.proposals[:3]
+    add_decision(session, ProposalDecision(proposal_id=head.detection_id, status="accept"))
     ua = UserAddedDecision(
         segment_anchor="p0/r2", entity_type="PERSON", original="Martin", start=0, end=6
     )
     removed = apply_user_added_with_overlap_purge(session, ua)
-    assert sorted(removed) == sorted(group_ids)
-    assert [p.original for p in session.proposals] == ["Cameron"]
-    assert session.decisions == [ua]
+    assert sorted(removed) == sorted([space.detection_id, tail.detection_id])
+    assert [p.original for p in session.proposals] == ["Jennifer", "Cameron"]
+    assert session.proposals[0].group_index == 0
+    statuses = {
+        d.proposal_id: d.status for d in session.decisions if isinstance(d, ProposalDecision)
+    }
+    assert statuses == {head.detection_id: "accept"}
+    assert session.decisions[-1] == ua
+
+
+def test_user_added_over_the_head_promotes_the_rest_of_the_group(
+    anonymizer: PresidioAnonymizer,
+) -> None:
+    # C1: "Dear Jennifer" + " Martin, thanks." accepted as one group, then the
+    # user hand-marks "Jennifer". "Martin" must still be replaced and checked.
+    finding = BlockFinding(
+        "PERSON",
+        0.9,
+        "Jennifer Martin",
+        (Piece("p0/r0", 5, 13, "Jennifer"), Piece("p0/r1", 0, 7, " Martin")),
+    )
+    session = ReviewSession(
+        id="sess-c1",
+        source_path=Path("/tmp/input.docx"),
+        format="docx",
+        default_operator="replace",
+        segments=[
+            TextSegment(id="p0/r0", text="Dear Jennifer", block="p0"),
+            TextSegment(id="p0/r1", text=" Martin, thanks.", block="p0"),
+        ],
+        proposals=build_proposals_from_findings([finding]),
+        created_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+    )
+    head, tail = session.proposals
+    add_decision(session, ProposalDecision(proposal_id=head.detection_id, status="accept"))
+    ua = UserAddedDecision(
+        segment_anchor="p0/r0", entity_type="PERSON", original="Jennifer", start=5, end=13
+    )
+    removed = apply_user_added_with_overlap_purge(session, ua)
+    assert removed == [head.detection_id]
+    [survivor] = session.proposals
+    assert survivor.detection_id == tail.detection_id
+    assert survivor.group_index == 0
+    assert (survivor.original, survivor.start, survivor.end) == ("Martin", 1, 7)
+
+    segments = _apply_decisions_to_segments(session, session.segments, anonymizer)
+    out = "".join(s.text for s in segments)
+    assert "Martin" not in out
+    assert "Jennifer" not in out
+    assert out == "Dear <PERSON> <PERSON>, thanks."
+    originals = _originals_to_verify(session, segments)
+    assert "Martin" in originals
+    assert "Jennifer Martin" in originals
 
 
 def test_head_preview_renders_the_whole_finding_and_tail_renders_empty(

@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 from sanctum.api import MAX_INPUT_BYTES
-from sanctum.api._internal import parse_body, validate_local_path
+from sanctum.api._internal import leak_check_response, parse_body, validate_local_path
 from sanctum.api.auth import require_bearer_token
 from sanctum.api.schemas import (
     AnalyzeRequest,
@@ -36,6 +36,7 @@ from sanctum.core.exceptions import (
     AnonymizationError,
     DocumentError,
     InvalidOperatorParamsError,
+    LeakCheckError,
     UnsupportedDocumentFormatError,
 )
 from sanctum.core.models import OperatorPolicy
@@ -248,6 +249,11 @@ def _process_file_inline(
             score_threshold=req.score_threshold,
             operator_policies=operator_policies,
         )
+    except LeakCheckError as exc:
+        # Fails closed (the engine deleted the output). Same 422 as the review
+        # commit; the log line counts leaks only.
+        current_app.logger.warning("/process-file: %s", exc)
+        return leak_check_response(exc)
     except DocumentError as exc:
         current_app.logger.exception("/process-file: DocumentError for %s", in_path)
         return {"error": f"document failure: {exc}"}, 500
