@@ -285,3 +285,66 @@ def test_hand_marking_part_of_a_linked_name_keeps_the_rest_redacted(
     engine.commit_review_session(Reader(), Writer(), session.id, out, store)
     text = docx.Document(str(out)).paragraphs[0].text
     assert "Martin" not in text and "Jennifer" not in text
+
+
+def _add_user_added(store: SessionStore, session_id: str, ua: UserAddedDecision) -> None:
+    with store.locked(session_id):
+        s = store.load(session_id)
+        apply_user_added_with_overlap_purge(s, ua)
+        store.save(s)
+
+
+def test_user_added_span_lands_where_it_was_marked(engine: SanctumEngine, tmp_path: Path) -> None:
+    # I1: the second "Martin" is hand-marked; the span must land at offset 21,
+    # not on the first occurrence (which an accepted proposal already covers).
+    store = SessionStore(root=tmp_path / "sessions")
+    text = "Martin called. Later Martin left."
+    src = make_docx(tmp_path / "in.docx", [text])
+    session = engine.create_review_session(
+        Reader(), src, default_operator="replace", session_store=store
+    )
+    with store.locked(session.id):
+        s = store.load(session.id)
+        # Keep only the first "Martin" as a detected proposal, as in the review.
+        s.proposals = [p for p in s.proposals if p.original == "Martin" and p.start == 0]
+        assert len(s.proposals) == 1
+        add_decision(s, ProposalDecision(proposal_id=s.proposals[0].detection_id, status="accept"))
+        store.save(s)
+    _add_user_added(
+        store,
+        session.id,
+        UserAddedDecision(
+            segment_anchor="body/p0/r0",
+            entity_type="USER_ADDED",
+            original="Martin",
+            start=21,
+            end=27,
+        ),
+    )
+    out = tmp_path / "out.docx"
+    engine.commit_review_session(Reader(), Writer(), session.id, out, store)
+    assert docx.Document(str(out)).paragraphs[0].text == "<PERSON> called. Later [REDACTED] left."
+
+
+def test_user_added_span_commits_as_redacted_under_default_params(
+    engine: SanctumEngine, tmp_path: Path
+) -> None:
+    store = SessionStore(root=tmp_path / "sessions")
+    src = make_docx(tmp_path / "in.docx", ["Ask the plumber about code 4471 today."])
+    session = engine.create_review_session(
+        Reader(), src, default_operator="replace", session_store=store
+    )
+    _add_user_added(
+        store,
+        session.id,
+        UserAddedDecision(
+            segment_anchor="body/p0/r0",
+            entity_type="USER_ADDED",
+            original="plumber",
+            start=8,
+            end=15,
+        ),
+    )
+    out = tmp_path / "out.docx"
+    engine.commit_review_session(Reader(), Writer(), session.id, out, store)
+    assert "Ask the [REDACTED] about" in docx.Document(str(out)).paragraphs[0].text

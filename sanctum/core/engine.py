@@ -273,8 +273,9 @@ class SanctumEngine:
           decision's operator (falling back to the session default).
           ``custom_replacement`` short-circuits the operator.
         - Rejected ``ProposalDecision`` → original text untouched.
-        - ``UserAddedDecision`` → anonymize the first occurrence of the
-          span's ``original`` within its anchored segment.
+        - ``UserAddedDecision`` → anonymize the span at its recorded
+          ``start``/``end`` (first occurrence of ``original`` only if those
+          offsets no longer match the segment).
 
         Replacements are applied right-to-left so positions stay valid.
         The session dir is deleted on success — input bytes + plaintext
@@ -416,8 +417,9 @@ def _apply_decisions_to_segments(
     Alice"``) disambiguated — the analyzer emits detections in document
     order, and the session preserves that order.
 
-    User-added decisions are anchored by segment id + original text; we
-    take the first occurrence. Overlap detection is intentionally out of
+    User-added decisions are placed at their recorded offsets when the
+    segment text there still equals ``original``, else at the first
+    occurrence. Overlap detection is intentionally out of
     scope here — the API layer can surface a 400 at PATCH time if needed.
     """
     proposals_by_segment: dict[str, list[ReviewProposal]] = {}
@@ -502,7 +504,13 @@ def _apply_decisions_to_segments(
             replacements.append((start, end, replacement, leak_original, leak_extra))
 
         for ua in segment_user_added:
-            idx = segment.text.find(ua.original)
+            # Place the span where the reviewer marked it; ``find`` is only a
+            # fallback for offsets that no longer match (it picks the first
+            # occurrence, which may be a different, already-handled one).
+            if segment.text[ua.start : ua.end] == ua.original:
+                idx = ua.start
+            else:
+                idx = segment.text.find(ua.original)
             if idx < 0:
                 continue
             start = idx
