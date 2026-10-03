@@ -39,7 +39,10 @@ The Writer strips hidden identifying data before saving: the text core
 properties (author, last modified by, ...), Company/Manager in the app
 properties, every comment, the thumbnail and every tracked change, which
 it accepts (see ``_ooxml_scrub``). A hyperlink whose text was redacted
-loses its target, which usually repeats that text (``mailto:``).
+loses its target, which usually repeats that text (``mailto:``); a field
+(``HYPERLINK "mailto:..."``) whose result was redacted becomes its plain
+result text, without the field code; and picture/shape alt text
+(``descr``/``title``/``name``) that names a replaced value is emptied.
 """
 
 from __future__ import annotations
@@ -55,6 +58,7 @@ from docx.text.paragraph import Paragraph
 from docx.text.run import Run
 from lxml import etree  # type: ignore[import-untyped]  # python-docx dependency
 
+from sanctum.core.leak_check import count_surviving_originals
 from sanctum.documents._ooxml_scrub import accept_tracked_changes, scrub_package
 from sanctum.documents.structured import build_document, build_segment, run_block
 
@@ -214,6 +218,7 @@ class Writer:
             )
 
         run_index = self._build_run_index(handle)
+        changed: list[Run] = []
         for segment in doc.segments:
             run = run_index.get(segment.id)
             if run is None or run.text == segment.text:
@@ -221,23 +226,36 @@ class Writer:
                 # run's content and would drop an inline picture or field.
                 continue
             run.text = segment.text
+            changed.append(run)
+
+        # A redacted run can sit behind hidden text that repeats it: a link
+        # target, a field code (HYPERLINK "mailto:..."), a picture's alt text.
+        for run in changed:
             _unlink_hyperlink(run)
+            _unwrap_simple_field(run)
+        _unwrap_complex_fields(changed)
+        _blank_alt_text(handle.part.package, _replaced_originals(doc.segments))
 
         accept_tracked_changes(handle.part.package)
         scrub_package(handle.part.package, handle.core_properties)
         handle.save(str(path))
 
     def extract_text(self, path: Path) -> str:
-        """Every text node of every ``word/*.xml`` part, plus external link targets.
+        """Every piece of text in every ``word/*.xml`` part, plus external link targets.
 
-        Deliberately independent of the Reader (final-review C2): text the
-        Reader does not read (footnotes, text boxes, a wrapper it does not
-        know, deleted text that survived) must still be leak-checked. One
-        paragraph per line, its ``w:t`` / ``w:delText`` joined with no
+        Deliberately independent of the Reader (final-review C2, NB1): text
+        the Reader does not read must still be leak-checked. That is
+        footnotes, text boxes, wrappers it does not know, deleted text that
+        survived, field codes and picture alt text.
+
+        One paragraph per line, its ``w:t`` / ``w:delText`` joined with no
         separator the way detection joins runs, so a name split across runs
-        reads back whole. Text of a nested paragraph (a text box) is its own
-        line. Relationship targets of ``word/`` parts (a ``mailto:`` link)
-        follow, one per line.
+        reads back whole; a nested paragraph (a text box) is its own line.
+        Then, one per line: each paragraph's field code (``w:instrText`` /
+        ``w:delInstrText`` joined), each ``w:fldSimple/@w:instr``, each
+        hyperlink tooltip, the ``descr`` / ``title`` / ``name`` of every
+        ``docPr`` / ``cNvPr``, and the external relationship targets of the
+        ``word/`` parts (a ``mailto:`` link).
         """
         lines: list[str] = []
         with zipfile.ZipFile(path) as z:
@@ -245,7 +263,7 @@ class Writer:
                 if not name.startswith("word/"):
                     continue
                 if name.endswith(".xml"):
-                    lines.extend(_paragraph_texts(z.read(name)))
+                    lines.extend(_part_texts(z.read(name)))
                 elif name.endswith(".rels"):
                     lines.extend(_external_targets(z.read(name)))
         return "\n".join(lines)
@@ -257,7 +275,17 @@ class Writer:
 
 
 _W_HYPERLINK = qn("w:hyperlink")
+_W_TOOLTIP = qn("w:tooltip")
 _R_ID = qn("r:id")
+_W_FLD_SIMPLE = qn("w:fldSimple")
+_W_INSTR = qn("w:instr")
+_W_FLD_CHAR = qn("w:fldChar")
+_W_FLD_CHAR_TYPE = qn("w:fldCharType")
+_W_INSTR_TEXT = qn("w:instrText")
+_W_DEL_INSTR_TEXT = qn("w:delInstrText")
+_W_RPR = qn("w:rPr")
+_ALT_ELEMENTS = ("{*}docPr", "{*}cNvPr")
+_ALT_ATTRS = ("descr", "title", "name")
 
 
 def _unlink_hyperlink(run: Run) -> None:
@@ -265,13 +293,109 @@ def _unlink_hyperlink(run: Run) -> None:
 
     A link's target usually repeats its text (``mailto:jane@...``); the
     relationship would carry the original past the redaction. The link
-    text stays, as plain text.
+    text stays, as plain text, and so does the relationship while another
+    element of the part still uses it (the leak check then sees its target).
     """
     link = next((a for a in run._r.iterancestors(_W_HYPERLINK) if a.get(_R_ID) is not None), None)
     if link is None:
         return
     rid = link.attrib.pop(_R_ID)
-    run.part.drop_rel(rid)  # dropped only when nothing else in the part refers to it
+    link.attrib.pop(_W_TOOLTIP, None)  # the screen tip often repeats the address too
+    part = run.part
+    still_used = rid in part.element.xpath("//@r:id")
+    if not still_used and rid in part.rels:
+        del part.rels[rid]
+
+
+def _unwrap(element: Any) -> None:
+    """Replace ``element`` by its children."""
+    parent = element.getparent()
+    if parent is None:
+        return
+    index = parent.index(element)
+    for child in reversed(list(element)):
+        parent.insert(index, child)
+    parent.remove(element)
+
+
+def _unwrap_simple_field(run: Run) -> None:
+    """Turn a ``w:fldSimple`` whose result holds ``run`` into its plain result text."""
+    for field in list(run._r.iterancestors(_W_FLD_SIMPLE)):
+        _unwrap(field)
+
+
+def _unwrap_complex_fields(changed: list[Run]) -> None:
+    """Turn every complex field whose result holds a redacted run into plain result text.
+
+    A complex field is ``fldChar begin``, the instruction (``w:instrText``),
+    ``fldChar separate``, the result runs, ``fldChar end``; it can span
+    paragraphs and nest. The field-code elements of a field (and of fields
+    nested in it) are removed, and a run left with nothing but properties
+    goes too, so only the result text remains.
+    """
+    changed_runs = {run._r for run in changed}
+    roots = {id(root): root for root in (r.getroottree().getroot() for r in changed_runs)}
+    for root in roots.values():
+        doomed: list[Any] = []
+        stack: list[dict[str, Any]] = []
+        for r in root.iter(_W_R):
+            for child in r:
+                if child.tag == _W_FLD_CHAR:
+                    kind = child.get(_W_FLD_CHAR_TYPE)
+                    if kind == "begin":
+                        stack.append({"codes": [child], "result": False, "redacted": False})
+                    elif stack and kind == "separate":
+                        stack[-1]["codes"].append(child)
+                        stack[-1]["result"] = True
+                    elif stack and kind == "end":
+                        field = stack.pop()
+                        field["codes"].append(child)
+                        if field["redacted"]:
+                            doomed.extend(field["codes"])
+                        if stack:  # nested codes go with the enclosing field
+                            stack[-1]["codes"].extend(field["codes"])
+                elif stack and child.tag in (_W_INSTR_TEXT, _W_DEL_INSTR_TEXT):
+                    stack[-1]["codes"].append(child)
+            if r in changed_runs:
+                for field in stack:
+                    if field["result"]:
+                        field["redacted"] = True
+        for code in doomed:
+            run = code.getparent()
+            if run is None:
+                continue
+            run.remove(code)
+            if run.getparent() is not None and all(c.tag == _W_RPR for c in run):
+                run.getparent().remove(run)
+
+
+def _replaced_originals(segments: list[TextSegment]) -> list[str]:
+    """The values the leak check will look for (see ``engine._originals_to_verify``)."""
+    out: list[str] = []
+    for seg in segments:
+        for rep in seg.metadata.get("replacements", []):
+            value = rep.get("leak_original", rep.get("original"))
+            out.extend(v for v in (value, *rep.get("leak_extra", [])) if v)
+    return out
+
+
+def _blank_alt_text(package: Any, originals: list[str]) -> None:
+    """Empty every picture/shape ``descr``/``title``/``name`` that names a replaced value.
+
+    Uses the leak check's matcher. The attribute is kept, empty, because
+    ``name`` is required by the schema.
+    """
+    if not originals:
+        return
+    for part in package.iter_parts():
+        element = getattr(part, "_element", None)
+        if element is None:
+            continue
+        for el in element.iter(*_ALT_ELEMENTS):
+            for attr in _ALT_ATTRS:
+                value = el.get(attr)
+                if value and count_surviving_originals(value, originals):
+                    el.set(attr, "")
 
 
 _PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
@@ -280,19 +404,30 @@ _RUN_CHARS = {qn("w:tab"): "\t", qn("w:ptab"): "\t", qn("w:br"): "\n", qn("w:cr"
 _RUN_CHARS[qn("w:noBreakHyphen")] = "-"
 
 
-def _paragraph_texts(xml: bytes) -> list[str]:
-    """The text of every ``w:p`` in one part, nested paragraphs separately."""
+def _part_texts(xml: bytes) -> list[str]:
+    """Visible paragraph text, then field codes, tooltips and alt text, of one part."""
     root = etree.fromstring(xml, _PARSER)
     texts: list[str] = []
+    codes: list[str] = []
     for p in root.iter(_W_P):
         parts: list[str] = []
-        for el in p.iter(*_TEXT_TAGS, *_RUN_CHARS):
+        instr: list[str] = []
+        for el in p.iter(*_TEXT_TAGS, *_RUN_CHARS, _W_INSTR_TEXT, _W_DEL_INSTR_TEXT):
             if next(el.iterancestors(_W_P)) is not p:
                 continue  # belongs to a nested paragraph (text box), read on its own
-            parts.append(el.text or "" if el.tag in _TEXT_TAGS else _RUN_CHARS[el.tag])
+            if el.tag in (_W_INSTR_TEXT, _W_DEL_INSTR_TEXT):
+                instr.append(el.text or "")
+            else:
+                parts.append(el.text or "" if el.tag in _TEXT_TAGS else _RUN_CHARS[el.tag])
         if parts:
             texts.append("".join(parts))
-    return texts
+        if instr:
+            codes.append("".join(instr))
+    codes.extend(el.get(_W_INSTR, "") for el in root.iter(_W_FLD_SIMPLE))
+    codes.extend(el.get(_W_TOOLTIP, "") for el in root.iter(_W_HYPERLINK))
+    for el in root.iter(*_ALT_ELEMENTS):
+        codes.extend(el.get(attr, "") for attr in _ALT_ATTRS)
+    return texts + [c for c in codes if c]
 
 
 _REL = "{http://schemas.openxmlformats.org/package/2006/relationships}Relationship"

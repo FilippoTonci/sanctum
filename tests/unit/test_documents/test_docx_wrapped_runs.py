@@ -22,6 +22,7 @@ from docx.oxml import parse_xml
 from sanctum.anonymizer.adapter import PresidioAnonymizer
 from sanctum.core.engine import SanctumEngine
 from sanctum.core.exceptions import LeakCheckError
+from sanctum.core.leak_check import find_surviving_originals
 from sanctum.core.models import DetectionResult, OperatorPolicy
 from sanctum.documents.docx_adapter import Reader, Writer
 
@@ -246,3 +247,162 @@ def test_unchanged_runs_keep_inline_pictures(tmp_path: Path) -> None:
     out = tmp_path / "out.docx"
     _engine().process_document(Reader(), Writer(), src, out, operator_policies=REPLACE)
     assert len(docx.Document(str(out)).inline_shapes) == 1
+
+
+# ------------------------------------------- field codes and alt text (NB1, Ruling 19)
+
+_FIELD = (
+    f"<w:p {_NS}>{_run('Mail ')}"
+    '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+    f'<w:r><w:instrText xml:space="preserve"> HYPERLINK "mailto:{EMAIL}" </w:instrText></w:r>'
+    '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+    "{result}"
+    '<w:r><w:fldChar w:fldCharType="end"/></w:r></w:p>'
+)
+_FLD_SIMPLE = (
+    f"<w:p {_NS}>{_run('Or ')}"
+    f'<w:fldSimple w:instr=" HYPERLINK &quot;mailto:{EMAIL}&quot; ">{{result}}</w:fldSimple></w:p>'
+)
+_ALT = f"Passport photo of {NAME}"
+
+
+def _png(path: Path) -> Path:
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        body = kind + data
+        return struct.pack(">I", len(data)) + body + struct.pack(">I", zlib.crc32(body))
+
+    path.write_bytes(
+        b"\x89PNG\r\n\x1a\n"
+        + chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 2, 0, 0, 0))
+        + chunk(b"IDAT", zlib.compress(b"\x00\xff\xff\xff"))
+        + chunk(b"IEND", b"")
+    )
+    return path
+
+
+def make_hidden_text_docx(path: Path, *, field_result: str, alt: bool = True) -> Path:
+    """Body names NAME and EMAIL; a complex and a simple HYPERLINK field to EMAIL show
+    ``field_result``; a picture's alt text names NAME."""
+    d = docx.Document()
+    d.add_paragraph(f"Dear {NAME}, see {EMAIL}.")
+    sect = d.element.body[-1]
+    sect.addprevious(parse_xml(_FIELD.replace("{result}", _run(field_result))))
+    sect.addprevious(parse_xml(_FLD_SIMPLE.replace("{result}", _run(field_result))))
+    if alt:
+        shape = d.add_paragraph().add_run().add_picture(str(_png(path.with_suffix(".png"))))
+        inline = shape._inline
+        inline.docPr.set("descr", _ALT)
+        inline.docPr.set("title", NAME)
+        inline.docPr.set("name", f"{NAME}.png")
+        cnvpr = inline.graphic.graphicData.pic.nvPicPr.cNvPr
+        cnvpr.set("descr", _ALT)
+        cnvpr.set("name", f"{NAME}.png")
+    d.save(str(path))
+    return path
+
+
+def test_redacted_field_result_unwraps_the_field(tmp_path: Path) -> None:
+    src = make_hidden_text_docx(tmp_path / "in.docx", field_result=EMAIL)
+    out = tmp_path / "out.docx"
+    _engine().process_document(Reader(), Writer(), src, out, operator_policies=REPLACE)
+    raw = _zip_bytes(out)
+    assert EMAIL.encode() not in raw
+    for tag in (b"w:instrText", b"w:fldChar", b"w:fldSimple"):
+        assert tag not in raw
+    texts = [p.text for p in docx.Document(str(out)).paragraphs]
+    assert "Mail <EMAIL_ADDRESS>" in texts
+    assert "Or <EMAIL_ADDRESS>" in texts
+
+
+def test_alt_text_naming_a_redacted_value_is_blanked(tmp_path: Path) -> None:
+    src = make_hidden_text_docx(tmp_path / "in.docx", field_result=EMAIL)
+    out = tmp_path / "out.docx"
+    _engine().process_document(Reader(), Writer(), src, out, operator_policies=REPLACE)
+    assert NAME.encode() not in _zip_bytes(out)
+    written = docx.Document(str(out))
+    assert len(written.inline_shapes) == 1
+    doc_pr = written.inline_shapes[0]._inline.docPr
+    assert doc_pr.get("name") == ""  # required by the schema: kept, emptied
+    assert doc_pr.get("descr") == ""
+
+
+def test_alt_text_is_blanked_on_the_review_commit_path_too(tmp_path: Path) -> None:
+    from sanctum.core.models import ProposalDecision
+    from sanctum.core.review.session import add_decision
+    from sanctum.core.review.store import SessionStore
+
+    store = SessionStore(root=tmp_path / "sessions")
+    src = make_hidden_text_docx(tmp_path / "in.docx", field_result=EMAIL)
+    engine = _engine()
+    session = engine.create_review_session(
+        Reader(), src, default_operator="replace", session_store=store
+    )
+    with store.locked(session.id):
+        s = store.load(session.id)
+        for p in s.proposals:
+            add_decision(s, ProposalDecision(proposal_id=p.detection_id, status="accept"))
+        store.save(s)
+    out = tmp_path / "out.docx"
+    engine.commit_review_session(Reader(), Writer(), session.id, out, store)
+    raw = _zip_bytes(out)
+    assert NAME.encode() not in raw
+    assert EMAIL.encode() not in raw
+
+
+def test_field_codes_and_alt_text_are_leak_checked(tmp_path: Path) -> None:
+    # If the writer were bypassed, extract_text alone must surface both: here
+    # neither value appears in any w:t outside the body line we drop.
+    src = make_hidden_text_docx(tmp_path / "in.docx", field_result="click here")
+    text = Writer().extract_text(src)
+    hidden = "\n".join(line for line in text.splitlines() if not line.startswith("Dear "))
+    assert set(find_surviving_originals(hidden, [NAME, EMAIL])) == {NAME, EMAIL}
+
+
+def test_field_target_behind_unredacted_text_fails_closed(tmp_path: Path) -> None:
+    # The field's visible text ("click here") is not redacted, so its code keeps
+    # the email; the leak check must refuse the output.
+    src = make_hidden_text_docx(tmp_path / "in.docx", field_result="click here", alt=False)
+    out = tmp_path / "out.docx"
+    with pytest.raises(LeakCheckError) as exc_info:
+        _engine().process_document(Reader(), Writer(), src, out, operator_policies=REPLACE)
+    assert EMAIL in exc_info.value.leaks
+    assert not out.exists()
+
+
+def _shared_rel_docx(path: Path, second_text: str) -> Path:
+    d = docx.Document()
+    rid = d.part.relate_to(f"mailto:{EMAIL}", RT.HYPERLINK, is_external=True)
+    sect = d.element.body[-1]
+    for text in (EMAIL, second_text):
+        sect.addprevious(
+            parse_xml(f'<w:p {_NS}><w:hyperlink r:id="{rid}">{_run(text)}</w:hyperlink></w:p>')
+        )
+    d.save(str(path))
+    return path
+
+
+def test_two_redacted_links_sharing_a_relationship(tmp_path: Path) -> None:
+    src = _shared_rel_docx(tmp_path / "in.docx", EMAIL)
+    out = tmp_path / "out.docx"
+    _engine().process_document(Reader(), Writer(), src, out, operator_policies=REPLACE)
+    assert EMAIL.encode() not in _zip_bytes(out)
+
+
+def test_unlinking_one_link_keeps_a_relationship_another_link_uses(tmp_path: Path) -> None:
+    src = _shared_rel_docx(tmp_path / "in.docx", "write to us")
+    doc = Reader().read(src)
+    mutated = doc.model_copy(
+        update={
+            "segments": [
+                s.model_copy(update={"text": "<EMAIL_ADDRESS>"}) if s.text == EMAIL else s
+                for s in doc.segments
+            ]
+        }
+    )
+    mutated.raw_handle = doc.raw_handle
+    out = tmp_path / "out.docx"
+    Writer().write(mutated, out)
+    written = docx.Document(str(out))
+    used = written.element.body.xpath("//w:hyperlink/@r:id")
+    assert len(used) == 1
+    assert used[0] in written.part.rels  # no dangling reference
