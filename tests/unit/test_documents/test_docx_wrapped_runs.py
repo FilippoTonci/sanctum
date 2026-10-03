@@ -29,6 +29,7 @@ from sanctum.documents.docx_adapter import Reader, Writer
 NAME = "Jane Doe"
 EMAIL = "jane.doe@example.com"
 AUTHOR = "Rob Reviewer"
+_W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 _NS = (
     'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
     'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"'
@@ -406,3 +407,69 @@ def test_unlinking_one_link_keeps_a_relationship_another_link_uses(tmp_path: Pat
     used = written.element.body.xpath("//w:hyperlink/@r:id")
     assert len(used) == 1
     assert used[0] in written.part.rels  # no dangling reference
+
+
+# --------------------------------- VML alt text and internal-link tooltips (NB1 residual)
+
+_VML_NS = (
+    'xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"'
+)
+_VML = (
+    f"<w:p {_NS} {_VML_NS}><w:r><w:pict>"
+    f'<v:shape id="pic1" style="width:10pt;height:10pt" alt="Photo of {NAME}">'
+    f'<v:imagedata o:title="{NAME}"/></v:shape></w:pict></w:r></w:p>'
+)
+_ANCHOR_LINK = (
+    f'<w:p {_NS}><w:hyperlink w:anchor="terms" w:tooltip="Ask {NAME}">'
+    f"{_run('see the terms')}</w:hyperlink></w:p>"
+)
+
+
+def _docx_with(path: Path, *fragments: str) -> Path:
+    d = docx.Document()
+    d.add_paragraph(f"Dear {NAME},")
+    for fragment in fragments:
+        d.element.body[-1].addprevious(parse_xml(fragment))
+    d.save(str(path))
+    return path
+
+
+def test_vml_alt_text_naming_a_redacted_value_is_blanked(tmp_path: Path) -> None:
+    src = _docx_with(tmp_path / "in.docx", _VML)
+    out = tmp_path / "out.docx"
+    _engine().process_document(Reader(), Writer(), src, out, operator_policies=REPLACE)
+    assert NAME.encode() not in _zip_bytes(out)
+    body = docx.Document(str(out)).element.body
+    [shape] = body.iter("{urn:schemas-microsoft-com:vml}shape")
+    assert shape.get("alt") == ""
+
+
+def test_vml_alt_text_is_leak_checked(tmp_path: Path) -> None:
+    src = _docx_with(tmp_path / "in.docx", _VML)
+    hidden = [ln for ln in Writer().extract_text(src).splitlines() if not ln.startswith("Dear ")]
+    assert f"Photo of {NAME}" in hidden
+    assert NAME in hidden  # v:imagedata o:title
+
+
+def test_internal_link_tooltip_naming_a_redacted_value_is_blanked(tmp_path: Path) -> None:
+    src = _docx_with(tmp_path / "in.docx", _ANCHOR_LINK)
+    out = tmp_path / "out.docx"
+    _engine().process_document(Reader(), Writer(), src, out, operator_policies=REPLACE)
+    assert NAME.encode() not in _zip_bytes(out)
+    [link] = docx.Document(str(out)).element.body.xpath(".//w:hyperlink")
+    assert link.get(f"{{{_W}}}anchor") == "terms"  # the link itself still works
+
+
+def test_unrelated_tooltip_and_alt_text_are_kept(tmp_path: Path) -> None:
+    src = _docx_with(
+        tmp_path / "in.docx",
+        _ANCHOR_LINK.replace(f"Ask {NAME}", "Go to the terms"),
+        _VML.replace(f"Photo of {NAME}", "Company logo").replace(
+            f'o:title="{NAME}"', 'o:title="logo"'
+        ),
+    )
+    out = tmp_path / "out.docx"
+    _engine().process_document(Reader(), Writer(), src, out, operator_policies=REPLACE)
+    raw = _zip_bytes(out)
+    assert b"Go to the terms" in raw
+    assert b"Company logo" in raw

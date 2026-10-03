@@ -42,7 +42,8 @@ it accepts (see ``_ooxml_scrub``). A hyperlink whose text was redacted
 loses its target, which usually repeats that text (``mailto:``); a field
 (``HYPERLINK "mailto:..."``) whose result was redacted becomes its plain
 result text, without the field code; and picture/shape alt text
-(``descr``/``title``/``name``) that names a replaced value is emptied.
+(``descr``/``title``/``name``, VML ``alt``/``o:title``) or a link tooltip
+that names a replaced value is emptied.
 """
 
 from __future__ import annotations
@@ -254,8 +255,9 @@ class Writer:
         Then, one per line: each paragraph's field code (``w:instrText`` /
         ``w:delInstrText`` joined), each ``w:fldSimple/@w:instr``, each
         hyperlink tooltip, the ``descr`` / ``title`` / ``name`` of every
-        ``docPr`` / ``cNvPr``, and the external relationship targets of the
-        ``word/`` parts (a ``mailto:`` link).
+        ``docPr`` / ``cNvPr``, every VML ``alt`` / ``o:title``, and the
+        external relationship targets of the ``word/`` parts (a ``mailto:``
+        link).
         """
         lines: list[str] = []
         with zipfile.ZipFile(path) as z:
@@ -286,6 +288,26 @@ _W_DEL_INSTR_TEXT = qn("w:delInstrText")
 _W_RPR = qn("w:rPr")
 _ALT_ELEMENTS = ("{*}docPr", "{*}cNvPr")
 _ALT_ATTRS = ("descr", "title", "name")
+# Legacy VML pictures (w:pict): v:shape@alt, v:imagedata@o:title, on any v:* element.
+_VML_ANY = "{urn:schemas-microsoft-com:vml}*"
+_VML_ATTRS = ("alt", "{urn:schemas-microsoft-com:office:office}title")
+
+
+def _hidden_attributes(root: Any) -> Iterator[tuple[Any, str]]:
+    """``(element, attribute)`` for every attribute that can hide a name.
+
+    Picture/shape alt text (DrawingML and VML) and hyperlink tooltips. Read
+    by ``extract_text`` and blanked by the Writer when it names a replaced
+    value, so the two always cover the same attributes.
+    """
+    for el in root.iter(*_ALT_ELEMENTS):
+        for attr in _ALT_ATTRS:
+            yield el, attr
+    for el in root.iter(_VML_ANY):
+        for attr in _VML_ATTRS:
+            yield el, attr
+    for el in root.iter(_W_HYPERLINK):
+        yield el, _W_TOOLTIP
 
 
 def _unlink_hyperlink(run: Run) -> None:
@@ -380,10 +402,12 @@ def _replaced_originals(segments: list[TextSegment]) -> list[str]:
 
 
 def _blank_alt_text(package: Any, originals: list[str]) -> None:
-    """Empty every picture/shape ``descr``/``title``/``name`` that names a replaced value.
+    """Empty every alt text or tooltip that names a replaced value.
 
-    Uses the leak check's matcher. The attribute is kept, empty, because
-    ``name`` is required by the schema.
+    Covers DrawingML ``docPr``/``cNvPr`` ``descr``/``title``/``name``, VML
+    ``alt`` / ``o:title`` and ``w:hyperlink@w:tooltip`` (any link, internal
+    or external), using the leak check's matcher. The attribute is kept,
+    empty, because ``name`` is required by the schema.
     """
     if not originals:
         return
@@ -391,11 +415,10 @@ def _blank_alt_text(package: Any, originals: list[str]) -> None:
         element = getattr(part, "_element", None)
         if element is None:
             continue
-        for el in element.iter(*_ALT_ELEMENTS):
-            for attr in _ALT_ATTRS:
-                value = el.get(attr)
-                if value and count_surviving_originals(value, originals):
-                    el.set(attr, "")
+        for el, attr in _hidden_attributes(element):
+            value = el.get(attr)
+            if value and count_surviving_originals(value, originals):
+                el.set(attr, "")
 
 
 _PARSER = etree.XMLParser(resolve_entities=False, no_network=True, huge_tree=False)
@@ -424,9 +447,7 @@ def _part_texts(xml: bytes) -> list[str]:
         if instr:
             codes.append("".join(instr))
     codes.extend(el.get(_W_INSTR, "") for el in root.iter(_W_FLD_SIMPLE))
-    codes.extend(el.get(_W_TOOLTIP, "") for el in root.iter(_W_HYPERLINK))
-    for el in root.iter(*_ALT_ELEMENTS):
-        codes.extend(el.get(attr, "") for attr in _ALT_ATTRS)
+    codes.extend(el.get(attr, "") for el, attr in _hidden_attributes(root))
     return texts + [c for c in codes if c]
 
 
