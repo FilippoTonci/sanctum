@@ -2737,7 +2737,7 @@
       },
       "ReviewSessionResponse": {
         "additionalProperties": false,
-        "description": "Body for create / get \u2014 full session dump with computed previews.\n\n``previews`` keys are either a ``ReviewProposal.detection_id`` (for\nproposal-scoped previews) or a ``UserAddedDecision.id`` (for user-\nadded spans). The UI keys its ghost-text overlay off of those ids,\nso the dict shape intentionally mirrors a client-side cache.\n\nThe preview set is recomputed server-side on every GET and every\ndecision-touching PATCH \u2014 the session itself never persists a\n``preview_cache`` field. This keeps session storage reviewable as\n\"decisions in, replacements out\" instead of a stale mirror.",
+        "description": "Body for create / get \u2014 full session dump with computed previews.\n\n``previews`` keys are either a ``ReviewProposal.detection_id`` (for\nproposal-scoped previews) or a ``UserAddedDecision.id`` (for user-\nadded spans). The UI keys its ghost-text overlay off of those ids,\nso the dict shape intentionally mirrors a client-side cache.\n\nThe preview set is recomputed server-side on every GET and every\ndecision-touching PATCH \u2014 the session itself never persists a\n``preview_cache`` field. This keeps session storage reviewable as\n\"decisions in, replacements out\" instead of a stale mirror.\n\nEvery segment carries ``block`` and ``join_before``. A commit 422 lists\nleaked values only (``details: [{leak, occurrences}]``); to locate them,\njoin each block's segments in order with ``join_before`` between them\n(the text detection and the leak check saw), search that, and add one\nuser-added span per segment the match covers.",
         "properties": {
           "id": {
             "title": "Id",
