@@ -167,6 +167,8 @@ ROUTES: list[Route] = [
             401: _ErrorResponse,
             413: _ErrorResponse,
             415: _ErrorResponse,
+            # Post-write leak check failed (review=false); same body as commit's 422.
+            422: _ErrorResponse,
             500: _ErrorResponse,
             503: _ErrorResponse,
         },
@@ -368,7 +370,7 @@ ROUTES: list[Route] = [
             401: _ErrorResponse,
             404: _ErrorResponse,
             409: _ErrorResponse,
-            # Post-write leak check failed; details = [{"leak": original}].
+            # Post-write leak check failed; details = [{"leak", "occurrences"}].
             422: _ErrorResponse,
             500: _ErrorResponse,
             503: _ErrorResponse,

@@ -36,7 +36,7 @@ from typing import Any, TypeVar
 
 from flask import Blueprint, Response, current_app, send_file
 
-from sanctum.api._internal import parse_body, validate_local_path
+from sanctum.api._internal import leak_check_response, parse_body, validate_local_path
 from sanctum.api.auth import require_bearer_token
 from sanctum.api.schemas import (
     AddUserAddedDecisionRequest,
@@ -845,8 +845,7 @@ def commit_session(session_id: str) -> tuple[dict, int]:
         # log line only counts leaks; the values go back to the (local,
         # authenticated) caller, which already holds them in the session.
         current_app.logger.warning("POST /review-sessions/%s/commit: %s", session_id, exc)
-        details = [{"leak": v, "occurrences": exc.occurrences.get(v, 1)} for v in exc.leaks]
-        return {"error": str(exc), "details": details}, 422
+        return leak_check_response(exc)
     except DocumentError as exc:
         current_app.logger.exception("POST /review-sessions/%s/commit: DocumentError", session_id)
         return {"error": f"document failure: {exc}"}, 500
