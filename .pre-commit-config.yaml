@@ -20,5 +20,8 @@ repos:
           - click>=8.0
           - rich>=13.0
           - flask>=3
+          # pypdf and Pillow ship inline types (py.typed); mypy's isolated env needs them.
+          - pypdf>=4.0
+          - pillow>=10.0
         args: [--config-file=pyproject.toml]
         files: ^sanctum/
