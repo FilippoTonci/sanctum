@@ -217,7 +217,7 @@ def test_get_round_trips_session(server: tuple[str, str]) -> None:
 
 
 def test_session_segments_expose_block_and_join_before(server: tuple[str, str]) -> None:
-    # Ruling 14: the desktop leak sheet searches block-joined text, so every
+    # the desktop leak sheet searches block-joined text, so every
     # segment in the create and GET responses carries block and join_before.
     base, token = server
     _, created = _request(

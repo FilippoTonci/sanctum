@@ -1,4 +1,4 @@
-"""Unit tests for the positioned PDF reader and flattening writer (Phase 3.5 WS3).
+"""Unit tests for the positioned PDF reader and flattening writer.
 
 Replaces the Phase 1 tests (one segment per page, text-only reportlab
 derivative), whose behavior was removed on purpose.

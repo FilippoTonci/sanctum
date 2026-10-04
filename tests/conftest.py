@@ -127,7 +127,7 @@ def sample_pdf_path(fixture_dir: Path) -> Path:
     return fixture_dir / "office" / "engagement_letter.pdf"
 
 
-# ---------- synthetic .pptx (Phase 3.5 WS1) ----------
+# ---------- synthetic .pptx ----------
 #
 # Built in-test rather than committed as a binary: groups (nested), a
 # table, speaker notes, a picture with alt-text, a chart and a solid

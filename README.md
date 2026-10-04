@@ -54,7 +54,7 @@ The current tool landscape leaves individual practitioners with no practical opt
 ### 🖥️ Desktop-First UX
 - **Downloadable native app** — install from the web or a store, launch like any other desktop application
 - **Clean GUI with Human-in-the-Loop Review** — paste or import text, review detections, confirm before any irreversible change
-- **Drag-and-drop document processing** — drop a `.docx`, `.pdf`, or `.xlsx` file directly into the app
+- **Drag-and-drop document processing** — drop a `.docx`, `.pptx`, or `.pdf` file directly into the app
 - **No terminal, no Docker, no CLI** — everything runs behind a standard GUI
 
 ### 🔒 Sovereign, Air-Gapped Architecture
@@ -71,10 +71,20 @@ The current tool landscape leaves individual practitioners with no practical opt
 - **HIPS Surrogate Replacement** — replace `John Smith` with `Alex Doe` to preserve document readability and structure
 
 ### 📂 Multi-Format Support
-- `.docx` — Word documents with full formatting preservation
+- `.docx` — Word documents with formatting preserved; headers and footers are reviewed too
+- `.pptx` — PowerPoint decks: text frames, tables, grouped shapes, speaker notes and picture alt text
+- `.pdf` — text PDFs, one segment per line; pages with redactions are flattened to images (see limitations)
 - `.xlsx` — Excel spreadsheets (per-string-cell segmentation)
-- `.pdf` — per-page text extraction with derivative output (burn-in redaction planned for Phase 3)
-- `.pptx` — PowerPoint decks (per-text-frame segmentation)
+- `.txt` — plain text
+
+Detection runs on whole paragraphs, so a name split across runs, lines or formatting is still found. The pieces of such a finding are decided together.
+
+**Hidden data and verification.** Word and PowerPoint output is scrubbed of document properties, comments, the thumbnail and (Word) tracked changes, and field codes, alt text and link tooltips that repeat a redacted value are cleared. PDF output has its metadata, annotations, form fields and attachments stripped. After writing, Sanctum re-reads the output and refuses to deliver it (HTTP 422, output deleted) if any replaced original still appears.
+
+**Known limitations** (not scanned or anonymized; the leak check still covers Word parts):
+- Word: footnotes, endnotes and text boxes
+- PowerPoint: charts, SmartArt, embedded objects, slide masters and layouts (reported as unscanned)
+- PDF: scanned/image-only PDFs are rejected (no OCR yet); redacted pages become images, so their original fonts, vector graphics and links are lost and file size grows
 
 ---
 
@@ -153,7 +163,7 @@ Sanctum explicitly labels which threshold has been met for every document proces
 
 ## 🚀 Getting Started
 
-> **Note:** Phases 0, 1, and 1.5 are shipped — CLI, structured document adapters (`.docx` / `.xlsx` / `.pdf` / `.pptx`), encrypted mapping store, localhost Flask API, and the human-in-the-loop review session API are all functional. The Phase 3 desktop GUI ([`sanctum-desktop`](https://github.com/FilippoTonci/sanctum-desktop)) consumes the review-session API directly and runs end-to-end on Linux today; signed installers and the macOS / Windows release pipeline are next.
+> **Note:** Phases 0, 1, and 1.5 are shipped — CLI, structured document adapters (`.docx` / `.xlsx` / `.pdf` / `.pptx`), encrypted mapping store, localhost Flask API, and the human-in-the-loop review session API are all functional. PowerPoint and PDF review (with a positioned `/layout` endpoint) landed in 0.2.0-rc.1. The Phase 3 desktop GUI ([`sanctum-desktop`](https://github.com/FilippoTonci/sanctum-desktop)) consumes the review-session API directly and runs end-to-end on Linux today; signed installers and the macOS / Windows release pipeline are next.
 
 ### Prerequisites
 
@@ -206,8 +216,14 @@ sanctum anonymize "John Smith, SSN 123-45-6789"
 # Process a structured document end-to-end (.docx / .xlsx / .pdf / .pptx)
 sanctum process-file input.docx --output anonymized.docx
 
+# Review first: prints a review-session URL instead of writing output
+sanctum process-file input.pptx --review
+
 # Show current configuration
 sanctum config
+
+# Same CLI without relying on PATH
+python -m sanctum.cli --help
 ```
 
 ### Python API
@@ -299,9 +315,9 @@ Sanctum is designed to help professionals meet the requirements of:
 
 ### Phase 3 — Desktop GUI & Packaging *(MVP — separate [`sanctum-desktop`](https://github.com/FilippoTonci/sanctum-desktop) Electron repo, in development)*
 - [x] Standalone desktop GUI (Electron + React wrapper around the Python core; own repo + release cadence) — **runs end-to-end pre-alpha**
-- [x] Drag-and-drop `.docx` document import — `.pdf` / `.xlsx` deferred to Phase 3.5
+- [x] Drag-and-drop `.docx`, `.pptx` and `.pdf` import (review layout served by the backend); `.xlsx` deferred
 - [x] Selective redaction by entity type in the GUI (replaces the skipped Phase 1.5 WS3 reference UI — the Electron app consumes the same `/review-sessions` API directly)
-- [ ] `.pdf` burn-in redaction (structural removal, not just visual)
+- [x] `.pdf` redaction by flattening affected pages (original text under a redaction is removed from the output); OCR for scanned PDFs is not yet supported
 - [ ] Signed packaged installers for Windows (`.exe`) and macOS (`.dmg`)
 
 ### Phase 4 — Store Release & GA

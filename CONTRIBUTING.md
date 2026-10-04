@@ -82,7 +82,7 @@ coverage below the gate, add tests before merging.
 
 Fixtures live under `tests/fixtures/`. For Office formats (docx/xlsx/pdf/pptx),
 generate binaries deterministically via `scripts/generate_office_fixtures.py`
-so CI stays offline. Never commit fixtures that contain real client data or
+(PDF redaction samples: `scripts/generate_pdf_samples.py`) so CI stays offline. Never commit fixtures that contain real client data or
 anything exceeding 500 KB (the pre-commit hook will block it).
 
 ## Questions

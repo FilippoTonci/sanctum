@@ -1,8 +1,8 @@
 """Review-surface layout for .pptx: ``GET /review-sessions/<id>/layout``.
 
-Builds the "shared layout contract" of Phase 3.5 (see
-``plans/phase-3-5-pptx-pdf.md``) from a presentation: one page per
-slide, items in paint order, geometry in points with a top-left origin.
+Builds the shared layout contract (``LayoutResponse`` in
+:mod:`sanctum.api.schemas`) from a presentation: one page per slide,
+items in paint order, geometry in points with a top-left origin.
 
 Segment ids come from the same walker the Reader/Writer use
 (:mod:`sanctum.documents.pptx_adapter`), so every ``segment_id`` in the

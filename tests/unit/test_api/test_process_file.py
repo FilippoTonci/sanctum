@@ -312,7 +312,7 @@ def test_process_file_500_on_document_error(tmp_path: Path):
 
 
 def test_process_file_422_on_leak_check_failure(tmp_path: Path):
-    # M3 / Ruling 15: same status and details shape as the review commit.
+    # Same status and details shape as the review commit.
     src = tmp_path / "in.docx"
     src.write_bytes(b"x")
     leak = LeakCheckError("1 replaced value(s) still appear", ["Jane Doe"], {"Jane Doe": 2})

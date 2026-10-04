@@ -1,4 +1,4 @@
-"""Unit tests for the pptx review layout (Phase 3.5 WS1.3)."""
+"""Unit tests for the pptx review layout."""
 
 from __future__ import annotations
 

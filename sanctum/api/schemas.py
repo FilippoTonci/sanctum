@@ -467,12 +467,11 @@ class CommitReviewSessionResponse(_Frozen):
     committed_at: datetime
 
 
-# ----- review-surface layout (Phase 3.5 shared layout contract) -----------
+# ----- review-surface layout -----------
 #
-# ``GET /review-sessions/{id}/layout`` — see ``plans/phase-3-5-pptx-pdf.md``
-# "Shared layout contract". Geometry is in points (1/72 in), top-left
-# origin; items are in paint order, back to front. Fields marked
-# "addition" are optional extensions recorded in the prototype report.
+# ``GET /review-sessions/{id}/layout`` (pptx and pdf). Geometry is in points
+# (1/72 in), top-left origin; items are in paint order, back to front. Fields
+# marked "addition" are optional, additive extensions of the base contract.
 
 
 class LayoutRun(_Frozen):

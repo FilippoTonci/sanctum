@@ -1,6 +1,6 @@
 """Runs inside w:hyperlink, w:ins, w:sdt and w:smartTag are read, redacted and leak-checked.
 
-Final-review C2 / Ruling 13. ``Paragraph.runs`` only returns direct ``w:r``
+``Paragraph.runs`` only returns direct ``w:r``
 children, so a name inside a mailto link, a tracked insertion or a content
 control used to be neither detected nor leak-checked. Tracked changes are
 accepted in the output, which also removes deleted text and revision
@@ -250,7 +250,7 @@ def test_unchanged_runs_keep_inline_pictures(tmp_path: Path) -> None:
     assert len(docx.Document(str(out)).inline_shapes) == 1
 
 
-# ------------------------------------------- field codes and alt text (NB1, Ruling 19)
+# ------------------------------------------- field codes and alt text
 
 _FIELD = (
     f"<w:p {_NS}>{_run('Mail ')}"
@@ -409,7 +409,7 @@ def test_unlinking_one_link_keeps_a_relationship_another_link_uses(tmp_path: Pat
     assert used[0] in written.part.rels  # no dangling reference
 
 
-# --------------------------------- VML alt text and internal-link tooltips (NB1 residual)
+# --------------------------------- VML alt text and internal-link tooltips
 
 _VML_NS = (
     'xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office"'

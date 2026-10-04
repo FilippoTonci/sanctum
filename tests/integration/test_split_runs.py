@@ -265,7 +265,7 @@ def test_name_missed_in_a_docx_header_fails_closed(tmp_path: Path) -> None:
 def test_hand_marking_part_of_a_linked_name_keeps_the_rest_redacted(
     engine: SanctumEngine, tmp_path: Path
 ) -> None:
-    # C1 / Ruling 12: marking "Jennifer" by hand must not un-redact "Martin".
+    # Marking "Jennifer" by hand must not un-redact "Martin".
     store = SessionStore(root=tmp_path / "sessions")
     src = make_docx(tmp_path / "in.docx", ["Dear Jennifer", " Martin, thanks."])
     session = engine.create_review_session(

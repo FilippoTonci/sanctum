@@ -37,6 +37,60 @@ the break.
 
 ## [Unreleased]
 
+---
+
+## [0.2.0-rc.1] — unreleased
+
+PowerPoint and PDF review, whole-paragraph detection, and output verification.
+The Phase 3 backend entries further down also ship in this release.
+
+### Added
+
+- **PowerPoint review**: text frames, tables, grouped shapes, speaker notes
+  (`slide{i}/notes/...`) and picture alt text (`slide{i}/shape{j}/alt`) are
+  read and written. Content that is not scanned (charts, SmartArt, embedded
+  objects, comments, slide masters/layouts) is reported in the layout.
+- **PDF review**: one segment per text line (`page{i}/line{j}`). Pages with
+  redactions are flattened with pypdfium2 (replacement text drawn in, the page
+  kept searchable through an invisible text layer); document info, XMP,
+  annotations, form fields and attachments are stripped. Scanned PDFs are
+  rejected (no OCR yet). New dependency: `pypdfium2`.
+- `GET /review-sessions/{id}/layout` for `.pptx` and `.pdf`: pages, items in
+  paint order, geometry in points (top-left origin), segment ids, and an
+  `unscanned` list. `415` for other formats, `410` after commit/abandon.
+- **Whole-paragraph detection** (`sanctum/core/blocks.py`): segments carry
+  `TextSegment.block` / `join_before`, so names split across runs or lines are
+  found. A finding spanning segments yields linked proposals
+  (`group_id`, `group_index`, `group_original` on `ReviewProposal`) that are
+  decided together.
+- **Post-write leak check** (`sanctum/core/leak_check.py`, `OutputTextExtractor`
+  port) for docx, pptx and pdf. A surviving original deletes the output and
+  returns `422 {leak, occurrences}` from `POST /review-sessions/{id}/commit`
+  and `/process-file`. Bare 1-2 digit numbers are exempt.
+- **Hidden-data scrubbing** for Word and PowerPoint: core/app properties,
+  comments and the thumbnail are removed, tracked changes (Word) are accepted,
+  and field codes, alt text and link tooltips that name a redacted value are
+  cleared. Word headers and footers are now reviewed (`hf/...` segments).
+- Email recognizer that accepts any well-formed domain (internal TLDs such as
+  `.local`).
+- `python -m sanctum.cli`.
+
+### Changed
+
+- Text the reviewer marks by hand is replaced with `[REDACTED]`.
+- Review-session mutations take a per-session lock and manifests are written
+  atomically, so concurrent decisions and unlocked GETs no longer race.
+- Supported formats: `.docx`, `.pptx`, `.pdf`, `.xlsx`, `.txt`.
+
+### Known limitations
+
+- Word footnotes, endnotes and text boxes are not anonymized.
+- PowerPoint charts, SmartArt and slide masters/layouts are not anonymized.
+- Scanned PDFs are not supported; redacted PDF pages become images (original
+  fonts, vector graphics and links on those pages are lost).
+
+Earlier entries in this release (Phase 3 backend work):
+
 ### Changed
 
 - `POST /review-sessions/{id}/decisions/user-added` now purges any

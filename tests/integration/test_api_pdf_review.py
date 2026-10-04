@@ -1,4 +1,4 @@
-"""API-level PDF review flow with real Presidio (Phase 3.5 WS3).
+"""API-level PDF review flow with real Presidio.
 
 create session -> GET /layout -> accept detections -> commit -> redacted
 PDF, then check the output: replaced originals are gone from the text

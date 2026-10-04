@@ -1,4 +1,4 @@
-"""Positioned line extraction for PDFs (Phase 3.5 WS3).
+"""Positioned line extraction for PDFs.
 
 Turns a PDF into one :class:`PdfLine` per extracted text line, each with
 a per-character box so the writer can paint over an exact span.

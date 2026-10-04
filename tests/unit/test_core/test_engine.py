@@ -460,7 +460,7 @@ class TestCommitReviewSession:
             )
 
 
-# -------- Post-write leak check (Phase 3.5 WS3 / WS0.2) ------------------------
+# -------- Post-write leak check ------------------------
 
 
 class _EchoTextWriter:

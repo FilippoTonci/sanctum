@@ -8,8 +8,8 @@ Server-side state for the HITL review flow (Phase 1.5 WS2). Clients:
 - ``GET /review-sessions/{id}/input`` — the original input bytes; used
   by the desktop to resume an open session. ``410 Gone`` after the
   session reaches a terminal status (commit / abandon) sheds them.
-- ``GET /review-sessions/{id}/layout`` — positioned layout (Phase 3.5
-  shared layout contract) for pptx and pdf; ``415`` for other formats,
+- ``GET /review-sessions/{id}/layout`` — positioned layout (shared
+  layout contract) for pptx and pdf; ``415`` for other formats,
   ``410`` once the input bytes are shed.
 - ``PATCH /review-sessions/{id}/decisions/{proposal_id}`` — accept /
   reject a proposal; set operator / params / custom_replacement.

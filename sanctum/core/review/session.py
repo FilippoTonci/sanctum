@@ -81,7 +81,7 @@ def apply_user_added_with_overlap_purge(session: ReviewSession, ua: UserAddedDec
     ``p.start == ua.end``) share no characters and are left alone.
 
     When an overlapped proposal is a piece of a linked finding, only the
-    overlapped pieces go (Ruling 12). The finding's other pieces stay, with
+    overlapped pieces go. The finding's other pieces stay, with
     their decisions, so a hand-mark on "Jennifer" never un-redacts "Martin":
     whitespace-only pieces are dropped (they carry no PII), the rest are
     trimmed of edge whitespace and renumbered so the first one becomes the

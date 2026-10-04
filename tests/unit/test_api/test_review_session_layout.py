@@ -1,4 +1,4 @@
-"""``GET /review-sessions/<id>/layout`` + a real-pptx commit (Phase 3.5 WS1).
+"""``GET /review-sessions/<id>/layout`` + a real-pptx commit.
 
 Uses the real pptx Reader/Writer and the real Presidio anonymizer (the
 ``replace`` operator); only the analyzer is faked, with a name list, so

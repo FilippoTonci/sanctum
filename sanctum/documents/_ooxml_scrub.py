@@ -16,7 +16,7 @@ python-docx / python-pptx package just before saving:
 * :func:`accept_tracked_changes` (Word only) accepts every tracked change:
   deleted and moved-away content is removed, inserted and moved-in content
   is kept as plain text, and formatting-change records are dropped. That
-  removes deleted text and every revision author's name (Ruling 13).
+  removes deleted text and every revision author's name.
 
 Parts are written by walking the relationship graph, so dropping the
 relationship to a part is what keeps it out of the saved package.

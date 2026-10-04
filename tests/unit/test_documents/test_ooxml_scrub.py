@@ -279,7 +279,7 @@ def test_pptx_extract_text_joins_runs_and_reads_notes(tmp_path: Path) -> None:
     assert find_surviving_originals(text, [NAME]) == [NAME]
 
 
-# ----------------------------------------------------- package integrity (Ruling 16)
+# ----------------------------------------------------- package integrity
 #
 # Office is not available to open the scrubbed files, and neither is LibreOffice
 # here, so check what Word / PowerPoint would trip over: the file re-opens, every

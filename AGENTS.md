@@ -72,8 +72,18 @@ and `Writer`. Protocols in `core/protocols.py`; shared model
 plus an opaque `raw_handle` the matching Writer uses to project mutations
 back.
 
-Segment granularity (by design, affects detection):
-- docx: per-run  •  xlsx: per-string-cell  •  pdf: per-page  •  pptx: per-text-frame
+Segment granularity is the write-back unit, not the detection unit:
+- docx: per-run (+ `hf/...` headers/footers)  •  xlsx: per-string-cell  •  pdf: per-line (`page{i}/line{j}`)  •  pptx: per-run (frames, tables, groups, notes, alt text)
+
+Detection runs on whole paragraphs: adapters tag segments with `block` /
+`join_before`, `core/blocks.py` joins and analyses them, and findings spanning
+segments become linked proposals (`group_id`/`group_index`/`group_original`)
+decided together. After every write, `core/leak_check.py` re-extracts the
+output (adapter `extract_text`, `OutputTextExtractor` port) and fails closed
+(422) if a replaced original survives. Word/PowerPoint writers scrub hidden
+data (`_ooxml_scrub.py`); the PDF writer flattens redacted pages via pypdfium2
+and strips metadata/annotations/forms/attachments. Known gaps: Word
+footnotes/endnotes/text boxes, PowerPoint charts/SmartArt/masters, scanned PDFs.
 
 **Round-trip fidelity is a hard constraint**: read → write with no edits must
 be byte-equivalent. Add an integration test for any new adapter.
@@ -99,6 +109,7 @@ pytest -m integration           # real Presidio engines on fixtures
 pytest -m evaluation            # opt-in corpus scoring
 pre-commit run --all-files
 sanctum analyze|anonymize|process-file|config   # CLI (see commands.py)
+python -m sanctum.cli ...       # same CLI, no PATH needed
 ```
 
 ## Conventions

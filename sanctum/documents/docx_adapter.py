@@ -244,7 +244,7 @@ class Writer:
     def extract_text(self, path: Path) -> str:
         """Every piece of text in every ``word/*.xml`` part, plus external link targets.
 
-        Deliberately independent of the Reader (final-review C2, NB1): text
+        Deliberately independent of the Reader: text
         the Reader does not read must still be leak-checked. That is
         footnotes, text boxes, wrappers it does not know, deleted text that
         survived, field codes and picture alt text.

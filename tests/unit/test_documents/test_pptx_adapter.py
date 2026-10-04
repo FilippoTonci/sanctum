@@ -76,7 +76,7 @@ def test_registry_dispatches_to_pptx_adapter() -> None:
     assert isinstance(w, Writer)
 
 
-# ---------- Phase 3.5 WS1: groups, notes, alt-text ----------
+# ---------- groups, notes, alt-text ----------
 
 EXPECTED_RICH_IDS = [
     "slide0/shape0/p0/r0",

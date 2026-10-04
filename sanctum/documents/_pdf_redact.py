@@ -1,4 +1,4 @@
-"""Redacted PDF output by flattening affected pages (Phase 3.5 WS3).
+"""Redacted PDF output by flattening affected pages.
 
 Pipeline (see ``Writer`` in :mod:`sanctum.documents.pdf_adapter`):
 

@@ -1,4 +1,4 @@
-"""Format → review-layout builder dispatch (Phase 3.5 shared layout contract).
+"""Format → review-layout builder dispatch.
 
 Lazy like :mod:`sanctum.documents.registry`: the builder module for a
 format is imported only when a layout for that format is requested.

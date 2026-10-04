@@ -1,4 +1,4 @@
-"""PDF reader / redacting writer (Phase 3.5 WS3).
+"""PDF reader / redacting writer.
 
 * **Read**: one segment per extracted text line, id ``page{i}/line{j}``
   (``i`` = 0-based page, ``j`` = 0-based line within the page), built from

@@ -1,4 +1,4 @@
-"""Post-write leak check (Phase 3.5 WS0.2, prototyped in WS3).
+"""Post-write leak check.
 
 After a document is written, re-extract every piece of text from the
 output and make sure no replaced original survives. The *matching* logic

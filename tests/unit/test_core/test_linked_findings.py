@@ -101,7 +101,7 @@ def test_redeciding_a_group_replaces_every_piece_decision(
 def test_user_added_over_the_tail_keeps_the_head_decided(
     make_session: Callable[[list[ReviewProposal]], ReviewSession],
 ) -> None:
-    # Ruling 12: only the overlapped piece goes; the rest of the group keeps
+    # only the overlapped piece goes; the rest of the group keeps
     # its decision. The whitespace-only piece carries no PII and goes too.
     session = make_session(build_proposals_from_findings([SPLIT, SOLO]))
     head, space, tail = session.proposals[:3]

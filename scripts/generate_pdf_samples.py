@@ -1,4 +1,4 @@
-"""Generate SYNTHETIC PDFs that exercise the PDF redaction path (Phase 3.5 WS3).
+"""Generate SYNTHETIC PDFs that exercise the PDF redaction path.
 
 Every name, address, email and number below is invented. Output is
 deterministic (reportlab ``invariant=1``), so tests can build these into a
