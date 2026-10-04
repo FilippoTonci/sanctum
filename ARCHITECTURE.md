@@ -18,7 +18,6 @@ sanctum/                ← the Python package (the only thing shipped)
   documents/            ← format adapters (docx / pdf / pptx / xlsx / text)
   security/             ← encrypted mapping store + Argon2 KDF
 tests/                  ← unit / integration / evaluation
-plans/                  ← phase + workstream tracking (versioned)
 schema/                 ← generated OpenAPI snapshot (contract compat gate)
 scripts/                ← fixture generation, OpenAPI export, compat check
 notebooks/              ← exploratory analysis (not shipped)
@@ -46,6 +45,8 @@ analyzer  anonymizer  documents    ← detection, rewriting, format I/O
 ### `sanctum/analyzer/` — Detection
 - `adapter.py` — `PresidioAnalyzer` wraps Presidio's `AnalyzerEngine`,
   threading our score threshold and registry overrides through.
+- `recognizers.py` — extra recognizers; the email recognizer matches any
+  well-formed domain (internal TLDs like `.local` included).
 - `nlp_config.py` — builds the spaCy / GLiNER NER backend per the
   configured tier. **Switching backends is a config knob, not a code change.**
 
@@ -69,12 +70,15 @@ analyzer  anonymizer  documents    ← detection, rewriting, format I/O
   - `mapping.py` — `/mapping/{lock,unlock}` for the encrypted store.
   - `pipeline.py` — `/process-file` shortcut (one-shot or hand-off to review).
   - `review_sessions.py` — full review-session lifecycle (POST / GET /
-    PATCH decision / POST commit / DELETE abandon). This is the chunkiest
-    file because it owns the most state transitions.
+    PATCH decision / POST commit / DELETE abandon) plus
+    `GET /review-sessions/<id>/layout` (positioned pages for pptx and pdf;
+    415 for other formats, 410 once the input is shed after commit/abandon).
+    A failed post-write leak check returns 422 `{leak, occurrences}` from
+    commit and from `/process-file`.
 
 ### `sanctum/cli/` — Command line
 - `commands.py` — Click group with `process-file`, `serve`, `config`,
-  `version`. The desktop's PyInstaller bundle re-uses this same entry
+  `version`. `python -m sanctum.cli` (`__main__.py`) runs the same group. The desktop's PyInstaller bundle re-uses this same entry
   via `scripts/sidecar_entry.py` in the desktop repo.
 
 ### `sanctum/config/` — Settings
@@ -89,8 +93,18 @@ analyzer  anonymizer  documents    ← detection, rewriting, format I/O
   `TextSegment`, `StructuredDocument`. **Zero IO; pure data.**
 - `protocols.py` — typing.Protocols for `Analyzer`, `Anonymizer`, document
   adapters. Lets the engine accept fakes in tests without inheritance.
-- `engine.py` — `SanctumEngine` orchestrates analyze → anonymize → write,
-  and owns the `commit_review_session` flow.
+- `engine.py` — `SanctumEngine` orchestrates analyze → anonymize → write →
+  leak check, and owns the `commit_review_session` flow.
+- `blocks.py` — block-level detection: segments tagged with
+  `TextSegment.block` are joined (using `join_before`) and analysed as one
+  paragraph; each finding is projected back onto the segment pieces it
+  covers. A finding spanning several segments becomes linked proposals
+  (`group_id` / `group_index` / `group_original`) that are decided together.
+- `leak_check.py` — after the writer runs, the output text is re-extracted
+  (format-specific, via the `OutputTextExtractor` port in `protocols.py`)
+  and matched against every replaced original; survivors raise
+  `LeakCheckError` and the output is deleted. Whitespace-normalised,
+  case-sensitive, word-bounded; bare 1–2 digit numbers are exempt.
 - `exceptions.py` — every domain error (`ReviewSessionNotFoundError`,
   `ReviewSessionAlreadyCommittedError`, `AnonymizationError`, …).
 - `review/` — review-session state machine, kept off `engine.py` to keep
@@ -99,7 +113,8 @@ analyzer  anonymizer  documents    ← detection, rewriting, format I/O
   - `session.py` — `add_decision`, `commit`, `abandon` (the state-machine
     transitions; raises `*AlreadyCommittedError` on illegal moves).
   - `store.py` — on-disk persistence under `~/.sanctum/sessions/<id>/`
-    (manifest + input bytes, 0700/0600). `shed_input` drops the input
+    (manifest + input bytes, 0700/0600). A per-session lock serialises
+    mutations and the manifest is written atomically. `shed_input` drops the input
     bytes on terminal transitions while keeping the manifest for the
     desktop's Recent Sessions list.
   - `previews.py` + `preview_store.py` — generate ghost-text previews
@@ -113,7 +128,21 @@ protocol so the engine doesn't branch on format.
 - `base.py` — protocol + shared helpers.
 - `registry.py` — picks the adapter for a given extension.
 - `docx_adapter.py`, `pdf_adapter.py`, `pptx_adapter.py`,
-  `xlsx_adapter.py`, `text.py` — per-format implementations.
+  `xlsx_adapter.py`, `text.py` — per-format implementations. Segment
+  grain: docx per run (plus `hf/...` header/footer runs), pptx per run
+  (text frames, tables, groups, `notes`, picture `alt`), pdf per line
+  (`page{i}/line{j}`), xlsx per string cell.
+- `_ooxml_scrub.py` — shared by docx/pptx writers: blanks core/app
+  properties, drops comments and the thumbnail, accepts tracked changes.
+- `_pdf_extract.py` / `_pdf_redact.py` — positioned line extraction
+  (pdfplumber) and output: pages with redactions are flattened via
+  pypdfium2 and rebuilt as image pages with an invisible text layer;
+  metadata, annotations, forms and attachments are stripped.
+- `layout.py` + `pptx_layout.py` — format → review-layout builder
+  dispatch behind `/layout` (pages, items in paint order, geometry in
+  points, top-left origin, `unscanned` report).
+- Known limitations: Word footnotes/endnotes/text boxes; PowerPoint
+  charts/SmartArt/slide masters; scanned PDFs (no OCR).
 - `structured.py` — the in-memory `StructuredDocument` that flows
   between reader → engine → writer.
 
@@ -150,6 +179,7 @@ outside CI; they're the truth-set for "did detection quality regress?".
   breaking changes. Wired into CI; relaxed during pre-`0.0.1`-tag beta.
 - `generate_fixtures.py`, `generate_office_fixtures.py` — synthesize the
   document fixtures used in tests (no real PII checked in).
+- `generate_pdf_samples.py` — synthetic PDFs used by the PDF tests.
 - `fetch_public_docs.py`, `fetch_public_office_samples.py` — pull
   third-party reference samples for evaluation.
 
@@ -177,6 +207,8 @@ outside CI; they're the truth-set for "did detection quality regress?".
 - **Review-session state machine is one-way.** `open` → (`committed` |
   `abandoned`). Both terminal transitions shed `input.*` from disk but
   keep `manifest.json` so the desktop's Recent Sessions list survives.
+- **Output is verified before delivery.** Every write is followed by the
+  leak check; a surviving original fails closed (422, output deleted).
 - **Bearer token in stdin, never in argv.** `sanctum serve --token-stdin`
   is the only path the desktop main process uses. Loopback-only by default.
 - **Schema changes need a contract-compat run.** `scripts/check_api_compat.py`

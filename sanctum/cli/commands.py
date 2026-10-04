@@ -69,6 +69,7 @@ def _create_engine() -> SanctumEngine:
     """
     from sanctum.analyzer.adapter import PresidioAnalyzer
     from sanctum.analyzer.nlp_config import create_nlp_engine
+    from sanctum.analyzer.recognizers import AnyDomainEmailRecognizer
     from sanctum.anonymizer.adapter import PresidioAnonymizer
 
     # Build the NLP engine explicitly so (a) we keep ORGANIZATION on
@@ -77,7 +78,7 @@ def _create_engine() -> SanctumEngine:
     # `spacy.cli.download()` and break the air-gap.
     nlp_engine = create_nlp_engine(model_name=settings.nlp.spacy_model)
 
-    extra_recognizers: list = []
+    extra_recognizers: list = [AnyDomainEmailRecognizer()]
     remove_names: list[str] = []
     if settings.nlp.ner_backend == "gliner":
         from sanctum.analyzer.nlp_config import create_gliner_recognizer

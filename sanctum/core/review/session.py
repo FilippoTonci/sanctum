@@ -38,22 +38,35 @@ def add_decision(session: ReviewSession, decision: SessionDecision) -> None:
     """Append or replace a decision on the session.
 
     A ``ProposalDecision`` whose ``proposal_id`` already carries a decision
-    replaces the earlier one. ``UserAddedDecision`` always appends — user-
+    replaces the earlier one. A decision on any piece of a linked finding
+    (``ReviewProposal.group_id``) is recorded for every piece of the group,
+    so the pieces are always decided together. ``UserAddedDecision`` always appends — user-
     added spans are addressed by identity, not id, so there's no natural
     overwrite key.
     """
     _require_open(session)
     if isinstance(decision, ProposalDecision):
-        known = {p.detection_id for p in session.proposals}
-        if decision.proposal_id not in known:
+        by_id = {p.detection_id: p for p in session.proposals}
+        target = by_id.get(decision.proposal_id)
+        if target is None:
             raise ReviewSessionInvalidDecisionError(
                 f"Proposal id {decision.proposal_id!r} not found in session {session.id!r}."
             )
+        member_ids = (
+            [p.detection_id for p in session.proposals if p.group_id == target.group_id]
+            if target.group_id is not None
+            else [target.detection_id]
+        )
+        members = set(member_ids)
         session.decisions = [
             d
             for d in session.decisions
-            if not (isinstance(d, ProposalDecision) and d.proposal_id == decision.proposal_id)
+            if not (isinstance(d, ProposalDecision) and d.proposal_id in members)
         ]
+        session.decisions.extend(
+            decision.model_copy(update={"proposal_id": pid}) for pid in member_ids
+        )
+        return
     session.decisions.append(decision)
 
 
@@ -67,6 +80,15 @@ def apply_user_added_with_overlap_purge(session: ReviewSession, ua: UserAddedDec
     referenced it. Adjacent ranges (``p.end == ua.start`` or
     ``p.start == ua.end``) share no characters and are left alone.
 
+    When an overlapped proposal is a piece of a linked finding, only the
+    overlapped pieces go. The finding's other pieces stay, with
+    their decisions, so a hand-mark on "Jennifer" never un-redacts "Martin":
+    whitespace-only pieces are dropped (they carry no PII), the rest are
+    trimmed of edge whitespace and renumbered so the first one becomes the
+    head that renders the replacement. Their ``group_original`` stays, so the
+    leak check still looks for the whole finding and its words. The rendered
+    output may then carry two replacement tokens for one name.
+
     No record of the removed proposals is kept — the user-added
     decision is the new source of truth for that span. Removing the UA
     later (``DELETE …/decisions/user-added/{ua_id}``) does *not*
@@ -77,11 +99,36 @@ def apply_user_added_with_overlap_purge(session: ReviewSession, ua: UserAddedDec
     """
     _require_open(session)
 
+    overlapped = [
+        p
+        for p in session.proposals
+        if p.segment_anchor == ua.segment_anchor and p.start < ua.end and p.end > ua.start
+    ]
+    hit_ids = {p.detection_id for p in overlapped}
+    hit_groups = {p.group_id for p in overlapped if p.group_id is not None}
     removed: list[str] = []
     survivors: list[ReviewProposal] = []
+    next_index: dict[str, int] = {}
     for p in session.proposals:
-        if p.segment_anchor == ua.segment_anchor and p.start < ua.end and p.end > ua.start:
+        group = p.group_id if p.group_id in hit_groups else None
+        if p.detection_id in hit_ids or (group is not None and not p.original.strip()):
             removed.append(p.detection_id)
+        elif group is not None:
+            index = next_index.get(group, 0)
+            next_index[group] = index + 1
+            lead = len(p.original) - len(p.original.lstrip())
+            text = p.original.strip()
+            start = p.start + lead
+            survivors.append(
+                p.model_copy(
+                    update={
+                        "group_index": index,
+                        "original": text,
+                        "start": start,
+                        "end": start + len(text),
+                    }
+                )
+            )
         else:
             survivors.append(p)
 

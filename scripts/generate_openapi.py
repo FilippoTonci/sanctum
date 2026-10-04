@@ -52,6 +52,7 @@ from sanctum.api.schemas import (  # noqa: E402
     ProcessFileReviewResponse,
     ReverseMappingRequest,
     ReverseMappingResponse,
+    ReviewSessionLayoutResponse,
     ReviewSessionListResponse,
     ReviewSessionResponse,
     RotateMappingKeyRequest,
@@ -166,6 +167,8 @@ ROUTES: list[Route] = [
             401: _ErrorResponse,
             413: _ErrorResponse,
             415: _ErrorResponse,
+            # Post-write leak check failed (review=false); same body as commit's 422.
+            422: _ErrorResponse,
             500: _ErrorResponse,
             503: _ErrorResponse,
         },
@@ -292,6 +295,23 @@ ROUTES: list[Route] = [
         },
     ),
     Route(
+        method="get",
+        path="/review-sessions/{session_id}/layout",
+        summary="Positioned layout (pages, items, segment ids) for pptx and pdf review.",
+        requires_auth=True,
+        path_params=("session_id",),
+        request_body=None,
+        responses={
+            200: ReviewSessionLayoutResponse,
+            401: _ErrorResponse,
+            404: _ErrorResponse,
+            410: _ErrorResponse,
+            415: _ErrorResponse,
+            500: _ErrorResponse,
+            503: _ErrorResponse,
+        },
+    ),
+    Route(
         method="patch",
         path="/review-sessions/{session_id}/decisions/{proposal_id}",
         summary="Accept or reject a proposal; override operator / params.",
@@ -350,6 +370,8 @@ ROUTES: list[Route] = [
             401: _ErrorResponse,
             404: _ErrorResponse,
             409: _ErrorResponse,
+            # Post-write leak check failed; details = [{"leak", "occurrences"}].
+            422: _ErrorResponse,
             500: _ErrorResponse,
             503: _ErrorResponse,
         },
@@ -507,7 +529,7 @@ def build() -> dict[str, Any]:
             "description": (
                 "Loopback-only HTTP API for the Sanctum Python backend. "
                 "Consumed by the `sanctum-desktop` Electron app and the "
-                "`sanctum` CLI. See `plans/phase-3-desktop-ui.md` WS1."
+                "`sanctum` CLI."
             ),
         },
         "paths": _build_paths(),

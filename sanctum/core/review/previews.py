@@ -21,6 +21,24 @@ from typing import Any
 from sanctum.core.models import DetectionResult, OperatorPolicy, ReviewProposal
 from sanctum.core.protocols import Anonymizer, MappingStore
 
+USER_ADDED_ENTITY = "USER_ADDED"
+USER_ADDED_DEFAULT = "[REDACTED]"
+
+
+def effective_params(
+    entity_type: str, operator: str, params: dict[str, Any] | None
+) -> dict[str, Any]:
+    """Operator params after Sanctum's defaults.
+
+    Text the reviewer marks by hand has no detected type, so the ``replace``
+    operator's type token would read ``<USER_ADDED>`` in the output. Use a
+    neutral marker instead unless the session or decision sets ``new_value``.
+    """
+    merged = dict(params or {})
+    if operator == "replace" and entity_type == USER_ADDED_ENTITY and "new_value" not in merged:
+        merged["new_value"] = USER_ADDED_DEFAULT
+    return merged
+
 
 def compute_preview(
     proposal: ReviewProposal,
@@ -41,11 +59,17 @@ def compute_preview(
     additionally requires ``mapping_store`` — pass a
     ``PreviewMappingStore`` for preview (non-persisting) or the real
     store for commit.
+
+    For a linked finding (``proposal.group_id`` set), only the head piece
+    (``group_index`` 0) carries the replacement, rendered over the whole
+    ``group_original``; every other piece renders ``""``.
     """
+    if proposal.group_id is not None and proposal.group_index > 0:
+        return ""  # only the head piece of a linked finding carries the replacement
     if custom_replacement is not None:
         return custom_replacement
 
-    params: dict[str, Any] = dict(operator_params or {})
+    params = effective_params(proposal.entity_type, operator, operator_params)
     if operator == "pseudonymize":
         if mapping_store is None:
             raise ValueError(
@@ -53,16 +77,17 @@ def compute_preview(
             )
         params.setdefault("store", mapping_store)
 
+    original = proposal.group_original or proposal.original
     synthetic = DetectionResult(
         entity_type=proposal.entity_type,
         start=0,
-        end=len(proposal.original),
+        end=len(original),
         score=proposal.score,
-        text_span=proposal.original,
+        text_span=original,
     )
     policy = OperatorPolicy(operator_name=operator, params=params)
     result = anonymizer.anonymize(
-        text=proposal.original,
+        text=original,
         detections=[synthetic],
         operator_policies={"DEFAULT": policy},
     )

@@ -47,10 +47,29 @@ class UnsupportedPdfError(DocumentError):
 class PdfWriteRefusedError(DocumentError):
     """Raised if a caller tries to overwrite a source PDF.
 
-    Phase 1 only produces *derivative* PDFs (a fresh, text-only reportlab
-    document). Overwriting the original is disallowed because it would
-    silently drop images, forms, and layout — deferred to Phase 3.
+    The redacted output is always a separate file: pages with replacements
+    are flattened to images, so writing over the source would destroy the
+    only vector copy of the document.
     """
+
+
+class LeakCheckError(DocumentError):
+    """Raised when a replaced original string survives in the written output.
+
+    ``leaks`` holds the surviving originals and ``occurrences`` how many
+    times each still appears. The message deliberately does
+    not include them so the exception is safe to log.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        leaks: list[str] | None = None,
+        occurrences: dict[str, int] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.leaks: list[str] = list(leaks or [])
+        self.occurrences: dict[str, int] = dict(occurrences or {})
 
 
 class MappingStoreError(SanctumError):

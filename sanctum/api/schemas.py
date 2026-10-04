@@ -8,7 +8,7 @@ import. Models accumulate here as routes land in subsequent substeps.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Final, Literal
+from typing import Annotated, Any, Final, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -65,8 +65,7 @@ class HealthResponse(_Frozen):
 
     `sanctum_commit` is the build-time SHA of the bundled sidecar. The
     Phase 3 desktop app compares this against the SHA it was built with
-    and fails fast on mismatch — the atomic-installer contract (see
-    `plans/phase-3-desktop-ui.md` WS1 substep 1). The sentinel `"dev"`
+    and fails fast on mismatch — the atomic-installer contract. The sentinel `"dev"`
     is reserved for local development and tolerated by the desktop.
     """
 
@@ -306,6 +305,12 @@ class ReviewSessionResponse(_Frozen):
     decision-touching PATCH — the session itself never persists a
     ``preview_cache`` field. This keeps session storage reviewable as
     "decisions in, replacements out" instead of a stale mirror.
+
+    Every segment carries ``block`` and ``join_before``. A commit 422 lists
+    leaked values only (``details: [{leak, occurrences}]``); to locate them,
+    join each block's segments in order with ``join_before`` between them
+    (the text detection and the leak check saw), search that, and add one
+    user-added span per segment the match covers.
     """
 
     id: str
@@ -459,3 +464,113 @@ class CommitReviewSessionResponse(_Frozen):
     session_id: str
     output_path: str
     committed_at: datetime
+
+
+# ----- review-surface layout -----------
+#
+# ``GET /review-sessions/{id}/layout`` (pptx and pdf). Geometry is in points
+# (1/72 in), top-left origin; items are in paint order, back to front. Fields
+# marked "addition" are optional, additive extensions of the base contract.
+
+
+class LayoutRun(_Frozen):
+    """One run of a textbox paragraph; ``text`` equals the segment's text."""
+
+    segment_id: str
+    text: str
+    size: float
+    bold: bool = False
+    italic: bool = False
+    color: str | None = None
+    font: str | None = None
+
+
+class LayoutParagraph(_Frozen):
+    align: Literal["left", "center", "right", "justify"] = "left"
+    runs: list[LayoutRun]
+
+
+class LayoutTextboxItem(_Frozen):
+    """pptx shape / table-cell text frame."""
+
+    kind: Literal["textbox"]
+    x: float
+    y: float
+    w: float
+    h: float
+    paragraphs: list[LayoutParagraph]
+    # addition: vertical anchor of the text frame.
+    anchor: Literal["top", "middle", "bottom"] = "top"
+
+
+class LayoutTextlineItem(_Frozen):
+    """pdf: one extracted line."""
+
+    kind: Literal["textline"]
+    x: float
+    y: float
+    w: float
+    h: float
+    segment_id: str
+    text: str
+    size: float
+
+
+class LayoutAltText(_Frozen):
+    """addition: a picture's alt-text segment."""
+
+    segment_id: str
+    text: str
+
+
+class LayoutImageItem(_Frozen):
+    kind: Literal["image"]
+    x: float
+    y: float
+    w: float
+    h: float
+    # data: URI; ``null`` when the image format can't be shown in a browser
+    # (EMF/WMF/TIFF) — the renderer draws a placeholder box instead.
+    src: str | None
+    # addition: alt-text segment, if the picture has non-empty alt-text.
+    alt: LayoutAltText | None = None
+
+
+class LayoutShapeItem(_Frozen):
+    """Background rects (slide background, filled shapes, table cells) — pptx only."""
+
+    kind: Literal["shape"]
+    x: float
+    y: float
+    w: float
+    h: float
+    fill: str | None
+
+
+LayoutItem = LayoutTextboxItem | LayoutTextlineItem | LayoutImageItem | LayoutShapeItem
+
+
+class LayoutPage(_Frozen):
+    index: int
+    width: float
+    height: float
+    items: list[Annotated[LayoutItem, Field(discriminator="kind")]]
+    # addition: speaker notes (pptx), same paragraph shape as textboxes.
+    notes: list[LayoutParagraph] | None = None
+
+
+class LayoutUnscanned(_Frozen):
+    """Content the adapter does not scan, named so the UI can warn about it."""
+
+    where: str
+    what: str
+    # addition: 0-based page index, or null for document-level entries.
+    page: int | None = None
+
+
+class ReviewSessionLayoutResponse(_Frozen):
+    """Body for ``GET /review-sessions/{id}/layout``."""
+
+    format: Literal["pptx", "pdf"]
+    pages: list[LayoutPage]
+    unscanned: list[LayoutUnscanned] = Field(default_factory=list)

@@ -10,6 +10,7 @@ from sanctum.core.engine import SanctumEngine
 from sanctum.core.exceptions import (
     AnalysisError,
     AnonymizationError,
+    DocumentError,
     ReviewSessionAlreadyCommittedError,
 )
 from sanctum.core.models import (
@@ -131,8 +132,7 @@ def _make_reader(doc_factory: Callable[[Path], StructuredDocument]) -> Mock:
 
 def _make_writer() -> Mock:
     """Writer mock that records the mutated document it was asked to write."""
-    writer = Mock()
-    writer.write = Mock()
+    writer = Mock(spec=["write"])
     return writer
 
 
@@ -187,9 +187,9 @@ class TestCreateReviewSession:
             TextSegment(id="s2", text="Carol said hi"),
         ]
         # Analyzer fixture: every call returns a single PERSON at 0-5.
-        # With text "Alice met Bob" / "Carol said hi" only the first
-        # token's position is accurate; that's fine for the Flow B
-        # proposal shape (original text is what matters, not offsets).
+        # The proposal's original is the analysed text at those offsets
+        # (block-level detection slices the text it analysed), so the
+        # second segment yields "Carol", not the mock's text_span.
         det = DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice")
         engine, analyzer, _ = _engine([det])
 
@@ -215,7 +215,7 @@ class TestCreateReviewSession:
         assert analyzer.analyze.call_count == 2
         # One proposal per analyzed segment.
         assert [p.segment_anchor for p in session.proposals] == ["s0", "s2"]
-        assert [p.original for p in session.proposals] == ["Alice", "Alice"]
+        assert [p.original for p in session.proposals] == ["Alice", "Carol"]
 
         # Persisted — manifest + input bytes on disk under 0700/0600.
         assert session_store.exists("sess-1")
@@ -458,3 +458,286 @@ class TestCommitReviewSession:
                 session_store=store,
                 committed_at=_FIXED_NOW,
             )
+
+
+# -------- Post-write leak check ------------------------
+
+
+class _EchoTextWriter:
+    """Writer that writes the joined segment text and can re-extract it.
+
+    Implements ``OutputTextExtractor``, so the engine runs the leak check.
+    ``extra`` simulates content the writer failed to redact.
+    """
+
+    def __init__(self, extra: str = "") -> None:
+        self.extra = extra
+        self.docs: list[StructuredDocument] = []
+
+    def write(self, doc: StructuredDocument, path: Path) -> None:
+        self.docs.append(doc)
+        path.write_text("\n".join(s.text for s in doc.segments) + self.extra)
+
+    def extract_text(self, path: Path) -> str:
+        return path.read_text()
+
+
+class TestCommitLeakCheck:
+    _setup = TestCommitReviewSession._setup
+
+    def _accept_all(self, store: SessionStore) -> None:
+        session = store.load("sess-commit")
+        for prop in session.proposals:
+            session.decisions.append(
+                ProposalDecision(proposal_id=prop.detection_id, status="accept")
+            )
+        store.save(session)
+
+    def _commit(self, engine, reader, writer, store, out: Path) -> Path:  # type: ignore[no-untyped-def]
+        return engine.commit_review_session(
+            reader=reader,
+            writer=writer,
+            session_id="sess-commit",
+            output_path=out,
+            session_store=store,
+            committed_at=_FIXED_NOW,
+        )
+
+    def test_replacements_recorded_in_segment_metadata(self, tmp_path: Path) -> None:
+        segments = [TextSegment(id="s0", text="Alice met Bob")]
+        det = DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice")
+        engine, reader, _, store, _ = self._setup(tmp_path, segments, [det])
+        self._accept_all(store)
+        writer = _EchoTextWriter()
+        self._commit(engine, reader, writer, store, tmp_path / "out.txt")
+        seg = writer.docs[0].segments[0]
+        assert seg.metadata["replacements"] == [
+            {
+                "start": 0,
+                "end": 5,
+                "original": "Alice",
+                "text": "[PERSON]",
+                "leak_original": "Alice",
+                "leak_extra": [],
+            }
+        ]
+
+    def test_non_str_extract_text_fails_closed(self, tmp_path: Path) -> None:
+        class _BadExtractWriter(_EchoTextWriter):
+            def extract_text(self, path: Path) -> str:
+                return Mock()  # type: ignore[return-value]
+
+        segments = [TextSegment(id="s0", text="Alice met Bob")]
+        det = DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice")
+        engine, reader, _, store, _ = self._setup(tmp_path, segments, [det])
+        self._accept_all(store)
+        out = tmp_path / "out.txt"
+        with pytest.raises(DocumentError, match="expected str"):
+            self._commit(engine, reader, _BadExtractWriter(), store, out)
+        assert not out.exists()
+
+    def test_clean_output_commits(self, tmp_path: Path) -> None:
+        segments = [TextSegment(id="s0", text="Alice met Bob")]
+        det = DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice")
+        engine, reader, _, store, _ = self._setup(tmp_path, segments, [det])
+        self._accept_all(store)
+        out = self._commit(engine, reader, _EchoTextWriter(), store, tmp_path / "out.txt")
+        assert out.read_text() == "[PERSON] met Bob"
+        assert store.load("sess-commit").status == "committed"
+
+    def test_surviving_original_fails_commit_and_deletes_output(self, tmp_path: Path) -> None:
+        from sanctum.core.exceptions import LeakCheckError
+
+        segments = [TextSegment(id="s0", text="Alice met Bob")]
+        det = DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice")
+        engine, reader, _, store, _ = self._setup(tmp_path, segments, [det])
+        self._accept_all(store)
+        out = tmp_path / "out.txt"
+        with pytest.raises(LeakCheckError) as info:
+            self._commit(engine, reader, _EchoTextWriter(extra="\nfooter: Alice"), store, out)
+        assert info.value.leaks == ["Alice"]
+        assert not out.exists()
+        # Session stays open so the reviewer can fix it and retry.
+        assert store.load("sess-commit").status == "open"
+
+    def test_explicitly_rejected_duplicate_is_not_a_leak(self, tmp_path: Path) -> None:
+        segments = [
+            TextSegment(id="s0", text="Alice met Bob"),
+            TextSegment(id="s1", text="Alice met Bob"),
+        ]
+        det = DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice")
+        engine, reader, _, store, _ = self._setup(tmp_path, segments, [det])
+        session = store.load("sess-commit")
+        first, second = session.proposals
+        session.decisions.append(ProposalDecision(proposal_id=first.detection_id, status="accept"))
+        session.decisions.append(ProposalDecision(proposal_id=second.detection_id, status="reject"))
+        store.save(session)
+        out = self._commit(engine, reader, _EchoTextWriter(), store, tmp_path / "out.txt")
+        assert out.read_text() == "[PERSON] met Bob\nAlice met Bob"
+
+    def test_undecided_duplicate_is_a_leak(self, tmp_path: Path) -> None:
+        from sanctum.core.exceptions import LeakCheckError
+
+        segments = [
+            TextSegment(id="s0", text="Alice met Bob"),
+            TextSegment(id="s1", text="Alice met Bob"),
+        ]
+        det = DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice")
+        engine, reader, _, store, _ = self._setup(tmp_path, segments, [det])
+        session = store.load("sess-commit")
+        session.decisions.append(
+            ProposalDecision(proposal_id=session.proposals[0].detection_id, status="accept")
+        )
+        store.save(session)
+        with pytest.raises(LeakCheckError):
+            self._commit(engine, reader, _EchoTextWriter(), store, tmp_path / "out.txt")
+
+
+def test_process_document_runs_leak_check(tmp_path: Path) -> None:
+    from sanctum.core.exceptions import LeakCheckError
+
+    det = DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice")
+    engine, _, _ = _engine([det])
+    reader = _make_reader(lambda p: _build_doc([TextSegment(id="s0", text="Alice met Bob")], p))
+    out = tmp_path / "out.txt"
+    engine.process_document(reader, _EchoTextWriter(), tmp_path / "in.docx", out)
+    assert out.read_text() == "[PERSON] met Bob"
+    with pytest.raises(LeakCheckError):
+        engine.process_document(reader, _EchoTextWriter(extra=" Alice"), tmp_path / "in.docx", out)
+    assert not out.exists()
+
+
+# -------- Leak check on fragments of linked (split) findings -------------------
+
+
+class _SkippingWriter(_EchoTextWriter):
+    """Echo writer that "forgets" to write some segments: their original text stays."""
+
+    def __init__(self, originals: dict[str, str]) -> None:
+        super().__init__()
+        self.originals = originals
+
+    def write(self, doc: StructuredDocument, path: Path) -> None:
+        self.docs.append(doc)
+        texts = [self.originals.get(s.id, s.text) for s in doc.segments]
+        path.write_text("\n".join(texts))
+
+
+def _name_analyzer(name: str) -> Mock:
+    """Analyzer mock returning a PERSON for every occurrence of ``name``."""
+
+    def analyze(text: str, **_: object) -> list[DetectionResult]:
+        out: list[DetectionResult] = []
+        i = text.find(name)
+        while i >= 0:
+            out.append(
+                DetectionResult(
+                    entity_type="PERSON", start=i, end=i + len(name), score=0.9, text_span=name
+                )
+            )
+            i = text.find(name, i + len(name))
+        return out
+
+    analyzer = Mock()
+    analyzer.analyze.side_effect = analyze
+    return analyzer
+
+
+SPLIT_SEGMENTS = [
+    TextSegment(id="p0/r0", text="Dear Jennifer", block="p0"),
+    TextSegment(id="p0/r1", text=" ", block="p0"),
+    TextSegment(id="p0/r2", text="Martin, thanks.", block="p0"),
+]
+
+
+class TestLinkedFindingLeakCheck:
+    def _session(
+        self, tmp_path: Path, segments: list[TextSegment], name: str
+    ) -> tuple[SanctumEngine, Mock, SessionStore]:
+        input_path = tmp_path / "input.docx"
+        input_path.write_bytes(b"PK\x03\x04fake")
+        engine = SanctumEngine(analyzer=_name_analyzer(name), anonymizer=_bracket_anonymizer())
+        reader = _make_reader(lambda p: _build_doc(segments, p))
+        store = SessionStore(root=tmp_path / "sessions")
+        engine.create_review_session(
+            reader=reader,
+            input_path=input_path,
+            default_operator="replace",
+            session_store=store,
+            session_id="sess-commit",
+            created_at=_FIXED_NOW,
+        )
+        return engine, reader, store
+
+    def _decide(self, store: SessionStore, status_by_index: dict[int, str]) -> None:
+        from sanctum.core.review.session import add_decision
+
+        session = store.load("sess-commit")
+        for i, status in status_by_index.items():
+            pid = session.proposals[i].detection_id
+            add_decision(session, ProposalDecision(proposal_id=pid, status=status))  # type: ignore[arg-type]
+        store.save(session)
+
+    def _commit(self, engine, reader, writer, store, out: Path) -> Path:  # type: ignore[no-untyped-def]
+        return engine.commit_review_session(
+            reader=reader,
+            writer=writer,
+            session_id="sess-commit",
+            output_path=out,
+            session_store=store,
+            committed_at=_FIXED_NOW,
+        )
+
+    def test_surviving_tail_fragment_fails_commit(self, tmp_path: Path) -> None:
+        from sanctum.core.exceptions import LeakCheckError
+
+        engine, reader, store = self._session(tmp_path, SPLIT_SEGMENTS, "Jennifer Martin")
+        self._decide(store, {0: "accept"})
+        writer = _SkippingWriter({"p0/r2": "Martin, thanks."})
+        out = tmp_path / "out.txt"
+        with pytest.raises(LeakCheckError):
+            self._commit(engine, reader, writer, store, out)
+        assert not out.exists()
+
+    def test_surviving_head_fragment_fails_commit(self, tmp_path: Path) -> None:
+        from sanctum.core.exceptions import LeakCheckError
+
+        engine, reader, store = self._session(tmp_path, SPLIT_SEGMENTS, "Jennifer Martin")
+        self._decide(store, {2: "accept"})
+        writer = _SkippingWriter({"p0/r0": "Dear Jennifer"})
+        with pytest.raises(LeakCheckError):
+            self._commit(engine, reader, writer, store, tmp_path / "out.txt")
+
+    def test_mid_word_split_raises_no_false_leak_on_unrelated_text(self, tmp_path: Path) -> None:
+        segments = [
+            TextSegment(id="p0/r0", text="Dear Jen", block="p0"),
+            TextSegment(id="p0/r1", text="nifer Mar", block="p0"),
+            TextSegment(id="p0/r2", text="tin, thanks.", block="p0"),
+            TextSegment(id="p1/r0", text="Ask Jen about the tin roof.", block="p1"),
+        ]
+        engine, reader, store = self._session(tmp_path, segments, "Jennifer Martin")
+        self._decide(store, {0: "accept"})
+        out = self._commit(engine, reader, _EchoTextWriter(), store, tmp_path / "out.txt")
+        assert out.read_text() == "Dear [PERSON]\n\n, thanks.\nAsk Jen about the tin roof."
+
+    def test_words_of_a_rejected_group_are_kept(self, tmp_path: Path) -> None:
+        segments = [*SPLIT_SEGMENTS, TextSegment(id="p1/r0", text="Jennifer Martin", block="p1")]
+        engine, reader, store = self._session(tmp_path, segments, "Jennifer Martin")
+        # Reject the split group, accept the solo occurrence; the writer also
+        # drops the split group's tail edit, which is fine: it was rejected.
+        self._decide(store, {0: "reject", 3: "accept"})
+        out = self._commit(engine, reader, _EchoTextWriter(), store, tmp_path / "out.txt")
+        assert out.read_text() == "Dear Jennifer\n \nMartin, thanks.\n[PERSON]"
+
+    def test_process_document_catches_a_surviving_fragment(self, tmp_path: Path) -> None:
+        from sanctum.core.exceptions import LeakCheckError
+
+        engine = SanctumEngine(
+            analyzer=_name_analyzer("Jennifer Martin"), anonymizer=_bracket_anonymizer()
+        )
+        reader = _make_reader(lambda p: _build_doc(SPLIT_SEGMENTS, p))
+        writer = _SkippingWriter({"p0/r2": "Martin, thanks."})
+        out = tmp_path / "out.txt"
+        with pytest.raises(LeakCheckError):
+            engine.process_document(reader, writer, tmp_path / "in.docx", out)
+        assert not out.exists()

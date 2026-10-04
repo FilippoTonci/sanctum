@@ -20,6 +20,8 @@ from urllib.parse import urlsplit
 from flask import current_app, request
 from pydantic import ValidationError
 
+from sanctum.core.exceptions import LeakCheckError
+
 
 def is_local_host_header(host_header: str, allowed: set[str]) -> bool:
     """Host header must match one of the loopback aliases the server owns."""
@@ -115,3 +117,14 @@ __all__ = [
     "parse_body",
     "validate_local_path",
 ]
+
+
+def leak_check_response(exc: LeakCheckError) -> tuple[dict, int]:
+    """422 body for a failed post-write leak check (commit and /process-file).
+
+    The output was already deleted. ``error`` counts leaks only and is safe
+    to log; ``details`` names each leaked value and how often it survived,
+    for the local, authenticated caller, which already holds the document.
+    """
+    details = [{"leak": v, "occurrences": exc.occurrences.get(v, 1)} for v in exc.leaks]
+    return {"error": str(exc), "details": details}, 422

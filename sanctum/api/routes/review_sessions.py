@@ -8,6 +8,9 @@ Server-side state for the HITL review flow (Phase 1.5 WS2). Clients:
 - ``GET /review-sessions/{id}/input`` — the original input bytes; used
   by the desktop to resume an open session. ``410 Gone`` after the
   session reaches a terminal status (commit / abandon) sheds them.
+- ``GET /review-sessions/{id}/layout`` — positioned layout (shared
+  layout contract) for pptx and pdf; ``415`` for other formats,
+  ``410`` once the input bytes are shed.
 - ``PATCH /review-sessions/{id}/decisions/{proposal_id}`` — accept /
   reject a proposal; set operator / params / custom_replacement.
 - ``POST /review-sessions/{id}/decisions/user-added`` — add a span the
@@ -25,13 +28,15 @@ authoritative cache.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import datetime, timezone
+from functools import wraps
 from io import BytesIO
-from typing import Any
+from typing import Any, TypeVar
 
 from flask import Blueprint, Response, current_app, send_file
 
-from sanctum.api._internal import parse_body, validate_local_path
+from sanctum.api._internal import leak_check_response, parse_body, validate_local_path
 from sanctum.api.auth import require_bearer_token
 from sanctum.api.schemas import (
     AddUserAddedDecisionRequest,
@@ -41,6 +46,7 @@ from sanctum.api.schemas import (
     DecisionWithPreviewResponse,
     PatchProposalDecisionRequest,
     ReviewSessionIndexEntry,
+    ReviewSessionLayoutResponse,
     ReviewSessionListResponse,
     ReviewSessionResponse,
 )
@@ -50,6 +56,7 @@ from sanctum.core.exceptions import (
     AnonymizationError,
     DocumentError,
     InvalidOperatorParamsError,
+    LeakCheckError,
     ReviewSessionAlreadyCommittedError,
     ReviewSessionInvalidDecisionError,
     ReviewSessionNotFoundError,
@@ -68,9 +75,12 @@ from sanctum.core.review.session import abandon as abandon_session
 from sanctum.core.review.session import add_decision, apply_user_added_with_overlap_purge
 from sanctum.core.review.store import SessionStore
 from sanctum.documents import adapter_for
+from sanctum.documents.layout import build_layout, supports_layout
 
 review_sessions_bp = Blueprint("review_sessions", __name__, url_prefix="/review-sessions")
 
+
+_R = TypeVar("_R")
 
 # ----- shared plumbing -----------------------------------------------------
 
@@ -83,6 +93,20 @@ def _get_engine() -> SanctumEngine | None:
 def _get_store() -> SessionStore | None:
     store = current_app.config.get("SANCTUM_SESSION_STORE")
     return store if isinstance(store, SessionStore) else None
+
+
+def _serialised(view: Callable[..., _R]) -> Callable[..., _R]:
+    """Run a mutating view under the per-session lock (load -> mutate -> save)."""
+
+    @wraps(view)
+    def wrapper(session_id: str, *args: Any, **kwargs: Any) -> _R:
+        store = _get_store()
+        if store is None:
+            return view(session_id, *args, **kwargs)
+        with store.locked(session_id):
+            return view(session_id, *args, **kwargs)
+
+    return wrapper
 
 
 def _engine_and_store() -> tuple[SanctumEngine, SessionStore] | tuple[None, tuple[dict, int]]:
@@ -523,8 +547,65 @@ def get_session_input(session_id: str) -> tuple[dict, int] | Response:
     )
 
 
+@review_sessions_bp.get("/<session_id>/layout")
+@require_bearer_token
+def get_session_layout(session_id: str) -> tuple[dict, int]:
+    """Return the review layout (pages → positioned items) for an OPEN session.
+
+    Built on demand from the pinned input bytes, never persisted — it
+    carries the same plaintext as the input. Segment ids in the layout
+    are produced by the same walker as the session's segments.
+
+    415 when the session's format has no layout builder (docx renders
+    client-side from ``/input``); 410 once a terminal session shed its
+    input bytes, mirroring ``/input``.
+    """
+    store = _get_store()
+    if store is None:
+        current_app.logger.error(
+            "/review-sessions/<id>/layout called but SANCTUM_SESSION_STORE is unconfigured"
+        )
+        return {"error": "session store not configured"}, 503
+
+    session, load_err = _load_session(store, session_id)
+    if load_err is not None:
+        return load_err
+    assert session is not None
+
+    if not supports_layout(session.format):
+        return {"error": f"no review layout for {session.format!r} sessions"}, 415
+
+    if session.status != "open":
+        return (
+            {
+                "error": (
+                    f"session is {session.status}; input bytes were shed at terminal status "
+                    "and the layout can no longer be built"
+                )
+            },
+            410,
+        )
+
+    try:
+        input_bytes = store.load_input_bytes(session_id)
+    except ReviewSessionNotFoundError:
+        return {"error": "session input bytes are missing on disk"}, 410
+
+    try:
+        layout = build_layout(session.format, input_bytes)
+    except UnsupportedDocumentFormatError as exc:
+        return {"error": str(exc)}, 415
+    except Exception as exc:
+        current_app.logger.exception("GET /review-sessions/%s/layout: build failed", session_id)
+        return {"error": f"document failure: {exc}"}, 500
+
+    payload = ReviewSessionLayoutResponse.model_validate(layout)
+    return payload.model_dump(mode="json"), 200
+
+
 @review_sessions_bp.patch("/<session_id>/decisions/<proposal_id>")
 @require_bearer_token
+@_serialised
 def patch_proposal_decision(session_id: str, proposal_id: str) -> tuple[dict, int]:
     engine_or_err = _engine_and_store()
     if engine_or_err[0] is None:
@@ -573,6 +654,7 @@ def patch_proposal_decision(session_id: str, proposal_id: str) -> tuple[dict, in
 
 @review_sessions_bp.post("/<session_id>/decisions/user-added")
 @require_bearer_token
+@_serialised
 def add_user_added_decision(session_id: str) -> tuple[dict, int]:
     engine_or_err = _engine_and_store()
     if engine_or_err[0] is None:
@@ -651,6 +733,7 @@ def add_user_added_decision(session_id: str) -> tuple[dict, int]:
 
 @review_sessions_bp.delete("/<session_id>/decisions/user-added/<ua_id>")
 @require_bearer_token
+@_serialised
 def delete_user_added_decision(session_id: str, ua_id: str) -> tuple[dict, int] | tuple[str, int]:
     _, store_err = _engine_and_store()
     if store_err is not None and isinstance(store_err, tuple):
@@ -682,6 +765,7 @@ def delete_user_added_decision(session_id: str, ua_id: str) -> tuple[dict, int] 
 
 @review_sessions_bp.post("/<session_id>/commit")
 @require_bearer_token
+@_serialised
 def commit_session(session_id: str) -> tuple[dict, int]:
     engine_or_err = _engine_and_store()
     if engine_or_err[0] is None:
@@ -754,6 +838,14 @@ def commit_session(session_id: str) -> tuple[dict, int]:
     except InvalidOperatorParamsError as exc:
         current_app.logger.info("/commit: invalid operator params: %s", exc)
         return {"error": f"invalid operator_params: {exc}"}, 400
+    except LeakCheckError as exc:
+        # The output was deleted and the session is still open. 422: the
+        # request was well-formed but the decisions leave a replaced value
+        # visible; the reviewer can add a manual redaction and retry. The
+        # log line only counts leaks; the values go back to the (local,
+        # authenticated) caller, which already holds them in the session.
+        current_app.logger.warning("POST /review-sessions/%s/commit: %s", session_id, exc)
+        return leak_check_response(exc)
     except DocumentError as exc:
         current_app.logger.exception("POST /review-sessions/%s/commit: DocumentError", session_id)
         return {"error": f"document failure: {exc}"}, 500
@@ -777,6 +869,7 @@ def commit_session(session_id: str) -> tuple[dict, int]:
 
 @review_sessions_bp.delete("/<session_id>")
 @require_bearer_token
+@_serialised
 def abandon(session_id: str) -> tuple[dict, int] | tuple[str, int]:
     store = _get_store()
     if store is None:

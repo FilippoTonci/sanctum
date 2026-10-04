@@ -71,9 +71,8 @@ coverage below the gate, add tests before merging.
 ## Pull requests
 
 - Open PRs against `main`.
-- Keep PRs focused. Each of the Phase 1 workstreams (CI, adapters, mapping
-  store, API, transformer tier) is broken down further in `plans/` at the
-  repo root — each adapter and each milestone should land as its own PR.
+- Keep PRs focused. Each adapter and each milestone (CI, mapping store, API,
+  transformer tier) should land as its own PR.
 - The first PR that changes lint/type rules should be **config-only**; land
   the mechanical fixes it surfaces in a separate "baseline fix" PR so review
   stays legible.
@@ -82,7 +81,7 @@ coverage below the gate, add tests before merging.
 
 Fixtures live under `tests/fixtures/`. For Office formats (docx/xlsx/pdf/pptx),
 generate binaries deterministically via `scripts/generate_office_fixtures.py`
-so CI stays offline. Never commit fixtures that contain real client data or
+(PDF redaction samples: `scripts/generate_pdf_samples.py`) so CI stays offline. Never commit fixtures that contain real client data or
 anything exceeding 500 KB (the pre-commit hook will block it).
 
 ## Questions

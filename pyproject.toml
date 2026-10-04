@@ -39,6 +39,11 @@ documents = [
     "python-pptx>=0.6.21",
     "pypdf>=4.0",
     "reportlab>=4.0",
+    # Rasterizes pages for flattened PDF redaction (Phase 3.5 WS3).
+    # Apache-2.0 / BSD-3 (PDFium). Chosen over PyMuPDF, which is AGPL.
+    "pypdfium2>=4.0",
+    # Paints redaction boxes on the raster; already pulled in by pdfplumber.
+    "pillow>=10.0",
 ]
 # Mapping-store runtime deps (WS3). cryptography provides ChaCha20-Poly1305
 # AEAD; argon2-cffi provides the Argon2id passphrase KDF.
@@ -162,6 +167,7 @@ module = [
     "presidio_anonymizer.*",
     "faker.*",
     "pdfplumber.*",
+    "pypdfium2.*",
     "openpyxl.*",
     "docx.*",
     "pptx.*",

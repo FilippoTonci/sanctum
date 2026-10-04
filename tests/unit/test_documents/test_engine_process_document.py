@@ -32,7 +32,7 @@ def mock_reader():
 
 @pytest.fixture()
 def mock_writer():
-    return Mock()
+    return Mock(spec=["write"])
 
 
 def _detection(text_span: str) -> DetectionResult:
@@ -78,9 +78,10 @@ def test_process_document_anonymizes_each_segment(mock_reader, mock_writer):
     analyzer = Mock()
     analyzer.analyze.side_effect = [[_detection("Alice")], [_detection("Bob")]]
     anonymizer = Mock()
+    # Each finding is rendered on its own text, then spliced into its segment.
     anonymizer.anonymize.side_effect = [
-        _anon_result("Alice signed", "<PERSON> signed"),
-        _anon_result("Bob witnessed", "<PERSON> witnessed"),
+        _anon_result("Alice", "<PERSON>"),
+        _anon_result("Bob", "<PERSON>"),
     ]
     mock_reader.read.return_value = StructuredDocument(
         source_path=Path("in.docx"),
