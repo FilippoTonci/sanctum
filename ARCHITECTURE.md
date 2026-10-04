@@ -18,7 +18,6 @@ sanctum/                ← the Python package (the only thing shipped)
   documents/            ← format adapters (docx / pdf / pptx / xlsx / text)
   security/             ← encrypted mapping store + Argon2 KDF
 tests/                  ← unit / integration / evaluation
-plans/                  ← phase plans (historical)
 schema/                 ← generated OpenAPI snapshot (contract compat gate)
 scripts/                ← fixture generation, OpenAPI export, compat check
 notebooks/              ← exploratory analysis (not shipped)

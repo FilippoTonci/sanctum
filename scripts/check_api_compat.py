@@ -145,7 +145,7 @@ def main() -> int:
         print(f"  - {b}", file=sys.stderr)
     print(
         "\nEither revert the change, or coordinate a lockstep bump of the "
-        "sanctum commit pinned by sanctum-desktop. See plans/phase-3-desktop-ui.md WS1.",
+        "sanctum commit pinned by sanctum-desktop.",
         file=sys.stderr,
     )
     return 1

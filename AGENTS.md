@@ -8,10 +8,9 @@ Presidio. **All processing must be offline** — no runtime network calls.
 
 ## Work plans, commits, PRs
 
-Work is organized around **plans** in `plans/` at the repo root (e.g. Phase 1
-plan with Workstreams WS1…WSN, each with numbered substeps). Plans are
-version-controlled so references in the code/docs stay in sync with the
-plan as it evolves. Map that structure onto git:
+Work is organized into phases, each split into workstreams (WS1…WSN) with
+numbered substeps. Plans are not committed to the repo. Map that structure
+onto git:
 
 - **One PR per workstream** — a WS is the unit of review. Open the PR against
   `main` when the WS starts; keep it in draft while substeps land.

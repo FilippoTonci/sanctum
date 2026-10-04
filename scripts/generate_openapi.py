@@ -529,7 +529,7 @@ def build() -> dict[str, Any]:
             "description": (
                 "Loopback-only HTTP API for the Sanctum Python backend. "
                 "Consumed by the `sanctum-desktop` Electron app and the "
-                "`sanctum` CLI. See `plans/phase-3-desktop-ui.md` WS1."
+                "`sanctum` CLI."
             ),
         },
         "paths": _build_paths(),

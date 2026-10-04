@@ -71,9 +71,8 @@ coverage below the gate, add tests before merging.
 ## Pull requests
 
 - Open PRs against `main`.
-- Keep PRs focused. Each of the Phase 1 workstreams (CI, adapters, mapping
-  store, API, transformer tier) is broken down further in `plans/` at the
-  repo root — each adapter and each milestone should land as its own PR.
+- Keep PRs focused. Each adapter and each milestone (CI, mapping store, API,
+  transformer tier) should land as its own PR.
 - The first PR that changes lint/type rules should be **config-only**; land
   the mechanical fixes it surfaces in a separate "baseline fix" PR so review
   stays legible.

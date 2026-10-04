@@ -3,7 +3,7 @@
   "info": {
     "title": "Sanctum API",
     "version": "0.1.0",
-    "description": "Loopback-only HTTP API for the Sanctum Python backend. Consumed by the `sanctum-desktop` Electron app and the `sanctum` CLI. See `plans/phase-3-desktop-ui.md` WS1."
+    "description": "Loopback-only HTTP API for the Sanctum Python backend. Consumed by the `sanctum-desktop` Electron app and the `sanctum` CLI."
   },
   "paths": {
     "/analyze": {
@@ -1749,7 +1749,7 @@
       },
       "HealthResponse": {
         "additionalProperties": false,
-        "description": "Liveness payload for `/health`.\n\n`mapping_store_unlocked` is always present so the GUI can render the\nlock indicator from a single field; WS4.7 wires it to the real store\nstate when the mapping routes land.\n\n`sanctum_commit` is the build-time SHA of the bundled sidecar. The\nPhase 3 desktop app compares this against the SHA it was built with\nand fails fast on mismatch \u2014 the atomic-installer contract (see\n`plans/phase-3-desktop-ui.md` WS1 substep 1). The sentinel `\"dev\"`\nis reserved for local development and tolerated by the desktop.",
+        "description": "Liveness payload for `/health`.\n\n`mapping_store_unlocked` is always present so the GUI can render the\nlock indicator from a single field; WS4.7 wires it to the real store\nstate when the mapping routes land.\n\n`sanctum_commit` is the build-time SHA of the bundled sidecar. The\nPhase 3 desktop app compares this against the SHA it was built with\nand fails fast on mismatch \u2014 the atomic-installer contract. The sentinel `\"dev\"`\nis reserved for local development and tolerated by the desktop.",
         "properties": {
           "status": {
             "const": "ok",

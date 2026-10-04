@@ -65,8 +65,7 @@ class HealthResponse(_Frozen):
 
     `sanctum_commit` is the build-time SHA of the bundled sidecar. The
     Phase 3 desktop app compares this against the SHA it was built with
-    and fails fast on mismatch — the atomic-installer contract (see
-    `plans/phase-3-desktop-ui.md` WS1 substep 1). The sentinel `"dev"`
+    and fails fast on mismatch — the atomic-installer contract. The sentinel `"dev"`
     is reserved for local development and tolerated by the desktop.
     """
 

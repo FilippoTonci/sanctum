@@ -9,8 +9,8 @@ records its API impact here).
 This changelog covers **the Python backend** in this repository
 (`sanctum`). The Phase 3 Electron desktop app (`sanctum-desktop`) maintains
 its own changelog in its own repository. Each `sanctum-desktop` release
-pins a specific `sanctum` commit — see `plans/phase-3-desktop-ui.md` for
-the atomic-installer contract.
+pins a specific `sanctum` commit; `/health` reports it as `sanctum_commit` so
+the desktop can detect a mismatched backend.
 
 ### Guidance for contributors
 
@@ -197,5 +197,4 @@ Earlier entries in this release (Phase 3 backend work):
 ## [0.1.0] — unreleased
 
 Initial pre-release. Covers Phase 0 (foundation), Phase 1 (document
-processing + API), and Phase 1.5 (review workflow). See `plans/` for
-the phase-by-phase breakdown.
+processing + API), and Phase 1.5 (review workflow).
