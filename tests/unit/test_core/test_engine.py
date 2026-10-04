@@ -10,6 +10,7 @@ from sanctum.core.engine import SanctumEngine
 from sanctum.core.exceptions import (
     AnalysisError,
     AnonymizationError,
+    DocumentError,
     ReviewSessionAlreadyCommittedError,
 )
 from sanctum.core.models import (
@@ -131,8 +132,7 @@ def _make_reader(doc_factory: Callable[[Path], StructuredDocument]) -> Mock:
 
 def _make_writer() -> Mock:
     """Writer mock that records the mutated document it was asked to write."""
-    writer = Mock()
-    writer.write = Mock()
+    writer = Mock(spec=["write"])
     return writer
 
 
@@ -521,6 +521,20 @@ class TestCommitLeakCheck:
                 "leak_extra": [],
             }
         ]
+
+    def test_non_str_extract_text_fails_closed(self, tmp_path: Path) -> None:
+        class _BadExtractWriter(_EchoTextWriter):
+            def extract_text(self, path: Path) -> str:
+                return Mock()  # type: ignore[return-value]
+
+        segments = [TextSegment(id="s0", text="Alice met Bob")]
+        det = DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice")
+        engine, reader, _, store, _ = self._setup(tmp_path, segments, [det])
+        self._accept_all(store)
+        out = tmp_path / "out.txt"
+        with pytest.raises(DocumentError, match="expected str"):
+            self._commit(engine, reader, _BadExtractWriter(), store, out)
+        assert not out.exists()
 
     def test_clean_output_commits(self, tmp_path: Path) -> None:
         segments = [TextSegment(id="s0", text="Alice met Bob")]

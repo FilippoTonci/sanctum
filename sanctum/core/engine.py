@@ -417,6 +417,13 @@ def _run_leak_check(
     except Exception as exc:
         output_path.unlink(missing_ok=True)
         raise DocumentError(f"Leak check could not re-read {output_path}: {exc}") from exc
+    if not isinstance(text, str):
+        # Fail closed: an unverifiable output must not stay on disk.
+        output_path.unlink(missing_ok=True)
+        raise DocumentError(
+            f"Leak check could not verify {output_path}: extract_text returned "
+            f"{type(text).__name__}, expected str"
+        )
     try:
         verify_no_leaks(text, originals, where=output_path.name)
     except LeakCheckError:

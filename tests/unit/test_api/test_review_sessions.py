@@ -149,8 +149,7 @@ def fake_reader() -> Mock:
 
 @pytest.fixture()
 def fake_writer() -> Mock:
-    writer = Mock()
-    writer.write = Mock()
+    writer = Mock(spec=["write"])
     return writer
 
 

@@ -32,7 +32,7 @@ def mock_reader():
 
 @pytest.fixture()
 def mock_writer():
-    return Mock()
+    return Mock(spec=["write"])
 
 
 def _detection(text_span: str) -> DetectionResult:
