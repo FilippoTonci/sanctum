@@ -46,9 +46,9 @@ class TestCollectSeeds:
 
     def test_higher_score_decides_type(self) -> None:
         seeds = collect_seeds([("ORGANIZATION", "Jordan", 0.5), ("PERSON", "Jordan", 0.9)])
-        assert seeds["jordan"] == Seed("PERSON", 0.9)
-        seeds = collect_seeds([("PERSON", "Jordan", 0.9), ("ORGANIZATION", "Jordan", 0.5)])
-        assert seeds["jordan"] == Seed("PERSON", 0.9)
+        assert seeds["jordan"] == Seed("PERSON", 0.9, frozenset({"Jordan"}))
+        seeds = collect_seeds([("PERSON", "Jordan", 0.9), ("ORGANIZATION", "JORDAN", 0.5)])
+        assert seeds["jordan"] == Seed("PERSON", 0.9, frozenset({"Jordan", "JORDAN"}))
 
 
 class TestFindMentions:
@@ -69,6 +69,14 @@ class TestFindMentions:
         seeds = collect_seeds([("PERSON", "Will Smith", 0.9)])
         found = [text[m.start : m.end] for m in find_mentions(text, seeds, [(0, 10)])]
         assert found == ["WILL"]
+
+    def test_verbatim_repeat_of_a_lowercase_hit_is_marked(self) -> None:
+        # The leak check is case-sensitive: if "parties" was replaced once, every
+        # other "parties" would fail the document, so propagation marks them.
+        text = "WHEREAS the parties agree. The Parties sign. Both parties."
+        seeds = collect_seeds([("ORGANIZATION", "parties", 0.4)])
+        found = [text[m.start : m.end] for m in find_mentions(text, seeds, [(12, 19)])]
+        assert found == ["Parties", "parties"]
 
     def test_lowercase_chat_allows_lowercase_names(self) -> None:
         text = "ok so dwayne said he'd call back later"

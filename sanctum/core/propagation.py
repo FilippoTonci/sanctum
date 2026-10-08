@@ -51,6 +51,7 @@ _CASE_WINDOW = 40
 class Seed:
     entity_type: str
     score: float
+    forms: frozenset[str] = frozenset()  # exact spellings it was seen in
 
 
 @dataclass(frozen=True)
@@ -73,8 +74,14 @@ def collect_seeds(findings: Iterable[tuple[str, str, float]]) -> dict[str, Seed]
             continue
         for candidate in _candidates(entity_type, text.strip()):
             key = candidate.lower()
-            if key and (key not in seeds or seeds[key].score < score):
-                seeds[key] = Seed(entity_type, score)
+            if not key:
+                continue
+            prev = seeds.get(key)
+            forms = (prev.forms if prev else frozenset()) | {candidate}
+            if prev is None or prev.score < score:
+                seeds[key] = Seed(entity_type, score, forms)
+            else:
+                seeds[key] = Seed(prev.entity_type, prev.score, forms)
     return seeds
 
 
@@ -87,7 +94,11 @@ def find_mentions(
 
     Longer seeds are matched first, so "Mark Price" wins over "Price". A
     single-word seed must look like a name where it occurs (Capitalised or
-    ALL CAPS), unless the text around it is all lower case (chat exports).
+    ALL CAPS), unless the text around it is all lower case (chat exports) or
+    it is spelled exactly as detected. The last rule keeps propagation in step
+    with the case-sensitive leak check: a word replaced once is replaced at
+    every verbatim repeat, so a low-confidence hit on, say, "parties" cannot
+    leave its other occurrences behind and fail the whole document.
     """
     taken = bytearray(len(text))
     for start, end in covered:
@@ -101,7 +112,8 @@ def find_mentions(
             start, end = m.span()
             if any(taken[start:end]):
                 continue
-            if " " not in key and not _looks_like_name(text, start, end):
+            word = text[start:end]
+            if " " not in key and word not in seed.forms and not _looks_like_name(text, start, end):
                 continue
             taken[start:end] = b"\x01" * (end - start)
             mentions.append(Mention(start, end, seed.entity_type, seed.score))
