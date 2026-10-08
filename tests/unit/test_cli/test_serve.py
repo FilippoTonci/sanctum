@@ -189,3 +189,15 @@ def test_serve_reuses_existing_token(runner: CliRunner, tmp_path: Path):
 
     assert result.exit_code == 0, result.output
     assert token_path.read_text().strip() == "preexisting-token"
+
+
+def test_serve_reports_a_missing_model_on_one_line(runner: CliRunner, tmp_path: Path):
+    from sanctum.core.exceptions import ConfigurationError
+
+    with patch(
+        "sanctum.cli.commands._create_engine",
+        side_effect=ConfigurationError("NER model not found in /x"),
+    ):
+        result = runner.invoke(cli, ["serve", "--token-path", str(tmp_path / "tok")])
+    assert result.exit_code == 1
+    assert "Error: NER model not found in /x" in result.output

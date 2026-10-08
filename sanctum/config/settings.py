@@ -1,31 +1,36 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class NlpSettings(BaseSettings):
-    """SpaCy / NLP model configuration.
+    """NLP / NER model configuration.
 
-    `ner_backend` selects which recognizer drives PERSON / LOCATION /
-    ORGANIZATION detection. `"spacy"` (default) uses Presidio's stock
-    `SpacyRecognizer` on top of `spacy_model`; `"gliner"` swaps that out
-    for a `GLiNERRecognizer`, keeping spaCy loaded as a tokenizer only
-    so context-dependent pattern recognizers still work.
+    PERSON / ORGANIZATION / LOCATION / DATE_TIME and ID numbers come from the
+    bundled GLiNER-PII ONNX model (``sanctum.analyzer.ner_model``), which
+    replaces Presidio's spaCy NER. spaCy still runs, as ``spacy_model``, for
+    the tokens and lemmas the pattern recognizers' context words need.
 
-    GLiNER weights are fetched from HuggingFace on first load and cached
-    under `~/.cache/huggingface/`. Treat that fetch as install-time, the
-    same posture as `en_core_web_lg`; set `HF_HUB_OFFLINE=1` in airgapped
-    environments to fail fast instead of attempting a network call.
+    ``ner_model_dir`` defaults to where the model is installed (next to the
+    desktop sidecar, or ``~/.cache/sanctum/models/``). The model is never
+    downloaded at runtime; if it is missing, engine construction fails with a
+    ``ConfigurationError`` that says how to fetch it.
+
+    ``ner_threshold`` is the model's own cut-off. GLiNER-PII is calibrated low:
+    0.2 is its benchmarked sweet spot; at Presidio's usual 0.4 it misses
+    three to four times as much.
     """
 
+    # Unknown keys (e.g. SANCTUM_NLP__NER_BACKEND from an older desktop build)
+    # are ignored rather than refusing to start.
+    model_config = SettingsConfigDict(extra="ignore")
+
     spacy_model: str = "en_core_web_sm"
-    ner_backend: Literal["spacy", "gliner"] = "spacy"
-    gliner_model: str = "urchade/gliner_medium-v2.1"
-    gliner_threshold: float = 0.4
+    ner_model_dir: Path | None = None
+    ner_threshold: float = Field(default=0.2, gt=0.0, lt=1.0)
 
 
 class AnalyzerSettings(BaseSettings):
