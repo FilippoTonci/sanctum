@@ -18,6 +18,11 @@ dependencies = [
     "faker>=20.0",
     "click>=8.0",
     "rich>=13.0",
+    # NER model runtime (sanctum/analyzer/gliner_onnx.py): runs the bundled
+    # GLiNER ONNX export without PyTorch.
+    "onnxruntime>=1.17",
+    "tokenizers>=0.15",
+    "numpy>=1.24",
 ]
 
 [project.optional-dependencies]
@@ -176,6 +181,8 @@ module = [
     "argon2.*",
     "cryptography.*",
     "waitress.*",
+    "onnxruntime.*",
+    "tokenizers.*",
 ]
 ignore_missing_imports = true
 
