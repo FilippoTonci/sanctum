@@ -16,6 +16,7 @@ source .venv/bin/activate          # Windows: .venv\Scripts\activate
 
 pip install -e ".[dev]"
 python -m spacy download en_core_web_sm
+python scripts/fetch_ner_model.py   # pinned NER model, ~200 MB, install-time only
 
 pre-commit install
 ```

@@ -116,8 +116,8 @@ Sanctum runs entirely on the local machine. The GUI communicates with a bundled 
 │  │                                        - Hash             │   │
 │  └──────────────────────────────────────────────────────────┘   │
 │  ┌──────────────────────┐  ┌───────────────────────────────┐   │
-│  │   spaCy / Transformers│  │  Encrypted Mapping Store      │   │
-│  │   (Local NLP Models) │  │  (Pseudonym ↔ Original Keys)  │   │
+│  │  GLiNER-PII (ONNX)   │  │  Encrypted Mapping Store      │   │
+│  │  + spaCy tokenizer   │  │  (Pseudonym ↔ Original Keys)  │   │
 │  └──────────────────────┘  └───────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
                             │
@@ -126,14 +126,19 @@ Sanctum runs entirely on the local machine. The GUI communicates with a bundled 
                   with it is up to you
 ```
 
-### Tiered Model Strategy
+### NER Model
 
-To accommodate different hardware, Sanctum offers two NLP tiers:
+Names, organisations, places, dates and ID numbers come from one bundled model,
+[`knowledgator/gliner-pii-base-v1.0`](https://huggingface.co/knowledgator/gliner-pii-base-v1.0)
+(Apache-2.0), run as a 197 MB uint8 ONNX file on ONNX Runtime with no PyTorch.
+Presidio's regex and checksum recognizers (email, phone, IBAN, card, ...) run
+alongside it, and a name-propagation pass marks every repeat of a detected
+name across the document.
 
-| Tier | Model | RAM Requirement | Best For |
+| On the [sanctum-research](https://github.com/FilippoTonci/sanctum-research) hard corpus (487 entities) | Missed | Precision | Peak RAM |
 |---|---|---|---|
-| **Standard** | `spaCy en_core_web_sm` + Regex | ~512 MB | Standard laptops, fast processing |
-| **Professional** | Transformer-based NER | ~2–4 GB | Workstations, high-accuracy requirements |
+| Previous default: spaCy `en_core_web_sm` | 101 | 0.74 | ~0.5 GB |
+| **Bundled GLiNER-PII + propagation** | **21** | **0.81** | **~1 GB** |
 
 ---
 
@@ -180,29 +185,28 @@ cd sanctum
 # Install in editable mode with dev dependencies
 pip install -e ".[dev]"
 
-# Download the spaCy NLP model
+# Download the spaCy NLP model (tokenization for the pattern recognizers)
 python -m spacy download en_core_web_sm
+
+# Fetch the pinned NER model (~200 MB, checksum-verified) into ~/.cache/sanctum/models/
+python scripts/fetch_ner_model.py
 ```
 
-### Professional-tier NER (optional)
+### NER model and the air gap
 
-The default Standard tier uses Presidio's spaCy recognizer (fast, CPU-only,
-no extra weights). The Professional tier swaps in **GLiNER-medium v2.1**,
-which in `sanctum-research` benchmarks lifts macro-F1 from 0.61 to 0.78 on
-the fixture corpus and cuts false positives by ~3×.
+Sanctum never downloads a model at runtime. `scripts/fetch_ner_model.py` is
+the one install-time fetch: it pulls the files pinned in
+`sanctum/analyzer/ner_model.py` (Hugging Face revision + SHA-256 per file) and
+refuses anything that doesn't match. `--check` verifies an existing copy
+without touching the network.
 
-```bash
-# Install the GLiNER extra (pulls in torch CPU wheel + gliner; ~900 MB)
-pip install -e ".[gliner]"
+If the model is missing, every command fails with an error naming that fetch
+command. To keep it somewhere else, set `SANCTUM_NLP__NER_MODEL_DIR`. The
+desktop sidecar ships the model inside the app, next to its executable.
 
-# Enable the backend via env var
-export SANCTUM_NLP__NER_BACKEND=gliner
-```
-
-First `sanctum analyze` call downloads the GLiNER weights (~820 MB) into
-`~/.cache/huggingface/`. For airgapped environments, pre-populate that
-cache and set `HF_HUB_OFFLINE=1` so the process fails fast if weights are
-missing instead of attempting a network call.
+`SANCTUM_NLP__NER_THRESHOLD` (default `0.2`) is the model's own cut-off. It
+is calibrated low: at Presidio's usual 0.4 it misses three to four times as
+much.
 
 ### CLI Usage
 
@@ -285,7 +289,7 @@ Sanctum is designed to help professionals meet the requirements of:
 - [x] CI/CD pipeline + pre-commit hooks + linter enforcement
 - [x] Flask localhost API (`/analyze`, `/anonymize`, `/process-file`, `/mapping/*`) served via waitress — background service for future GUI
 - [x] HTTP-reachable `mask` and `encrypt` operators via `operator_params`
-- [x] Transformer-based NER (Professional tier) — GLiNER-medium v2.1 via `sanctum[gliner]`, +0.17 macro-F1 over the spaCy baseline on the fixture corpus
+- [x] Transformer-based NER (Professional tier) — GLiNER-medium v2.1 via `sanctum[gliner]`, +0.17 macro-F1 over the spaCy baseline on the fixture corpus *(superseded by the bundled GLiNER-PII model, Phase 3)*
 
 ### Phase 1.5 — Human-in-the-loop Review Workflow
 *Reframed in issue #16: the canonical review surface is a Sanctum-owned API, driven by the Phase 3 desktop app. Native Office comments were briefly kept as a one-way export path and have since been dropped entirely (2026-04-24).*
@@ -318,11 +322,12 @@ Sanctum is designed to help professionals meet the requirements of:
 - [x] Drag-and-drop `.docx`, `.pptx` and `.pdf` import (review layout served by the backend); `.xlsx` deferred
 - [x] Selective redaction by entity type in the GUI (replaces the skipped Phase 1.5 WS3 reference UI — the Electron app consumes the same `/review-sessions` API directly)
 - [x] `.pdf` redaction by flattening affected pages (original text under a redaction is removed from the output); OCR for scanned PDFs is not yet supported
+- [ ] Bundled GLiNER-PII NER model (ONNX, no PyTorch) as the only detector, with document-wide name propagation — 101 → 21 misses on the sanctum-research hard corpus
 - [ ] Signed packaged installers for Windows (`.exe`) and macOS (`.dmg`)
 
 ### Phase 4 — Store Release & GA
 - [ ] `.xlsx` cell-level anonymization
-- [ ] Tiered model selection in GUI (Standard / Professional)
+- [ ] ~~Tiered model selection in GUI (Standard / Professional)~~ *— dropped (2026-10-08): one bundled model for everyone*
 - [ ] Multi-language support
 - [ ] Differential privacy noise layer for structured exports
 - [ ] Submission to Microsoft Store and/or Mac App Store

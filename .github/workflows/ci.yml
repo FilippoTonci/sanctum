@@ -103,6 +103,18 @@ jobs:
       - name: Download spaCy model
         run: python -m spacy download en_core_web_sm
 
+      # The bundled NER model (~200 MB), keyed on its pinned revision in
+      # sanctum/analyzer/ner_model.py. The fetch script skips files whose
+      # checksum already matches, so a cache hit makes no network call.
+      - name: Cache NER model
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/sanctum/models
+          key: ner-model-${{ hashFiles('sanctum/analyzer/ner_model.py') }}
+
+      - name: Fetch NER model
+        run: python scripts/fetch_ner_model.py
+
       - name: Run tests
         run: pytest -m "not evaluation"
 
