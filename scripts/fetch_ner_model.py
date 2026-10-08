@@ -8,7 +8,9 @@ Usage:
 
 Downloads the files listed in ``sanctum.analyzer.ner_model.FILES`` from
 Hugging Face at the pinned revision and checks each SHA-256 before moving it
-into place. Files already present with the right hash are skipped. Sanctum
+into place. Files already present with the right hash are skipped. The
+model's LICENSE and NOTICE (``licenses/<model>/``) are copied alongside, so
+every install, including the desktop sidecar bundle, carries its attribution. Sanctum
 itself never downloads the model at runtime (see CLAUDE.md, airgap invariant);
 this script is the one sanctioned way to get it onto a machine.
 """
@@ -26,6 +28,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from sanctum.analyzer.ner_model import (  # noqa: E402
+    DIR_NAME,
     FILES,
     REPO_ID,
     REVISION,
@@ -35,6 +38,7 @@ from sanctum.analyzer.ner_model import (  # noqa: E402
 )
 
 URL = "https://huggingface.co/{repo}/resolve/{rev}/{name}"
+LICENSES = ROOT / "licenses" / DIR_NAME
 
 
 def fetch(dest: Path) -> None:
@@ -60,6 +64,9 @@ def fetch(dest: Path) -> None:
             raise SystemExit(f"checksum mismatch for {name}: expected {expected}, got {actual}")
         tmp_path.replace(target)
         print(f"ok       {name}")
+    for src in sorted(LICENSES.iterdir()):
+        shutil.copyfile(src, dest / src.name)
+        print(f"copied   {src.name}")
 
 
 def main() -> int:

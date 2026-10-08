@@ -198,7 +198,8 @@ Sanctum never downloads a model at runtime. `scripts/fetch_ner_model.py` is
 the one install-time fetch: it pulls the files pinned in
 `sanctum/analyzer/ner_model.py` (Hugging Face revision + SHA-256 per file) and
 refuses anything that doesn't match. `--check` verifies an existing copy
-without touching the network.
+without touching the network. The model's Apache-2.0 `LICENSE` and `NOTICE`
+(from `licenses/`) are copied in next to it.
 
 If the model is missing, every command fails with an error naming that fetch
 command. To keep it somewhere else, set `SANCTUM_NLP__NER_MODEL_DIR`. The
