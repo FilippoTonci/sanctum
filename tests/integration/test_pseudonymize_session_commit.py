@@ -213,34 +213,6 @@ def _read_store_entries(path: Path) -> dict[str, dict[str, str]]:
         store.lock()
 
 
-def _redact_unflagged_miller(base: str, token: str, created: dict[str, Any]) -> None:
-    """Manually redact the "Miller" that detection misses.
-
-    The NDA fixture names "Miller, Henderson and Johnson" twice. NER flags
-    "Miller" as a PERSON in the signature block but not in the parties
-    paragraph, so accepting every proposal replaces one occurrence and leaves
-    the other. Since E7 the post-write leak check covers .docx and refuses
-    that commit; a manual redaction of the survivor is the remedy its error
-    names.
-    """
-    flagged = {p["segment_anchor"] for p in created["proposals"] if p["original"] == "Miller"}
-    seg = next(s for s in created["segments"] if "Miller" in s["text"] and s["id"] not in flagged)
-    start = seg["text"].index("Miller")
-    status, body = _request(
-        "POST",
-        f"{base}/review-sessions/{created['id']}/decisions/user-added",
-        token=token,
-        body={
-            "segment_anchor": seg["id"],
-            "entity_type": "PERSON",
-            "original": "Miller",
-            "start": start,
-            "end": start + len("Miller"),
-        },
-    )
-    assert status == 201, body
-
-
 # ---------- tests ----------
 
 
@@ -527,7 +499,6 @@ def test_double_commit_409s(server: tuple[str, str], store_path: Path, tmp_path:
                 token=token,
                 body={"status": "accept"},
             )
-        _redact_unflagged_miller(base, token, created)
         out_path = tmp_path / "first.docx"
         status, _ = _request(
             "POST",

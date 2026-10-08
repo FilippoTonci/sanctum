@@ -25,6 +25,7 @@ from sanctum.core.models import (
     TextSegment,
     UserAddedDecision,
 )
+from sanctum.core.propagation import propagate
 from sanctum.core.protocols import (
     Analyzer,
     Anonymizer,
@@ -55,9 +56,13 @@ class SanctumEngine:
         entities: list[str] | None = None,
         score_threshold: float | None = None,
     ) -> list[DetectionResult]:
-        """Run PII detection on the given text."""
+        """Run PII detection on the given text.
+
+        Names the analyzer finds are then marked wherever else they occur in
+        ``text`` (``sanctum.core.propagation``).
+        """
         try:
-            return self._analyzer.analyze(
+            detections = self._analyzer.analyze(
                 text,
                 language=language,
                 entities=entities,
@@ -65,6 +70,7 @@ class SanctumEngine:
             )
         except Exception as exc:
             raise AnalysisError(f"Analysis failed: {exc}") from exc
+        return propagate(text, detections)
 
     def anonymize(
         self,

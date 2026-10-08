@@ -116,8 +116,12 @@ class _FindAll:
     ) -> list[DetectionResult]:
         if self.body_only and not text.startswith("Dear"):
             return []
+        # Names found once are propagated to every block (core/propagation.py),
+        # which would hide the miss body_only simulates; tag NAME with a type
+        # propagation leaves alone so the leak check is what catches it.
+        name_kind = "ID_NUMBER" if self.body_only else "PERSON"
         out = []
-        for value, kind in ((NAME, "PERSON"), (EMAIL, "EMAIL_ADDRESS")):
+        for value, kind in ((NAME, name_kind), (EMAIL, "EMAIL_ADDRESS")):
             for m in re.finditer(re.escape(value), text):
                 out.append(
                     DetectionResult(
