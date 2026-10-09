@@ -25,6 +25,7 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+from sanctum.analyzer.ner_model import default_model_dir
 
 pytestmark = [
     pytest.mark.integration,
@@ -73,6 +74,8 @@ def serve_env(tmp_path: Path) -> dict[str, str]:
     """Isolated env: SANCTUM_COMMIT sentinel, HOME under tmp so the CLI
     doesn't try to write to the developer's real ~/.sanctum."""
     env = dict(os.environ)
+    # The bundled NER model lives under the real HOME; keep pointing at it.
+    env.setdefault("SANCTUM_NLP__NER_MODEL_DIR", str(default_model_dir()))
     env["HOME"] = str(tmp_path)
     env["SANCTUM_COMMIT"] = "sigterm-test"
     # Make the child import this checkout, not an editable install elsewhere.

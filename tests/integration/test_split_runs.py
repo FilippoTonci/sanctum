@@ -242,9 +242,11 @@ class _BodyOnlyAnalyzer:
         i = text.find("Jennifer Martin")
         if not text.startswith("Dear") or i < 0:
             return []
+        # Not PERSON: a name found once is propagated to every block, header
+        # included (core/propagation.py), which would hide the miss under test.
         return [
             DetectionResult(
-                entity_type="PERSON", start=i, end=i + 15, score=0.9, text_span="Jennifer Martin"
+                entity_type="ID_NUMBER", start=i, end=i + 15, score=0.9, text_span="Jennifer Martin"
             )
         ]
 

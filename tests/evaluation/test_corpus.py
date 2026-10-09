@@ -3,26 +3,25 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from sanctum.analyzer.adapter import PresidioAnalyzer
-from sanctum.analyzer.nlp_config import create_nlp_engine
-from sanctum.config.settings import settings
+from sanctum.cli.commands import _create_engine
+from sanctum.core.engine import SanctumEngine
 from tests.evaluation.scorer import EntityScorer, ScoringReport
 
 pytestmark = pytest.mark.evaluation
 
 
 @pytest.fixture(scope="module")
-def analyzer() -> PresidioAnalyzer:
-    # Match the production composition root in `sanctum.cli.commands`:
-    # an explicit NLP engine is what enables ORGANIZATION detection.
-    nlp_engine = create_nlp_engine(model_name=settings.nlp.spacy_model)
-    return PresidioAnalyzer(nlp_engine=nlp_engine)
+def analyzer() -> SanctumEngine:
+    # The production composition root: bundled GLiNER-PII NER, the pattern
+    # recognizers, and name propagation (SanctumEngine.analyze). Needs the
+    # model: `python scripts/fetch_ner_model.py`.
+    return _create_engine()
 
 
 class TestCorpusScoring:
     def test_corpus_scoring(
         self,
-        analyzer: PresidioAnalyzer,
+        analyzer: SanctumEngine,
         fixture_pairs: list[tuple[str, dict]],
         scorer: EntityScorer,
     ) -> None:
@@ -76,7 +75,7 @@ class TestCorpusScoring:
 
 
 class TestZeroPii:
-    def test_zero_pii_false_positives(self, analyzer: PresidioAnalyzer) -> None:
+    def test_zero_pii_false_positives(self, analyzer: SanctumEngine) -> None:
         """Technical text with no PII should produce zero or very few detections."""
         fixture_path = (
             Path(__file__).parent.parent / "fixtures" / "edge_cases" / "zero_pii_technical.txt"

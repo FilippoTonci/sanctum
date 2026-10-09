@@ -39,7 +39,7 @@ require signed builds before the user-facing line items flip.
 
 ```
 sanctum/core/        domain: engine, models, protocols, exceptions  (framework-agnostic)
-sanctum/analyzer/    adapter over presidio-analyzer
+sanctum/analyzer/    adapter over presidio-analyzer (+ bundled GLiNER-PII ONNX recognizer)
 sanctum/anonymizer/  adapter over presidio-anonymizer (+ custom HIPS operator via Faker)
 sanctum/documents/   structured doc adapters (.docx .xlsx .pdf .pptx) + registry
 sanctum/cli/         Click entrypoint + composition root (_create_engine)
@@ -62,13 +62,18 @@ is missing it will call `spacy.cli.download()` — breaking the airgap. The fix
 is to wire `sanctum/analyzer/nlp_config.py::create_nlp_engine` into the
 default path. Do not add code that silently downloads models.
 
-**GLiNER (Professional tier)**: `nlp.ner_backend = "gliner"` swaps the stock
-`SpacyRecognizer` for `GLiNERRecognizer` (default model
-`urchade/gliner_medium-v2.1`, ~820 MB). GLiNER loads weights via
-`GLiNER.from_pretrained()` which hits the HuggingFace hub on first run. Treat
-that fetch as install-time (same posture as `en_core_web_lg`) and cache under
-`~/.cache/huggingface/`. In airgapped environments, set `HF_HUB_OFFLINE=1` so
-a missing cache fails fast instead of attempting a network call.
+**Bundled NER model**: `_create_engine` always swaps the stock
+`SpacyRecognizer` for `GlinerOnnxRecognizer`
+(`sanctum/analyzer/gliner_recognizer.py`), which runs
+`knowledgator/gliner-pii-base-v1.0` as a uint8 ONNX file through a torch-free
+loader (`sanctum/analyzer/gliner_onnx.py`: onnxruntime + tokenizers + numpy).
+The model is pinned (revision + SHA-256) in `sanctum/analyzer/ner_model.py`
+and only ever read from disk: next to the frozen sidecar, else
+`~/.cache/sanctum/models/`, or `nlp.ner_model_dir`. Missing → `ConfigurationError`.
+The one sanctioned fetch is `scripts/fetch_ner_model.py` (install/build time).
+Its threshold (0.2) ships with it; don't inherit Presidio's 0.35–0.4 for it.
+Never add the `gliner` / `transformers` / `torch` packages back: they import
+PyTorch and resolve backbone files by Hub id.
 
 See `resources/presidio-architecture.md` for the full network-call audit and
 Presidio component breakdown — read it before touching the analyzer layer.
@@ -86,7 +91,8 @@ Segment granularity is the write-back unit, not the detection unit:
 - docx: per-run (+ `hf/...` headers/footers)  •  xlsx: per-string-cell  •  pdf: per-line (`page{i}/line{j}`)  •  pptx: per-run (frames, tables, groups, notes, alt text)
 
 Detection runs on whole paragraphs: adapters tag segments with `block` /
-`join_before`, `core/blocks.py` joins and analyses them, and findings spanning
+`join_before`, `core/blocks.py` joins and analyses them (then marks every
+repeat of a detected name across all blocks, `core/propagation.py`), and findings spanning
 segments become linked proposals (`group_id`/`group_index`/`group_original`)
 decided together. After every write, `core/leak_check.py` re-extracts the
 output (adapter `extract_text`, `OutputTextExtractor` port) and fails closed

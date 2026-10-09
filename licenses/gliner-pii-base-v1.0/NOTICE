@@ -1,0 +1,12 @@
+GLiNER-PII base v1.0
+https://huggingface.co/knowledgator/gliner-pii-base-v1.0
+Revision 61726e0ad791dcab3e29339bbec3ad42ded65641
+
+Developed by Knowledgator in collaboration with Wordcab. Licensed under the
+Apache License, Version 2.0 (see LICENSE in this directory).
+
+Sanctum redistributes these files from that revision unmodified:
+  onnx/model_quint8.onnx, tokenizer.json, gliner_config.json,
+  README.md (the upstream model card).
+
+The model is fine-tuned from microsoft/deberta-v3-small (MIT License).

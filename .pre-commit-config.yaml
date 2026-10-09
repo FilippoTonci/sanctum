@@ -23,5 +23,8 @@ repos:
           # pypdf and Pillow ship inline types (py.typed); mypy's isolated env needs them.
           - pypdf>=4.0
           - pillow>=10.0
+          # numpy ships inline types too (sanctum/analyzer/gliner_onnx.py).
+          # <2.3: newer stubs use 3.12-only syntax, and mypy targets py3.10.
+          - numpy>=1.24,<2.3
         args: [--config-file=pyproject.toml]
         files: ^sanctum/

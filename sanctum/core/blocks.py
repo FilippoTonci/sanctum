@@ -15,6 +15,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 
 from sanctum.core.models import DetectionResult, TextSegment
+from sanctum.core.propagation import collect_seeds, find_mentions
 
 
 @dataclass(frozen=True)
@@ -108,19 +109,36 @@ def detect_blocks(
     segments: Sequence[TextSegment],
     analyze: Callable[[str], list[DetectionResult]],
 ) -> list[BlockFinding]:
-    """Findings in document order, each mapped onto the segments it covers."""
-    findings: list[BlockFinding] = []
+    """Findings in document order, each mapped onto the segments it covers.
+
+    After every block is analysed, names found anywhere in the document are
+    looked for in every block (``sanctum.core.propagation``), so "Dwayne
+    Kowalczyk" in the opening paragraph also catches a bare "Dwayne" on page 3.
+    """
+    analysed: list[tuple[_Block, list[tuple[int, int, str, float]]]] = []
     for group in _group(segments):
         block = _join(group)
         if not block.text.strip():
             continue
-        for det in analyze(block.text):
-            pieces = _project(block, det.start, det.end)
+        spans = [(d.start, d.end, d.entity_type, d.score) for d in analyze(block.text)]
+        analysed.append((block, spans))
+
+    seeds = collect_seeds(
+        (etype, block.text[s:e], score) for block, spans in analysed for s, e, etype, score in spans
+    )
+
+    findings: list[BlockFinding] = []
+    for block, spans in analysed:
+        if seeds:
+            covered = [(s, e) for s, e, _, _ in spans]
+            for m in find_mentions(block.text, seeds, covered):
+                spans.append((m.start, m.end, m.entity_type, m.score))
+            spans.sort(key=lambda sp: (sp[0], sp[1]))
+        for start, end, etype, score in spans:
+            pieces = _project(block, start, end)
             if not pieces:
                 continue  # the span fell entirely inside join_before text
-            findings.append(
-                BlockFinding(det.entity_type, det.score, block.text[det.start : det.end], pieces)
-            )
+            findings.append(BlockFinding(etype, score, block.text[start:end], pieces))
     return findings
 
 

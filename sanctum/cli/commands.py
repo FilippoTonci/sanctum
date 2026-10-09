@@ -62,12 +62,14 @@ def _pseudonymize_policies(store: MappingStore, language: str) -> dict[str, Oper
 def _create_engine() -> SanctumEngine:
     """Composition root: wire concrete adapters into the engine.
 
-    When `nlp.ner_backend == "gliner"`, a GLiNER recognizer is added and
-    Presidio's stock `SpacyRecognizer` is removed — GLiNER becomes the
-    default NER while spaCy stays loaded for tokenization (pattern
-    recognizers with context words still fire).
+    The bundled GLiNER-PII model replaces Presidio's stock `SpacyRecognizer`
+    as the NER source; spaCy stays loaded for tokenization so pattern
+    recognizers with context words still fire. Raises `ConfigurationError`
+    if the model is not installed (it is never downloaded at runtime).
     """
     from sanctum.analyzer.adapter import PresidioAnalyzer
+    from sanctum.analyzer.gliner_recognizer import GlinerOnnxRecognizer
+    from sanctum.analyzer.ner_model import resolve_model_dir
     from sanctum.analyzer.nlp_config import create_nlp_engine
     from sanctum.analyzer.recognizers import AnyDomainEmailRecognizer
     from sanctum.anonymizer.adapter import PresidioAnonymizer
@@ -77,26 +79,18 @@ def _create_engine() -> SanctumEngine:
     # fall through to the default loader, which can call
     # `spacy.cli.download()` and break the air-gap.
     nlp_engine = create_nlp_engine(model_name=settings.nlp.spacy_model)
-
-    extra_recognizers: list = [AnyDomainEmailRecognizer()]
-    remove_names: list[str] = []
-    if settings.nlp.ner_backend == "gliner":
-        from sanctum.analyzer.nlp_config import create_gliner_recognizer
-
-        extra_recognizers.append(
-            create_gliner_recognizer(
-                model_name=settings.nlp.gliner_model,
-                threshold=settings.nlp.gliner_threshold,
-            )
-        )
-        remove_names.append("SpacyRecognizer")
+    ner = GlinerOnnxRecognizer(
+        resolve_model_dir(settings.nlp.ner_model_dir),
+        threshold=settings.nlp.ner_threshold,
+        score_floor=settings.analyzer.default_score_threshold,
+    )
 
     analyzer = PresidioAnalyzer(
         nlp_engine=nlp_engine,
         default_score_threshold=settings.analyzer.default_score_threshold,
         default_language=settings.analyzer.default_language,
-        extra_recognizers=extra_recognizers,
-        remove_recognizer_names=remove_names,
+        extra_recognizers=[AnyDomainEmailRecognizer(), ner],
+        remove_recognizer_names=["SpacyRecognizer"],
     )
     anonymizer = PresidioAnonymizer(
         default_operator=settings.anonymizer.default_operator,
@@ -661,10 +655,14 @@ def serve(host: str, port: int, token_path: Path | None, token_stdin: bool, thre
         path = token_path or DEFAULT_TOKEN_PATH
         token = ensure_token(path)
 
-    engine = _create_engine()
-    app = create_app(token=token, host=host, port=port, engine=engine)
-
     stderr = Console(stderr=True)
+    try:
+        engine = _create_engine()
+    except SanctumError as e:
+        # One readable line for the desktop app's sidecar log, not a traceback.
+        stderr.print(f"[red]Error: {e}[/red]")
+        raise SystemExit(1) from e
+    app = create_app(token=token, host=host, port=port, engine=engine)
 
     def _emit_ready(h: str, p: int) -> None:
         # Machine-readable first (stdout), before any other output — the
@@ -716,9 +714,8 @@ def config() -> None:
 
     # NLP settings
     table.add_row("nlp", "spacy_model", settings.nlp.spacy_model)
-    table.add_row("nlp", "ner_backend", settings.nlp.ner_backend)
-    table.add_row("nlp", "gliner_model", settings.nlp.gliner_model)
-    table.add_row("nlp", "gliner_threshold", str(settings.nlp.gliner_threshold))
+    table.add_row("nlp", "ner_model_dir", str(settings.nlp.ner_model_dir or "(default)"))
+    table.add_row("nlp", "ner_threshold", str(settings.nlp.ner_threshold))
 
     # Analyzer settings
     threshold = str(settings.analyzer.default_score_threshold)

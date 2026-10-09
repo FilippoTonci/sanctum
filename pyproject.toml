@@ -18,6 +18,11 @@ dependencies = [
     "faker>=20.0",
     "click>=8.0",
     "rich>=13.0",
+    # NER model runtime (sanctum/analyzer/gliner_onnx.py): runs the bundled
+    # GLiNER ONNX export without PyTorch.
+    "onnxruntime>=1.17",
+    "tokenizers>=0.15",
+    "numpy>=1.24",
 ]
 
 [project.optional-dependencies]
@@ -56,14 +61,6 @@ security = [
 api = [
     "flask>=3",
     "waitress>=3",
-]
-# GLiNER NER backend (WS5 Professional tier). Opt-in because torch pulls in
-# a ~800 MB wheel even on CPU; the default spacy backend stays fully usable
-# without this extra. Install with `pip install sanctum[gliner]`, then set
-# SANCTUM_NLP__NER_BACKEND=gliner (or nlp.ner_backend in settings) to enable.
-gliner = [
-    "gliner>=0.2.13",
-    "torch>=2.0",
 ]
 ci = [
     "pytest>=7.4",
@@ -176,6 +173,8 @@ module = [
     "argon2.*",
     "cryptography.*",
     "waitress.*",
+    "onnxruntime.*",
+    "tokenizers.*",
 ]
 ignore_missing_imports = true
 
