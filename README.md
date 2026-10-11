@@ -19,6 +19,8 @@
 
 Sanctum is a local-first, air-gapped document anonymization desktop application built on [Microsoft Presidio](https://microsoft.github.io/presidio/). It is designed for lawyers, consultants, and professionals who need to sanitize documents containing client confidential information before sharing, storing, or archiving them — without violating attorney-client privilege or international data protection laws (GDPR, HIPAA, DPDP Act 2023).
 
+**Not a developer?** Download the desktop app at **[sanctum.me.uk](https://sanctum.me.uk)**. This repository is the engine behind it.
+
 [Getting Started](#-getting-started) · [Features](#-features) · [Architecture](#-architecture) · [Roadmap](#-roadmap) · [Contributing](#-contributing)
 
 ---
@@ -392,6 +394,11 @@ git push origin feature/your-feature-name
 ```
 
 Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting.
+
+Found a bug, or Sanctum missed a name? Email
+**[feedback@sanctum.me.uk](mailto:feedback@sanctum.me.uk)** or open an issue.
+Describe the problem — never attach a client document or paste the names it
+missed.
 
 ---
 
