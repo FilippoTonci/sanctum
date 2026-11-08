@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 from sanctum.anonymizer.adapter import PresidioAnonymizer
-from sanctum.core.models import ReviewProposal
+from sanctum.core.models import ReplacementContext, ReviewProposal
 from sanctum.core.review.preview_store import PreviewMappingStore
-from sanctum.core.review.previews import compute_preview
+from sanctum.core.review.previews import compute_preview, replacement_context
 from sanctum.security.mapping_store import InMemoryMappingStore
 
 
@@ -224,7 +224,7 @@ def _hips(original: str, salt: str | None, anonymizer: PresidioAnonymizer) -> st
         operator_params=None,
         custom_replacement=None,
         anonymizer=anonymizer,
-        hips_salt=salt,
+        context=None if salt is None else ReplacementContext(salt=salt),
     )
 
 
@@ -252,6 +252,51 @@ def test_hips_explicit_salt_param_wins_over_session_salt(
         operator_params={"salt": "a"},
         custom_replacement=None,
         anonymizer=anonymizer,
-        hips_salt="b",
+        context=ReplacementContext(salt="b"),
     )
     assert preview == _hips("Alice Smith", "a", anonymizer)
+
+
+def test_replacement_context_covers_every_original_in_the_session() -> None:
+    """Decision-independent, so the preview and the commit avoid the same set."""
+    from datetime import datetime, timezone
+    from pathlib import Path
+
+    from sanctum.core.models import ReviewSession, TextSegment, UserAddedDecision
+
+    session = ReviewSession(
+        id="sess-1",
+        source_path=Path("/tmp/in.docx"),
+        format="docx",
+        default_operator="hips",
+        fake_data_salt="salt-1",
+        segments=[TextSegment(id="s0", text="x")],
+        proposals=[
+            _proposal(detection_id="p0", original="Alice Smith"),
+            _proposal(
+                detection_id="p1",
+                original="Mary Ann",
+                group_id="g",
+                group_index=0,
+                group_original="Mary Annabel Jones",
+            ),
+            _proposal(
+                detection_id="p2",
+                original="abel Jones",
+                group_id="g",
+                group_index=1,
+                group_original="Mary Annabel Jones",
+            ),
+        ],
+        decisions=[
+            UserAddedDecision(
+                segment_anchor="s0", entity_type="USER_ADDED", original="Falcon", start=0, end=6
+            )
+        ],
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    ctx = replacement_context(session)
+    assert ctx.salt == "salt-1"
+    for expected in ("Alice Smith", "Mary Annabel Jones", "Mary", "Jones", "Falcon"):
+        assert expected in ctx.avoid
+    assert len(ctx.avoid) == len(set(ctx.avoid))

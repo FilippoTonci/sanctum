@@ -224,6 +224,27 @@ SessionDecision = Annotated[
 ]
 
 
+class ReplacementContext(BaseModel):
+    """Document-wide inputs for operators that make up replacement text.
+
+    The engine anonymizes each finding in its own call, so anything that
+    must hold across the whole document travels here rather than living on
+    an operator. Used by ``hips``:
+
+    - ``salt``: secret, one per document or review session. The same
+      original gets the same fake everywhere it appears, and fakes can't
+      be matched by faking candidate names without it.
+    - ``avoid``: every original in the document. A fake that contains one
+      (a fake "Crystal Miller" when "Miller" is a real name nearby) is
+      rerolled, so it can't put a real name back or trip the leak check.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    salt: str
+    avoid: tuple[str, ...] = ()
+
+
 class ReviewSession(BaseModel):
     """Server-owned state for one human review session (Flow B).
 

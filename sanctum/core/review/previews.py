@@ -18,7 +18,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from sanctum.core.models import DetectionResult, OperatorPolicy, ReviewProposal
+from sanctum.core.blocks import fragment_words
+from sanctum.core.models import (
+    DetectionResult,
+    OperatorPolicy,
+    ReplacementContext,
+    ReviewProposal,
+    ReviewSession,
+    UserAddedDecision,
+)
 from sanctum.core.protocols import Anonymizer, MappingStore
 
 USER_ADDED_ENTITY = "USER_ADDED"
@@ -40,6 +48,27 @@ def effective_params(
     return merged
 
 
+def replacement_context(session: ReviewSession) -> ReplacementContext:
+    """The session's :class:`ReplacementContext`: its salt, and every original.
+
+    ``avoid`` covers every proposal and hand-marked span whatever its
+    decision, so it doesn't change as the reviewer accepts or rejects, and
+    the preview and the commit avoid the same set. It is a superset of what
+    the leak check tests (accepted originals plus the words of split
+    findings), so a fake can't trip that check.
+    """
+    avoid: dict[str, None] = {}
+    for p in session.proposals:
+        whole = p.group_original or p.original
+        avoid[whole] = None
+        if p.group_original is not None:
+            avoid.update(dict.fromkeys(fragment_words(p.original, p.group_original)))
+    for d in session.decisions:
+        if isinstance(d, UserAddedDecision):
+            avoid[d.original] = None
+    return ReplacementContext(salt=session.hips_salt(), avoid=tuple(avoid))
+
+
 def compute_preview(
     proposal: ReviewProposal,
     operator: str,
@@ -47,7 +76,7 @@ def compute_preview(
     custom_replacement: str | None,
     anonymizer: Anonymizer,
     mapping_store: MappingStore | None = None,
-    hips_salt: str | None = None,
+    context: ReplacementContext | None = None,
 ) -> str:
     """Return the replacement the UI should ghost next to ``proposal``.
 
@@ -65,9 +94,8 @@ def compute_preview(
     (``group_index`` 0) carries the replacement, rendered over the whole
     ``group_original``; every other piece renders ``""``.
 
-    ``hips_salt`` is the session's secret salt for operator ``hips``
-    (``ReviewSession.hips_salt()``). Preview and commit both pass it so
-    they render the same fake; a ``salt`` in ``operator_params`` wins.
+    ``context`` is the session's :func:`replacement_context`. Preview and
+    commit both pass it so ``hips`` renders the same fake in each.
     """
     if proposal.group_id is not None and proposal.group_index > 0:
         return ""  # only the head piece of a linked finding carries the replacement
@@ -81,8 +109,6 @@ def compute_preview(
                 "compute_preview requires a `mapping_store` when operator is 'pseudonymize'"
             )
         params.setdefault("store", mapping_store)
-    if operator == "hips" and hips_salt is not None:
-        params.setdefault("salt", hips_salt)
 
     original = proposal.group_original or proposal.original
     synthetic = DetectionResult(
@@ -97,5 +123,6 @@ def compute_preview(
         text=original,
         detections=[synthetic],
         operator_policies={"DEFAULT": policy},
+        context=context,
     )
     return result.anonymized_text

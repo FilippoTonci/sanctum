@@ -5,6 +5,7 @@ from __future__ import annotations
 import pytest
 from sanctum.core.exceptions import DocumentError, LeakCheckError
 from sanctum.core.leak_check import (
+    build_matcher,
     count_surviving_originals,
     find_surviving_originals,
     verify_no_leaks,
@@ -75,3 +76,22 @@ def test_occurrences_are_counted_per_original() -> None:
         "Priya": 2,
         "Raghunathan": 2,
     }
+
+
+def test_build_matcher_uses_the_same_rules_as_the_leak_check() -> None:
+    matcher = build_matcher(["Miller", "Ann", "14", "x"])
+    assert matcher is not None
+    assert matcher.search("Crystal Miller")
+    assert not matcher.search("Annual report")  # word boundary
+    assert not matcher.search("miller")  # case-sensitive
+    assert not matcher.search("14 Harbour Lane")  # short numbers exempt
+
+
+def test_build_matcher_normalizes_whitespace_in_originals() -> None:
+    matcher = build_matcher(["Jane\n Doe"])
+    assert matcher is not None and matcher.search("Jane Doe")
+
+
+def test_build_matcher_none_when_nothing_to_match() -> None:
+    assert build_matcher([]) is None
+    assert build_matcher(["x", "7"]) is None

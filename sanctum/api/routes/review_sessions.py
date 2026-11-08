@@ -70,7 +70,7 @@ from sanctum.core.models import (
 )
 from sanctum.core.protocols import MappingStore
 from sanctum.core.review.preview_store import PreviewMappingStore
-from sanctum.core.review.previews import compute_preview
+from sanctum.core.review.previews import compute_preview, replacement_context
 from sanctum.core.review.session import abandon as abandon_session
 from sanctum.core.review.session import add_decision, apply_user_added_with_overlap_purge
 from sanctum.core.review.store import SessionStore
@@ -249,6 +249,7 @@ def _compute_previews(session: ReviewSession, engine: SanctumEngine) -> dict[str
 
     anonymizer = engine._anonymizer
     preview_store = _preview_store()
+    context = replacement_context(session)
 
     def _safe_preview(
         *,
@@ -266,7 +267,7 @@ def _compute_previews(session: ReviewSession, engine: SanctumEngine) -> dict[str
             custom_replacement=custom_replacement,
             anonymizer=anonymizer,
             mapping_store=preview_store,
-            hips_salt=session.hips_salt(),
+            context=context,
         )
 
     for proposal in session.proposals:

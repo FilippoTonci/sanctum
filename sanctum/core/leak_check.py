@@ -51,6 +51,26 @@ def _pattern_for(needle: str) -> re.Pattern[str] | None:
     return re.compile(pattern)
 
 
+def build_matcher(originals: Iterable[str]) -> re.Pattern[str] | None:
+    """One pattern matching any of ``originals`` under the rules above.
+
+    For callers that must keep new text clear of the originals up front
+    (the ``hips`` operator rerolls a fake that would trip this check).
+    Search whitespace-normalized text with it. ``None`` if nothing is left
+    to match after the exemptions.
+    """
+    parts: list[str] = []
+    for original in dict.fromkeys(normalize_whitespace(o) for o in originals):
+        matcher = _pattern_for(original) if original else None
+        if matcher is not None:
+            parts.append(matcher.pattern)
+    if not parts:
+        return None
+    # Longest first, so "Miller, Henderson" wins over "Miller" in alternation.
+    parts.sort(key=len, reverse=True)
+    return re.compile("|".join(f"(?:{p})" for p in parts))
+
+
 def count_surviving_originals(output_text: str, originals: Iterable[str]) -> dict[str, int]:
     """Original -> number of times it still appears (only originals that appear)."""
     haystack = normalize_whitespace(output_text)

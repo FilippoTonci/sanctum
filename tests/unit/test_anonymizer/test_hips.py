@@ -11,11 +11,16 @@ from __future__ import annotations
 import pytest
 from sanctum.anonymizer.adapter import PresidioAnonymizer
 from sanctum.anonymizer.operators.hips import HipsOperator
-from sanctum.core.models import DetectionResult, OperatorPolicy
+from sanctum.core.models import DetectionResult, OperatorPolicy, ReplacementContext
 
 
-def _fake(text: str, entity_type: str = "PERSON", salt: str | None = "s1") -> str:
-    params: dict[str, object] = {"entity_type": entity_type}
+def _fake(
+    text: str,
+    entity_type: str = "PERSON",
+    salt: str | None = "s1",
+    avoid: tuple[str, ...] = (),
+) -> str:
+    params: dict[str, object] = {"entity_type": entity_type, "avoid": avoid}
     if salt is not None:
         params["salt"] = salt
     return HipsOperator().operate(text, params)
@@ -54,6 +59,38 @@ class TestHipsOperator:
 
     def test_never_returns_the_original(self) -> None:
         assert _fake("John Smith") != "John Smith"
+
+    def test_fake_never_contains_another_original(self) -> None:
+        # A fake for Noah Rhodes that reads "Crystal Miller" puts a real
+        # surname from the same document back in, and fails the leak check.
+        first = _fake("Noah Rhodes")
+        surname = first.split()[-1]
+        rerolled = _fake("Noah Rhodes", avoid=("Noah Rhodes", surname))
+        assert surname not in rerolled.split()
+        assert rerolled == _fake("Noah Rhodes", avoid=("Noah Rhodes", surname))
+
+    def test_avoid_does_not_change_fakes_that_are_already_clean(self) -> None:
+        assert _fake("Noah Rhodes", avoid=("Zzyzx",)) == _fake("Noah Rhodes")
+
+    def test_fakes_avoid_every_original_across_many_salts(self) -> None:
+        originals = (
+            "Rachel Moore",
+            "Noah Rhodes",
+            "Henry Santiago",
+            "Miller",
+            "Hall PLC",
+            "Miller, Henderson and Johnson",
+            "Henderson and Johnson",
+            "New York",
+        )
+        from sanctum.core.leak_check import build_matcher
+
+        matcher = build_matcher(originals)
+        assert matcher is not None
+        for i in range(300):
+            for original in originals:
+                fake = _fake(original, "PERSON", salt=f"s{i}", avoid=originals)
+                assert not matcher.search(fake), (original, fake)
 
     def test_missing_salt_still_works(self) -> None:
         assert _fake("John Smith", salt=None) not in ("", "John Smith")
@@ -114,3 +151,18 @@ class TestAdapterSaltsHips:
         a = anonymizer.anonymize(text, detections, policies).anonymized_text
         b = anonymizer.anonymize(text, detections, policies).anonymized_text
         assert a == b
+
+    def test_context_salt_and_avoid_reach_hips(self, anonymizer: PresidioAnonymizer) -> None:
+        text = "John Smith"
+        detections = self._detections(text, [text])
+        ctx = ReplacementContext(salt="doc", avoid=(text,))
+        a = anonymizer.anonymize(text, detections, context=ctx).anonymized_text
+        b = anonymizer.anonymize(text, detections, context=ctx).anonymized_text
+        assert a == b == _fake(text, salt="doc", avoid=(text,))
+
+    def test_context_does_not_touch_other_operators(self, anonymizer: PresidioAnonymizer) -> None:
+        text = "John Smith"
+        detections = self._detections(text, [text])
+        policies = {"DEFAULT": OperatorPolicy(operator_name="replace")}
+        ctx = ReplacementContext(salt="doc", avoid=(text,))
+        assert anonymizer.anonymize(text, detections, policies, ctx).anonymized_text == "<PERSON>"

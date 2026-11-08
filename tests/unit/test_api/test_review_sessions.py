@@ -62,6 +62,7 @@ class _BracketAnonymizer:
         text: str,
         detections: list[DetectionResult],
         operator_policies: dict[str, OperatorPolicy] | None = None,
+        context: object = None,
     ) -> AnonymizationResult:
         det = detections[0]
         policy = (operator_policies or {}).get("DEFAULT")
