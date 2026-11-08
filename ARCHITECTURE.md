@@ -70,7 +70,7 @@ analyzer  anonymizer  documents    ← detection, rewriting, format I/O
   - `mapping.py` — `/mapping/{lock,unlock}` for the encrypted store.
   - `pipeline.py` — `/process-file` shortcut (one-shot or hand-off to review).
   - `review_sessions.py` — full review-session lifecycle (POST / GET /
-    PATCH decision / POST commit / DELETE abandon) plus
+    PATCH method / PATCH decision / POST commit / DELETE abandon) plus
     `GET /review-sessions/<id>/layout` (positioned pages for pptx and pdf;
     415 for other formats, 410 once the input is shed after commit/abandon).
     A failed post-write leak check returns 422 `{leak, occurrences}` from

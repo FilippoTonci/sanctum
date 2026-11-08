@@ -45,6 +45,7 @@ from sanctum.api.schemas import (
     CreateReviewSessionRequest,
     DecisionWithPreviewResponse,
     PatchProposalDecisionRequest,
+    PatchReviewSessionRequest,
     ReviewSessionIndexEntry,
     ReviewSessionLayoutResponse,
     ReviewSessionListResponse,
@@ -72,7 +73,11 @@ from sanctum.core.protocols import MappingStore
 from sanctum.core.review.preview_store import PreviewMappingStore
 from sanctum.core.review.previews import compute_preview, replacement_context
 from sanctum.core.review.session import abandon as abandon_session
-from sanctum.core.review.session import add_decision, apply_user_added_with_overlap_purge
+from sanctum.core.review.session import (
+    add_decision,
+    apply_user_added_with_overlap_purge,
+    set_default_operator,
+)
 from sanctum.core.review.store import SessionStore
 from sanctum.documents import adapter_for
 from sanctum.documents.layout import build_layout, supports_layout
@@ -468,6 +473,44 @@ def get_session(session_id: str) -> tuple[dict, int]:
     assert session is not None
 
     return _session_response(session, engine), 200
+
+
+@review_sessions_bp.patch("/<session_id>")
+@require_bearer_token
+@_serialised
+def set_session_operator(session_id: str) -> tuple[dict, int]:
+    """Switch an open session to another replacement method.
+
+    Backs the desktop's "Apply to open document" in Settings. Decisions are
+    kept and follow the new method; previews are recomputed. Nothing is
+    saved if the new operator's params are invalid.
+    """
+    engine_or_err = _engine_and_store()
+    if engine_or_err[0] is None:
+        return engine_or_err[1]
+    engine, store = engine_or_err
+
+    req, err = parse_body(PatchReviewSessionRequest)
+    if err is not None:
+        return err
+
+    session, load_err = _load_session(store, session_id)
+    if load_err is not None:
+        return load_err
+    assert session is not None
+
+    open_err = _require_open(session)
+    if open_err is not None:
+        return open_err
+
+    set_default_operator(session, req.default_operator, req.default_operator_params)
+    try:
+        response = _session_response(session, engine)
+    except InvalidOperatorParamsError as exc:
+        current_app.logger.info("PATCH /review-sessions/%s: invalid params: %s", session_id, exc)
+        return {"error": f"invalid operator_params: {exc}"}, 400
+    store.save(session)
+    return response, 200
 
 
 # Mimetypes the input route advertises per session format. ``send_file``

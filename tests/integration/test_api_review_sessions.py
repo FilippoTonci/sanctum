@@ -396,6 +396,99 @@ def test_hips_session_gives_each_person_their_own_consistent_fake(
         assert fake in text, f"saved file lacks the previewed fake {fake!r}"
 
 
+def test_switching_method_keeps_decisions_and_reuses_the_fakes(
+    server: tuple[str, str], tmp_path: Path
+) -> None:
+    """Settings → "Apply to open document": label → fake → label → fake on
+    an open session. Decisions survive, the fakes come back unchanged, and
+    the save uses the method in force at commit."""
+    base, token = server
+    _, created = _request(
+        "POST",
+        f"{base}/review-sessions",
+        token=token,
+        body={"input_path": str(_FIXTURE), "default_operator": "replace"},
+    )
+    sid = created["id"]
+    heads = [p for p in created["proposals"] if (p.get("group_index") or 0) == 0]
+    custom_pid = heads[0]["detection_id"]
+    _request(
+        "PATCH",
+        f"{base}/review-sessions/{sid}/decisions/{custom_pid}",
+        token=token,
+        body={"status": "accept", "custom_replacement": "[CLIENT]"},
+    )
+
+    status, fake = _request(
+        "PATCH", f"{base}/review-sessions/{sid}", token=token, body={"default_operator": "hips"}
+    )
+    assert status == 200, fake
+    assert fake["previews"][custom_pid] == "[CLIENT]"
+    for p in heads[1:]:
+        preview = fake["previews"][p["detection_id"]]
+        assert preview != f"<{p['entity_type']}>"
+        assert preview != (p.get("group_original") or p["original"])
+
+    status, label = _request(
+        "PATCH", f"{base}/review-sessions/{sid}", token=token, body={"default_operator": "replace"}
+    )
+    assert status == 200, label
+    for p in heads[1:]:
+        assert label["previews"][p["detection_id"]] == f"<{p['entity_type']}>"
+
+    _, fake_again = _request(
+        "PATCH", f"{base}/review-sessions/{sid}", token=token, body={"default_operator": "hips"}
+    )
+    assert fake_again["previews"] == fake["previews"], "the session salt must survive a switch"
+    assert [d["status"] for d in fake_again["decisions"]] == ["accept"]
+
+    for p in heads[1:]:
+        _request(
+            "PATCH",
+            f"{base}/review-sessions/{sid}/decisions/{p['detection_id']}",
+            token=token,
+            body={"status": "accept"},
+        )
+    out_path = tmp_path / "switched.docx"
+    status, body = _request(
+        "POST",
+        f"{base}/review-sessions/{sid}/commit",
+        token=token,
+        body={"output_path": str(out_path), "attested": True},
+    )
+    assert status == 200, body
+    text = _docx_full_text(out_path)
+    assert "[CLIENT]" in text
+    assert "<PERSON>" not in text, "the save must use the method in force at commit"
+    person = next(p for p in heads[1:] if p["entity_type"] == "PERSON")
+    assert fake["previews"][person["detection_id"]] in text
+
+    status, _ = _request(
+        "PATCH", f"{base}/review-sessions/{sid}", token=token, body={"default_operator": "replace"}
+    )
+    assert status == 409
+
+
+def test_switching_to_invalid_params_is_refused_and_not_saved(server: tuple[str, str]) -> None:
+    base, token = server
+    _, created = _request(
+        "POST",
+        f"{base}/review-sessions",
+        token=token,
+        body={"input_path": str(_FIXTURE), "default_operator": "replace"},
+    )
+    status, body = _request(
+        "PATCH",
+        f"{base}/review-sessions/{created['id']}",
+        token=token,
+        body={"default_operator": "encrypt", "default_operator_params": {"key": "short"}},
+    )
+    assert status == 400, body
+    _, reloaded = _request("GET", f"{base}/review-sessions/{created['id']}", token=token)
+    assert reloaded["default_operator"] == "replace"
+    assert reloaded["previews"] == created["previews"]
+
+
 def test_commit_requires_attested(server: tuple[str, str], tmp_path: Path) -> None:
     base, token = server
     _, created = _request(
