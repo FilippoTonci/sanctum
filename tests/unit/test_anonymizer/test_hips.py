@@ -130,11 +130,16 @@ class TestAdapterSaltsHips:
                 entity_type="PERSON", start=second, end=second + 10, score=0.9, text_span=""
             )
         )
-        result = anonymizer.anonymize(text, detections).anonymized_text
-        fake_a, rest = result.split(" met ")
-        fake_b, tail = rest.split(". ")
+        # A fixed salt lets the test predict each fake, so it never has to
+        # parse them back out of the text (fakes like "Mr. Ronald Ortiz"
+        # contain the punctuation a split would rely on).
+        avoid = ("John Smith", "Jane Doe")
+        ctx = ReplacementContext(salt="doc", avoid=avoid)
+        result = anonymizer.anonymize(text, detections, context=ctx).anonymized_text
+        fake_a = _fake("John Smith", salt="doc", avoid=avoid)
+        fake_b = _fake("Jane Doe", salt="doc", avoid=avoid)
         assert fake_a != fake_b
-        assert tail == f"{fake_a} signed."
+        assert result == f"{fake_a} met {fake_b}. {fake_a} signed."
 
     def test_unsalted_calls_do_not_share_a_seed(self, anonymizer: PresidioAnonymizer) -> None:
         # Each call without an explicit salt draws a fresh one, so the same
