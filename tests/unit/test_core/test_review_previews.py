@@ -215,3 +215,43 @@ def test_pseudonymize_preview_reuses_existing_mapping(
         mapping_store=PreviewMappingStore(real),
     )
     assert preview == "Priya Patel"
+
+
+def _hips(original: str, salt: str | None, anonymizer: PresidioAnonymizer) -> str:
+    return compute_preview(
+        proposal=_proposal(original=original, end=len(original)),
+        operator="hips",
+        operator_params=None,
+        custom_replacement=None,
+        anonymizer=anonymizer,
+        hips_salt=salt,
+    )
+
+
+def test_hips_preview_is_stable_for_a_session_salt(anonymizer: PresidioAnonymizer) -> None:
+    """Preview and commit render each finding in its own call; the session
+    salt is what makes them agree."""
+    assert _hips("Alice Smith", "sess", anonymizer) == _hips("Alice Smith", "sess", anonymizer)
+
+
+def test_hips_preview_distinct_people_distinct_fakes(anonymizer: PresidioAnonymizer) -> None:
+    people = ["Alice Smith", "Bob Jones", "Carol White"]
+    assert len({_hips(p, "sess", anonymizer) for p in people}) == len(people)
+
+
+def test_hips_preview_depends_on_session_salt(anonymizer: PresidioAnonymizer) -> None:
+    assert _hips("Alice Smith", "a", anonymizer) != _hips("Alice Smith", "b", anonymizer)
+
+
+def test_hips_explicit_salt_param_wins_over_session_salt(
+    anonymizer: PresidioAnonymizer,
+) -> None:
+    preview = compute_preview(
+        proposal=_proposal(),
+        operator="hips",
+        operator_params={"salt": "a"},
+        custom_replacement=None,
+        anonymizer=anonymizer,
+        hips_salt="b",
+    )
+    assert preview == _hips("Alice Smith", "a", anonymizer)

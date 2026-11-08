@@ -344,6 +344,58 @@ def test_commit_writes_final_file_with_no_sanctum_trailers(
     assert body["committed_at"] is not None
 
 
+def test_hips_session_gives_each_person_their_own_consistent_fake(
+    server: tuple[str, str], tmp_path: Path
+) -> None:
+    """Distinct people get distinct fakes, repeats share one, and the
+    preview, a reload and the saved file all agree (sanctum-desktop#57)."""
+    base, token = server
+    _, created = _request(
+        "POST",
+        f"{base}/review-sessions",
+        token=token,
+        body={"input_path": str(_FIXTURE), "default_operator": "hips"},
+    )
+    session_id = created["id"]
+    assert "fake_data_salt" not in created, "the salt is a secret; keep it off the wire"
+
+    previews = created["previews"]
+    people: dict[str, str] = {}
+    for proposal in created["proposals"]:
+        if proposal["entity_type"] != "PERSON" or proposal.get("group_index", 0) > 0:
+            continue
+        original = proposal.get("group_original") or proposal["original"]
+        fake = previews[proposal["detection_id"]]
+        assert people.setdefault(original, fake) == fake, f"{original!r} got two fakes"
+    assert len(people) >= 2, "NDA fixture should name at least two people"
+    assert len(set(people.values())) == len(people), f"people share a fake: {people}"
+    for original, fake in people.items():
+        assert fake != original
+
+    _, reloaded = _request("GET", f"{base}/review-sessions/{session_id}", token=token)
+    assert reloaded["previews"] == previews, "a reload must not change the fakes"
+
+    for proposal in created["proposals"]:
+        _request(
+            "PATCH",
+            f"{base}/review-sessions/{session_id}/decisions/{proposal['detection_id']}",
+            token=token,
+            body={"status": "accept"},
+        )
+    out_path = tmp_path / "hips.docx"
+    status, body = _request(
+        "POST",
+        f"{base}/review-sessions/{session_id}/commit",
+        token=token,
+        body={"output_path": str(out_path), "attested": True},
+    )
+    assert status == 200, body
+    text = _docx_full_text(out_path)
+    for original, fake in people.items():
+        assert original not in text
+        assert fake in text, f"saved file lacks the previewed fake {fake!r}"
+
+
 def test_commit_requires_attested(server: tuple[str, str], tmp_path: Path) -> None:
     base, token = server
     _, created = _request(

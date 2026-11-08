@@ -266,6 +266,7 @@ def _compute_previews(session: ReviewSession, engine: SanctumEngine) -> dict[str
             custom_replacement=custom_replacement,
             anonymizer=anonymizer,
             mapping_store=preview_store,
+            hips_salt=session.hips_salt(),
         )
 
     for proposal in session.proposals:

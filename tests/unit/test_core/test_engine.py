@@ -221,6 +221,11 @@ class TestCreateReviewSession:
         assert session_store.exists("sess-1")
         assert session_store.load_input_bytes("sess-1") == b"PK\x03\x04fake"
 
+        # Every session gets its own secret salt for HIPS fakes, persisted
+        # so previews, resumes and the commit agree.
+        assert session.fake_data_salt and len(session.fake_data_salt) >= 32
+        assert session_store.load("sess-1").fake_data_salt == session.fake_data_salt
+
     def test_empty_analysis_yields_no_proposals(self, tmp_path: Path) -> None:
         input_path = tmp_path / "input.docx"
         input_path.write_bytes(b"bytes")

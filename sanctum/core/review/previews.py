@@ -47,6 +47,7 @@ def compute_preview(
     custom_replacement: str | None,
     anonymizer: Anonymizer,
     mapping_store: MappingStore | None = None,
+    hips_salt: str | None = None,
 ) -> str:
     """Return the replacement the UI should ghost next to ``proposal``.
 
@@ -63,6 +64,10 @@ def compute_preview(
     For a linked finding (``proposal.group_id`` set), only the head piece
     (``group_index`` 0) carries the replacement, rendered over the whole
     ``group_original``; every other piece renders ``""``.
+
+    ``hips_salt`` is the session's secret salt for operator ``hips``
+    (``ReviewSession.hips_salt()``). Preview and commit both pass it so
+    they render the same fake; a ``salt`` in ``operator_params`` wins.
     """
     if proposal.group_id is not None and proposal.group_index > 0:
         return ""  # only the head piece of a linked finding carries the replacement
@@ -76,6 +81,8 @@ def compute_preview(
                 "compute_preview requires a `mapping_store` when operator is 'pseudonymize'"
             )
         params.setdefault("store", mapping_store)
+    if operator == "hips" and hips_salt is not None:
+        params.setdefault("salt", hips_salt)
 
     original = proposal.group_original or proposal.original
     synthetic = DetectionResult(

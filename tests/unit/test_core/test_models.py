@@ -345,3 +345,18 @@ class TestReviewSession:
             default_operator_params={"key": "s3cret", "alg": "AES-256"},
         )
         assert session.default_operator_params["alg"] == "AES-256"
+
+    def test_fake_data_salt_defaults_to_none_for_older_manifests(self) -> None:
+        # Sessions saved before the field existed must still load.
+        assert self._session().fake_data_salt is None
+
+    def test_hips_salt_falls_back_to_session_id(self) -> None:
+        # Stable across reloads, so an older session's preview and commit agree.
+        session = self._session()
+        assert session.hips_salt() == session.id
+
+    def test_hips_salt_prefers_fake_data_salt(self) -> None:
+        session = self._session(fake_data_salt="abc123")
+        assert session.hips_salt() == "abc123"
+        restored = ReviewSession.model_validate_json(session.model_dump_json())
+        assert restored.hips_salt() == "abc123"

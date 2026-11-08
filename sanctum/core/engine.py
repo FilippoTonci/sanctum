@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 import tempfile
 import uuid
 from datetime import datetime, timezone
@@ -268,6 +269,7 @@ class SanctumEngine:
             format=doc.format,
             default_operator=default_operator,
             default_operator_params=default_operator_params or {},
+            fake_data_salt=secrets.token_hex(16),
             segments=list(doc.segments),
             proposals=proposals,
             created_at=created_at if created_at is not None else datetime.now(timezone.utc),
@@ -529,6 +531,7 @@ def _apply_decisions_to_segments(
                     custom_replacement=decision.custom_replacement,
                     anonymizer=anonymizer,
                     mapping_store=mapping_store,
+                    hips_salt=session.hips_salt(),
                 )
                 leak_original = prop.group_original or prop.original
             leak_extra = (
@@ -566,6 +569,7 @@ def _apply_decisions_to_segments(
                 custom_replacement=ua.custom_replacement,
                 anonymizer=anonymizer,
                 mapping_store=mapping_store,
+                hips_salt=session.hips_salt(),
             )
             replacements.append((start, end, replacement, ua.original, []))
 
@@ -601,6 +605,7 @@ def _render_replacement(
     custom_replacement: str | None,
     anonymizer: Anonymizer,
     mapping_store: MappingStore | None = None,
+    hips_salt: str | None = None,
 ) -> str:
     """Run a single detection through the anonymizer and return the replacement.
 
@@ -629,4 +634,5 @@ def _render_replacement(
         custom_replacement=custom_replacement,
         anonymizer=anonymizer,
         mapping_store=mapping_store,
+        hips_salt=hips_salt,
     )

@@ -263,3 +263,14 @@ class ReviewSession(BaseModel):
     status: SessionStatus = "open"
     created_at: datetime
     committed_at: datetime | None = None
+    # Secret per-session salt for the ``hips`` operator. Each finding is
+    # rendered in its own anonymizer call (preview and commit alike), so
+    # the salt is what keeps one person's fake the same everywhere in the
+    # session while staying unguessable from the output. ``None`` on
+    # sessions saved before the field existed; see ``hips_salt``.
+    fake_data_salt: str | None = None
+
+    def hips_salt(self) -> str:
+        """Salt for ``hips`` fakes; older sessions fall back to their id,
+        which is random and stable across reloads."""
+        return self.fake_data_salt if self.fake_data_salt is not None else self.id
