@@ -1,11 +1,26 @@
 from __future__ import annotations
 
+import secrets
+from typing import Any
+
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import InvalidParamError, OperatorConfig, RecognizerResult
 from sanctum.anonymizer.operators.hips import HipsOperator
 from sanctum.anonymizer.operators.pseudonymize import PseudonymizeOperator
 from sanctum.core.exceptions import InvalidOperatorParamsError
 from sanctum.core.models import AnonymizationResult, DetectionResult, OperatorPolicy
+
+
+def _with_hips_salt(operator_name: str, params: dict[str, Any]) -> dict[str, Any]:
+    """Give a ``hips`` policy a fresh secret salt unless the caller set one.
+
+    One salt per ``anonymize`` call keeps a person's fake consistent within
+    the text and unlinkable across calls. Review sessions pass their own
+    salt so their per-finding calls agree with each other.
+    """
+    if operator_name != "hips" or "salt" in params:
+        return params
+    return {**params, "salt": secrets.token_hex(16)}
 
 
 class PresidioAnonymizer:
@@ -38,11 +53,17 @@ class PresidioAnonymizer:
 
         if operator_policies:
             operator_configs = {
-                key: OperatorConfig(policy.operator_name, policy.params)
+                key: OperatorConfig(
+                    policy.operator_name, _with_hips_salt(policy.operator_name, policy.params)
+                )
                 for key, policy in operator_policies.items()
             }
         else:
-            operator_configs = {"DEFAULT": OperatorConfig(self._default_operator)}
+            operator_configs = {
+                "DEFAULT": OperatorConfig(
+                    self._default_operator, _with_hips_salt(self._default_operator, {})
+                )
+            }
 
         try:
             result = self._engine.anonymize(
