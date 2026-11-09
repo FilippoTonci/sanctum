@@ -92,3 +92,22 @@ def test_every_route_model_is_in_components() -> None:
         assert ref.startswith("#/components/schemas/"), ref
         name = ref.removeprefix("#/components/schemas/")
         assert name in schemas, f"unresolved $ref in paths: {ref!r}"
+
+
+def test_every_served_route_is_documented() -> None:
+    """The route table is kept by hand; fail when an endpoint Flask serves
+    is missing from it (or documented but no longer served)."""
+    import re
+
+    from sanctum.api.app import create_app
+
+    app = create_app(token="t", host="127.0.0.1", port=8765)
+    served = {
+        (method.lower(), re.sub(r"<(?:[^:>]+:)?([^>]+)>", r"{\1}", rule.rule))
+        for rule in app.url_map.iter_rules()
+        if rule.endpoint != "static"
+        for method in (rule.methods or set()) - {"HEAD", "OPTIONS"}
+    }
+    documented = {(r.method, r.path) for r in _load_generator().ROUTES}
+    assert served - documented == set(), "served but missing from the OpenAPI route table"
+    assert documented - served == set(), "documented but not served"

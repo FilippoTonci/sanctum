@@ -700,6 +700,96 @@
           }
         ]
       },
+      "patch": {
+        "summary": "Switch an open session's replacement method; decisions are kept.",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSessionResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/_ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchReviewSessionRequest"
+              }
+            }
+          }
+        }
+      },
       "delete": {
         "summary": "Abandon a session \u2014 deletes input bytes + plaintext proposals.",
         "responses": {
@@ -2284,6 +2374,34 @@
           "status"
         ],
         "title": "PatchProposalDecisionRequest",
+        "type": "object"
+      },
+      "PatchReviewSessionRequest": {
+        "additionalProperties": false,
+        "description": "Body for `PATCH /review-sessions/<id>`: switch an open session's method.\n\nSame operator rules as create. Decisions are kept; the response is the\nfull session with its previews recomputed under the new method.",
+        "properties": {
+          "default_operator": {
+            "title": "Default Operator",
+            "type": "string"
+          },
+          "default_operator_params": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Default Operator Params"
+          }
+        },
+        "required": [
+          "default_operator"
+        ],
+        "title": "PatchReviewSessionRequest",
         "type": "object"
       },
       "ProcessFileRequest": {
