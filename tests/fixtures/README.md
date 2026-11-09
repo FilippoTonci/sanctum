@@ -31,19 +31,6 @@ python scripts/generate_fixtures.py
 This overwrites the 10 synthetic `.txt` and `.json` files.  Deterministic
 seeding ensures identical output across runs.
 
-## Fetching Public-Domain Documents
-
-Three documents are sourced from public repositories (SEC EDGAR,
-CourtListener, CUAD).  Fetch or refresh them with:
-
-```bash
-python scripts/fetch_public_docs.py
-```
-
-Public-domain documents require **manual annotation review** -- the script
-creates stub `.json` files with empty entity lists that must be populated by
-hand after inspecting the fetched text.
-
 ## Notes
 
 - `.json` files are the ground truth used by evaluation tests.
