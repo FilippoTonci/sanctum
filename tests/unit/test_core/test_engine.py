@@ -150,6 +150,7 @@ def _bracket_anonymizer() -> Mock:
         text: str,
         detections: list[DetectionResult],
         operator_policies: dict[str, OperatorPolicy] | None = None,
+        context: object = None,
     ) -> AnonymizationResult:
         # Single-detection contract — see compute_preview.
         det = detections[0]
@@ -220,6 +221,11 @@ class TestCreateReviewSession:
         # Persisted — manifest + input bytes on disk under 0700/0600.
         assert session_store.exists("sess-1")
         assert session_store.load_input_bytes("sess-1") == b"PK\x03\x04fake"
+
+        # Every session gets its own secret salt for HIPS fakes, persisted
+        # so previews, resumes and the commit agree.
+        assert session.fake_data_salt and len(session.fake_data_salt) >= 32
+        assert session_store.load("sess-1").fake_data_salt == session.fake_data_salt
 
     def test_empty_analysis_yields_no_proposals(self, tmp_path: Path) -> None:
         input_path = tmp_path / "input.docx"
@@ -605,6 +611,21 @@ def test_process_document_runs_leak_check(tmp_path: Path) -> None:
     with pytest.raises(LeakCheckError):
         engine.process_document(reader, _EchoTextWriter(extra=" Alice"), tmp_path / "in.docx", out)
     assert not out.exists()
+
+
+def test_process_document_shares_one_context_across_findings(tmp_path: Path) -> None:
+    """Every finding is anonymized in its own call; one salt per document is
+    what keeps a repeated name on one fake, and every original is avoided."""
+    segments = [TextSegment(id="s0", text="Alice met Bob"), TextSegment(id="s1", text="Carol")]
+    det = DetectionResult(entity_type="PERSON", start=0, end=5, score=0.9, text_span="Alice")
+    engine, _, anonymizer = _engine([det])
+    reader = _make_reader(lambda p: _build_doc(segments, p))
+    engine.process_document(reader, _EchoTextWriter(), tmp_path / "in.docx", tmp_path / "o.txt")
+    contexts = [c.kwargs["context"] for c in anonymizer.anonymize.call_args_list]
+    assert len(contexts) == 2
+    assert contexts[0] is contexts[1]
+    assert len(contexts[0].salt) >= 32
+    assert set(contexts[0].avoid) == {"Alice", "Carol"}
 
 
 # -------- Leak check on fragments of linked (split) findings -------------------

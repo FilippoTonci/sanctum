@@ -1,11 +1,29 @@
 from __future__ import annotations
 
+import secrets
+from typing import Any
+
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import InvalidParamError, OperatorConfig, RecognizerResult
 from sanctum.anonymizer.operators.hips import HipsOperator
 from sanctum.anonymizer.operators.pseudonymize import PseudonymizeOperator
 from sanctum.core.exceptions import InvalidOperatorParamsError
-from sanctum.core.models import AnonymizationResult, DetectionResult, OperatorPolicy
+from sanctum.core.models import (
+    AnonymizationResult,
+    DetectionResult,
+    OperatorPolicy,
+    ReplacementContext,
+)
+
+
+def _with_hips_params(
+    operator_name: str, params: dict[str, Any], context: ReplacementContext
+) -> dict[str, Any]:
+    """Give a ``hips`` policy its salt and the originals to avoid, from
+    ``context``; params the caller set explicitly win."""
+    if operator_name != "hips":
+        return params
+    return {"salt": context.salt, "avoid": context.avoid, **params}
 
 
 class PresidioAnonymizer:
@@ -25,7 +43,16 @@ class PresidioAnonymizer:
         text: str,
         detections: list[DetectionResult],
         operator_policies: dict[str, OperatorPolicy] | None = None,
+        context: ReplacementContext | None = None,
     ) -> AnonymizationResult:
+        if context is None:
+            # No document-wide context (plain text): a fresh salt keeps fakes
+            # consistent within this call and unlinkable across calls, and
+            # this call's own originals are avoided.
+            context = ReplacementContext(
+                salt=secrets.token_hex(16),
+                avoid=tuple(dict.fromkeys(text[d.start : d.end] for d in detections)),
+            )
         recognizer_results = [
             RecognizerResult(
                 entity_type=d.entity_type,
@@ -38,11 +65,19 @@ class PresidioAnonymizer:
 
         if operator_policies:
             operator_configs = {
-                key: OperatorConfig(policy.operator_name, policy.params)
+                key: OperatorConfig(
+                    policy.operator_name,
+                    _with_hips_params(policy.operator_name, policy.params, context),
+                )
                 for key, policy in operator_policies.items()
             }
         else:
-            operator_configs = {"DEFAULT": OperatorConfig(self._default_operator)}
+            operator_configs = {
+                "DEFAULT": OperatorConfig(
+                    self._default_operator,
+                    _with_hips_params(self._default_operator, {}, context),
+                )
+            }
 
         try:
             result = self._engine.anonymize(

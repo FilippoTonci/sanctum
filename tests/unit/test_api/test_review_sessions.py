@@ -62,6 +62,7 @@ class _BracketAnonymizer:
         text: str,
         detections: list[DetectionResult],
         operator_policies: dict[str, OperatorPolicy] | None = None,
+        context: object = None,
     ) -> AnonymizationResult:
         det = detections[0]
         policy = (operator_policies or {}).get("DEFAULT")
@@ -710,6 +711,117 @@ class TestCommit:
         )
         assert r.status_code == 409
         assert "committed" in r.get_json()["error"]
+
+
+# ================ PATCH /review-sessions/<id> (switch method) ==============
+
+
+def _patch_session(client: Any, session_id: str, body: dict[str, Any]) -> Any:
+    return client.patch(f"/review-sessions/{session_id}", headers={**LOOPBACK, **AUTH}, json=body)
+
+
+@pytest.mark.usefixtures("patched_adapter")
+class TestSetSessionOperator:
+    def test_requires_bearer_token(self, client: Any, tmp_input_path: Path) -> None:
+        created = _create_session(client, tmp_input_path)
+        r = client.patch(
+            f"/review-sessions/{created['id']}",
+            headers=LOOPBACK,
+            json={"default_operator": "hips"},
+        )
+        assert r.status_code == 401
+
+    def test_switches_method_and_returns_new_previews(
+        self, client: Any, tmp_input_path: Path
+    ) -> None:
+        created = _create_session(client, tmp_input_path)
+        pid = created["proposals"][0]["detection_id"]
+        r = _patch_session(
+            client,
+            created["id"],
+            {"default_operator": "replace", "default_operator_params": {"new_value": "[X]"}},
+        )
+        assert r.status_code == 200, r.get_json()
+        body = r.get_json()
+        assert body["default_operator"] == "replace"
+        assert body["default_operator_params"] == {"new_value": "[X]"}
+        assert body["previews"][pid] == "[X]"
+
+    def test_persists(self, client: Any, tmp_input_path: Path) -> None:
+        created = _create_session(client, tmp_input_path)
+        _patch_session(client, created["id"], {"default_operator": "hips"})
+        r = client.get(f"/review-sessions/{created['id']}", headers={**LOOPBACK, **AUTH})
+        assert r.get_json()["default_operator"] == "hips"
+        assert r.get_json()["default_operator_params"] == {}
+
+    def test_keeps_decisions_and_custom_replacements(
+        self, client: Any, tmp_input_path: Path
+    ) -> None:
+        created = _create_session(client, tmp_input_path)
+        pid = created["proposals"][0]["detection_id"]
+        client.patch(
+            f"/review-sessions/{created['id']}/decisions/{pid}",
+            headers={**LOOPBACK, **AUTH},
+            json={"status": "accept", "custom_replacement": "[CLIENT]"},
+        )
+        body = _patch_session(
+            client,
+            created["id"],
+            {"default_operator": "replace", "default_operator_params": {"new_value": "[X]"}},
+        ).get_json()
+        assert body["previews"][pid] == "[CLIENT]"
+        assert [d["status"] for d in body["decisions"]] == ["accept"]
+
+    def test_salt_stays_off_the_wire(self, client: Any, tmp_input_path: Path) -> None:
+        created = _create_session(client, tmp_input_path)
+        body = _patch_session(client, created["id"], {"default_operator": "hips"}).get_json()
+        assert "fake_data_salt" not in body
+
+    def test_404_for_unknown_session(self, client: Any) -> None:
+        r = _patch_session(client, "nope", {"default_operator": "hips"})
+        assert r.status_code == 404
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {},
+            {"default_operator": "custom"},
+            {"default_operator": "hips", "input_path": "/x"},
+            {"default_operator": "hips", "default_operator_params": "x"},
+        ],
+    )
+    def test_400_for_a_bad_body(
+        self, client: Any, tmp_input_path: Path, body: dict[str, Any]
+    ) -> None:
+        created = _create_session(client, tmp_input_path)
+        r = _patch_session(client, created["id"], body)
+        assert r.status_code == 400
+        restored = client.get(
+            f"/review-sessions/{created['id']}", headers={**LOOPBACK, **AUTH}
+        ).get_json()
+        assert restored["default_operator"] == "replace"
+
+    def test_409_once_committed(
+        self,
+        client: Any,
+        tmp_input_path: Path,
+        tmp_output_path: Path,
+        patched_adapter: Any,
+    ) -> None:
+        created = _create_session(client, tmp_input_path)
+        client.post(
+            f"/review-sessions/{created['id']}/commit",
+            headers={**LOOPBACK, **AUTH},
+            json={"output_path": str(tmp_output_path), "attested": True},
+        )
+        r = _patch_session(client, created["id"], {"default_operator": "hips"})
+        assert r.status_code == 409
+
+    def test_409_once_abandoned(self, client: Any, tmp_input_path: Path) -> None:
+        created = _create_session(client, tmp_input_path)
+        client.delete(f"/review-sessions/{created['id']}", headers={**LOOPBACK, **AUTH})
+        r = _patch_session(client, created["id"], {"default_operator": "hips"})
+        assert r.status_code == 409
 
 
 # ================ DELETE (abandon) =========================================

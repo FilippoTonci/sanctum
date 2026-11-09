@@ -49,6 +49,7 @@ class _FakeAnonymizer:
         text: str,
         detections: list[DetectionResult],
         operator_policies: dict[str, OperatorPolicy] | None = None,
+        context: object = None,
     ) -> AnonymizationResult:
         self.calls.append(
             {"text": text, "detections": detections, "operator_policies": operator_policies}

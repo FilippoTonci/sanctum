@@ -8,6 +8,7 @@ from sanctum.core.models import (
     AnonymizationResult,
     DetectionResult,
     OperatorPolicy,
+    ReplacementContext,
     StructuredDocument,
 )
 
@@ -34,6 +35,7 @@ class Anonymizer(Protocol):
         text: str,
         detections: list[DetectionResult],
         operator_policies: dict[str, OperatorPolicy] | None = None,
+        context: ReplacementContext | None = None,
     ) -> AnonymizationResult: ...
 
 

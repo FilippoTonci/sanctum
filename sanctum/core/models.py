@@ -224,6 +224,27 @@ SessionDecision = Annotated[
 ]
 
 
+class ReplacementContext(BaseModel):
+    """Document-wide inputs for operators that make up replacement text.
+
+    The engine anonymizes each finding in its own call, so anything that
+    must hold across the whole document travels here rather than living on
+    an operator. Used by ``hips``:
+
+    - ``salt``: secret, one per document or review session. The same
+      original gets the same fake everywhere it appears, and fakes can't
+      be matched by faking candidate names without it.
+    - ``avoid``: every original in the document. A fake that contains one
+      (a fake "Crystal Miller" when "Miller" is a real name nearby) is
+      rerolled, so it can't put a real name back or trip the leak check.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    salt: str
+    avoid: tuple[str, ...] = ()
+
+
 class ReviewSession(BaseModel):
     """Server-owned state for one human review session (Flow B).
 
@@ -263,3 +284,14 @@ class ReviewSession(BaseModel):
     status: SessionStatus = "open"
     created_at: datetime
     committed_at: datetime | None = None
+    # Secret per-session salt for the ``hips`` operator. Each finding is
+    # rendered in its own anonymizer call (preview and commit alike), so
+    # the salt is what keeps one person's fake the same everywhere in the
+    # session while staying unguessable from the output. ``None`` on
+    # sessions saved before the field existed; see ``hips_salt``.
+    fake_data_salt: str | None = None
+
+    def hips_salt(self) -> str:
+        """Salt for ``hips`` fakes; older sessions fall back to their id,
+        which is random and stable across reloads."""
+        return self.fake_data_salt if self.fake_data_salt is not None else self.id

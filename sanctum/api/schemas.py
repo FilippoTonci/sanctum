@@ -293,6 +293,21 @@ class CreateReviewSessionRequest(_StrictRequest):
     )
 
 
+class PatchReviewSessionRequest(_StrictRequest):
+    """Body for `PATCH /review-sessions/<id>`: switch an open session's method.
+
+    Same operator rules as create. Decisions are kept; the response is the
+    full session with its previews recomputed under the new method.
+    """
+
+    default_operator: str
+    default_operator_params: dict[str, Any] | None = None
+
+    _reject_api_unsupported_operator = field_validator("default_operator")(
+        _reject_api_unsupported_operator
+    )
+
+
 class ReviewSessionResponse(_Frozen):
     """Body for create / get — full session dump with computed previews.
 

@@ -308,3 +308,37 @@ class TestAbandon:
         session_fn.commit(session, datetime(2026, 4, 24, tzinfo=timezone.utc))
         with pytest.raises(ReviewSessionAlreadyCommittedError):
             session_fn.abandon(session)
+
+
+class TestSetDefaultOperator:
+    def test_switches_operator_and_params(self) -> None:
+        s = _session()
+        session_fn.set_default_operator(s, "replace", {"new_value": "[X]"})
+        assert (s.default_operator, s.default_operator_params) == ("replace", {"new_value": "[X]"})
+        session_fn.set_default_operator(s, "hips", None)
+        assert (s.default_operator, s.default_operator_params) == ("hips", {})
+
+    def test_keeps_every_decision(self) -> None:
+        # Decisions carry no operator from the UI, so they follow the new
+        # default; custom literals and rejections stay as they were.
+        s = _session()
+        session_fn.add_decision(
+            s,
+            ProposalDecision(proposal_id="abcdef012345", status="accept", custom_replacement="[A]"),
+        )
+        before = list(s.decisions)
+        session_fn.set_default_operator(s, "hips", None)
+        assert s.decisions == before
+
+    def test_keeps_the_fake_data_salt(self) -> None:
+        s = _session(fake_data_salt="salt-1")
+        session_fn.set_default_operator(s, "hips", None)
+        session_fn.set_default_operator(s, "replace", None)
+        assert s.fake_data_salt == "salt-1"
+
+    @pytest.mark.parametrize("status", ["committed", "abandoned"])
+    def test_refuses_a_closed_session(self, status: str) -> None:
+        s = _session(status=status)
+        with pytest.raises(ReviewSessionAlreadyCommittedError):
+            session_fn.set_default_operator(s, "hips", None)
+        assert s.default_operator == "replace"

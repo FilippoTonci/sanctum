@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import secrets
 import tempfile
 import uuid
 from datetime import datetime, timezone
@@ -20,6 +21,7 @@ from sanctum.core.models import (
     DetectionResult,
     OperatorPolicy,
     ProposalDecision,
+    ReplacementContext,
     ReviewProposal,
     ReviewSession,
     TextSegment,
@@ -34,7 +36,7 @@ from sanctum.core.protocols import (
     StructuredDocumentReader,
     StructuredDocumentWriter,
 )
-from sanctum.core.review.previews import compute_preview
+from sanctum.core.review.previews import compute_preview, replacement_context
 from sanctum.core.review.proposals import build_proposals_from_findings
 from sanctum.core.review.session import commit as commit_session
 
@@ -77,6 +79,7 @@ class SanctumEngine:
         text: str,
         detections: list[DetectionResult] | None = None,
         operator_policies: dict[str, OperatorPolicy] | None = None,
+        context: ReplacementContext | None = None,
     ) -> AnonymizationResult:
         """Anonymize text, optionally auto-detecting PII first."""
         if detections is None:
@@ -86,6 +89,7 @@ class SanctumEngine:
                 text,
                 detections=detections,
                 operator_policies=operator_policies,
+                context=context,
             )
         except AnalysisError:
             raise
@@ -159,6 +163,16 @@ class SanctumEngine:
         edits: dict[str, list[tuple[int, int, str]]] = {}
         spans: dict[str, list[dict[str, Any]]] = {}
         replaced_originals: list[str] = []
+        # One context for the whole document: findings are anonymized one
+        # call each, and a fresh salt per call would give a repeated name a
+        # different fake every time.
+        avoid: dict[str, None] = {}
+        for f in findings:
+            avoid[f.original] = None
+            if len(f.pieces) > 1:
+                for piece in f.pieces:
+                    avoid.update(dict.fromkeys(fragment_words(piece.text, f.original)))
+        context = ReplacementContext(salt=secrets.token_hex(16), avoid=tuple(avoid))
         for f in findings:
             whole = DetectionResult(
                 entity_type=f.entity_type,
@@ -168,7 +182,10 @@ class SanctumEngine:
                 text_span=f.original,
             )
             result = self.anonymize(
-                f.original, detections=[whole], operator_policies=operator_policies
+                f.original,
+                detections=[whole],
+                operator_policies=operator_policies,
+                context=context,
             )
             results.append(result)
             linked = len(f.pieces) > 1
@@ -268,6 +285,7 @@ class SanctumEngine:
             format=doc.format,
             default_operator=default_operator,
             default_operator_params=default_operator_params or {},
+            fake_data_salt=secrets.token_hex(16),
             segments=list(doc.segments),
             proposals=proposals,
             created_at=created_at if created_at is not None else datetime.now(timezone.utc),
@@ -457,6 +475,7 @@ def _apply_decisions_to_segments(
     occurrence. Overlap detection is intentionally out of
     scope here — the API layer can surface a 400 at PATCH time if needed.
     """
+    context = replacement_context(session)
     proposals_by_segment: dict[str, list[ReviewProposal]] = {}
     for prop in session.proposals:
         if prop.segment_anchor is None:
@@ -529,6 +548,7 @@ def _apply_decisions_to_segments(
                     custom_replacement=decision.custom_replacement,
                     anonymizer=anonymizer,
                     mapping_store=mapping_store,
+                    context=context,
                 )
                 leak_original = prop.group_original or prop.original
             leak_extra = (
@@ -566,6 +586,7 @@ def _apply_decisions_to_segments(
                 custom_replacement=ua.custom_replacement,
                 anonymizer=anonymizer,
                 mapping_store=mapping_store,
+                context=context,
             )
             replacements.append((start, end, replacement, ua.original, []))
 
@@ -601,6 +622,7 @@ def _render_replacement(
     custom_replacement: str | None,
     anonymizer: Anonymizer,
     mapping_store: MappingStore | None = None,
+    context: ReplacementContext | None = None,
 ) -> str:
     """Run a single detection through the anonymizer and return the replacement.
 
@@ -629,4 +651,5 @@ def _render_replacement(
         custom_replacement=custom_replacement,
         anonymizer=anonymizer,
         mapping_store=mapping_store,
+        context=context,
     )

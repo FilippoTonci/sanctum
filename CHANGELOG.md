@@ -37,6 +37,35 @@ the break.
 
 ## [Unreleased]
 
+### Added
+
+- `PATCH /review-sessions/{id}` with `{default_operator, default_operator_params?}`
+  switches an open session to another replacement method. Decisions and
+  custom replacements are kept; the response is the full session with
+  previews recomputed. `400` for a bad body or invalid operator params (the
+  session is left unchanged), `404` unknown session, `409` once committed or
+  abandoned.
+- Session manifests gain `fake_data_salt`: a secret per-session salt for the
+  `hips` operator. Never sent over the API. Manifests without it still load
+  (the session id is used instead).
+
+### Changed
+
+- `hips` fakes are no longer the same on every run. Each one is derived from
+  a secret salt (one per review session, or per `/anonymize` and
+  `/process-file` call) plus the original, so they can't be matched by
+  faking candidate names.
+
+### Fixed
+
+- `hips` gave every finding of a type the same fake (five people in a
+  contract all became one name). Now each original keeps one fake throughout
+  the document and different originals get different ones.
+- A `hips` fake could contain another original from the same document (a
+  fake "Crystal Miller" next to a real "Miller"), which put a real name back
+  and failed the leak check on roughly 1 in 13 saves. Fakes are now redrawn
+  until they contain none.
+
 ---
 
 ## [0.2.0-rc.1] — unreleased

@@ -18,12 +18,24 @@ from pptx import Presentation
 from sanctum.analyzer.adapter import PresidioAnalyzer
 from sanctum.anonymizer.adapter import PresidioAnonymizer
 from sanctum.core.engine import SanctumEngine
+from sanctum.core.leak_check import find_surviving_originals
 from sanctum.documents import adapter_for
 
 pytestmark = pytest.mark.integration
 
 FIXTURES = Path("tests/fixtures/office")
 FIXTURE_NDA = FIXTURES / "nda_contract.docx"
+
+
+def _survives(original: str, text: str) -> bool:
+    """Whether ``original`` is still in ``text``, by the leak check's rules.
+
+    These run the default ``hips`` operator, whose fakes change every run.
+    A fake may contain an original inside a longer word (the city
+    "Millerview" next to a removed "Miller"); that's no leak, so a plain
+    substring test would fail at random.
+    """
+    return bool(find_surviving_originals(text, [original]))
 
 
 @pytest.fixture(scope="module")
@@ -47,7 +59,7 @@ def test_docx_end_to_end_removes_named_person(engine: SanctumEngine, tmp_path: P
 
     rewritten = Document(str(dst))
     full_text = "\n".join(p.text for p in rewritten.paragraphs)
-    assert "Rachel Moore" not in full_text  # a known PERSON from the fixture inventory
+    assert not _survives("Rachel Moore", full_text)  # a known PERSON from the fixture inventory
 
 
 def test_docx_end_to_end_propagates_a_name_detection_missed(
@@ -59,7 +71,7 @@ def test_docx_end_to_end_propagates_a_name_detection_missed(
     dst = tmp_path / "out.docx"
     _run_pipeline(engine, FIXTURE_NDA, dst)
     full_text = "\n".join(p.text for p in Document(str(dst)).paragraphs)
-    assert "Miller" not in full_text
+    assert not _survives("Miller", full_text)
 
 
 def test_xlsx_end_to_end_removes_person(engine: SanctumEngine, tmp_path: Path) -> None:
@@ -91,4 +103,4 @@ def test_pptx_end_to_end_removes_person(engine: SanctumEngine, tmp_path: Path) -
         for shape in slide.shapes
         if shape.has_text_frame
     )
-    assert "Jennifer Martin" not in joined
+    assert not _survives("Jennifer Martin", joined)

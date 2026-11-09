@@ -13,6 +13,7 @@ enforcing its invariants:
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from sanctum.core.exceptions import (
     ReviewSessionAlreadyCommittedError,
@@ -142,6 +143,22 @@ def apply_user_added_with_overlap_purge(session: ReviewSession, ua: UserAddedDec
         ]
     session.decisions.append(ua)
     return removed
+
+
+def set_default_operator(
+    session: ReviewSession, operator: str, params: dict[str, Any] | None
+) -> None:
+    """Switch an open session to another replacement method.
+
+    Decisions are kept: a decision without its own operator follows the
+    session default at preview and commit time, so its replacement simply
+    re-renders; custom literals and rejections are unaffected. The
+    ``fake_data_salt`` is kept too, so switching back to ``hips`` brings the
+    same fakes back.
+    """
+    _require_open(session)
+    session.default_operator = operator
+    session.default_operator_params = dict(params or {})
 
 
 def commit(session: ReviewSession, now: datetime) -> None:
