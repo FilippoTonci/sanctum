@@ -47,8 +47,9 @@ analyzer  anonymizer  documents    ← detection, rewriting, format I/O
   threading our score threshold and registry overrides through.
 - `recognizers.py` — extra recognizers; the email recognizer matches any
   well-formed domain (internal TLDs like `.local` included).
-- `nlp_config.py` — builds the spaCy / GLiNER NER backend per the
-  configured tier. **Switching backends is a config knob, not a code change.**
+- `nlp_config.py` — builds the spaCy NLP engine (tokens and lemmas for the
+  pattern recognizers' context words). Names and other entities come from the
+  bundled GLiNER-PII recognizer, not spaCy's NER.
 
 ### `sanctum/anonymizer/` — Rewriting
 - `adapter.py` — picks an `Operator` per detection and applies it.
@@ -180,8 +181,8 @@ outside CI; they're the truth-set for "did detection quality regress?".
 - `generate_fixtures.py`, `generate_office_fixtures.py` — synthesize the
   document fixtures used in tests (no real PII checked in).
 - `generate_pdf_samples.py` — synthetic PDFs used by the PDF tests.
-- `fetch_public_docs.py`, `fetch_public_office_samples.py` — pull
-  third-party reference samples for evaluation.
+- `fetch_public_office_samples.py` — pulls third-party office files into
+  the gitignored `tests/fixtures/office/public/` for manual adapter testing.
 
 ## Where to start when adding…
 
