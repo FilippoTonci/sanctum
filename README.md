@@ -1,21 +1,20 @@
-<div align="center">
-
-<br/>
-
-<img src="https://img.shields.io/badge/version-0.1.0--alpha-blue?style=for-the-badge" alt="Version"/>
-<img src="https://img.shields.io/badge/license-MIT-green?style=for-the-badge" alt="License"/>
-<img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey?style=for-the-badge" alt="Platform"/>
-<img src="https://img.shields.io/badge/python-3.10%2B-yellow?style=for-the-badge" alt="Python"/>
-<img src="https://img.shields.io/badge/built%20on-Microsoft%20Presidio-0078D4?style=for-the-badge&logo=microsoft" alt="Built on Presidio"/>
-<img src="https://img.shields.io/badge/status-In%20Development-orange?style=for-the-badge" alt="Status"/>
-
 # Sanctum
 
-<img src="img/SanctumLogo.png" alt="Sanctum" width="280"/>
+![Sanctum](img/SanctumLogo-360.png)
 
-### *Local-First Document Anonymization for Professionals*
+[![CI](https://github.com/FilippoTonci/sanctum/actions/workflows/ci.yml/badge.svg)](https://github.com/FilippoTonci/sanctum/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
+[![Built on Microsoft Presidio](https://img.shields.io/badge/built%20on-Microsoft%20Presidio-0078D4)](https://microsoft.github.io/presidio/)
+[![Desktop app release](https://img.shields.io/github/v/release/FilippoTonci/sanctum-desktop?include_prereleases&label=desktop%20app)](https://github.com/FilippoTonci/sanctum-desktop/releases)
 
-**Remove PII from your documents — entirely on your machine, no cloud required.**
+**Website**: [sanctum.me.uk](https://sanctum.me.uk) ·
+**Desktop app**: [sanctum-desktop](https://github.com/FilippoTonci/sanctum-desktop) ·
+**Changelog**: [CHANGELOG.md](CHANGELOG.md) ·
+**Contributing**: [CONTRIBUTING.md](CONTRIBUTING.md) ·
+**Feedback**: [feedback@sanctum.me.uk](mailto:feedback@sanctum.me.uk)
+
+**Local-first document anonymization for professionals.** Remove PII from your documents entirely on your machine, no cloud required.
 
 Sanctum is a local-first, air-gapped document anonymization desktop application built on [Microsoft Presidio](https://microsoft.github.io/presidio/). It is designed for lawyers, consultants, and professionals who need to sanitize documents containing client confidential information before sharing, storing, or archiving them — without violating attorney-client privilege or international data protection laws (GDPR, HIPAA, DPDP Act 2023).
 
@@ -24,8 +23,6 @@ Sanctum is a local-first, air-gapped document anonymization desktop application 
 [Getting Started](#-getting-started) · [Features](#-features) · [Architecture](#-architecture) · [Roadmap](#-roadmap) · [Contributing](#-contributing)
 
 ---
-
-</div>
 
 ## 📌 The Problem
 
@@ -48,7 +45,7 @@ The current tool landscape leaves individual practitioners with no practical opt
 
 ### 🛡️ Core Anonymization Engine
 - **Powered by Microsoft Presidio** — dual-engine architecture separating PII *detection* from *transformation*
-- **Named Entity Recognition (NER)** via spaCy and Transformer backends for unstructured text (names, locations, organizations)
+- **Named Entity Recognition (NER)** via a bundled GLiNER-PII model (ONNX, runs locally) for names, organizations, places, dates and ID numbers; spaCy supplies the tokens and lemmas the pattern recognizers use
 - **Pattern Recognition** via customizable regex + contextual proximity scoring for domain-specific identifiers (case numbers, account numbers, national IDs)
 - **Luhn Checksum Validation** to eliminate false positives in financial data strings
 - **Multiple Anonymization Operators**: redaction, pseudonymization, encryption (AES-256), and synthetic HIPS replacement
@@ -170,7 +167,7 @@ Sanctum explicitly labels which threshold has been met for every document proces
 
 ## 🚀 Getting Started
 
-> **Note:** Phases 0, 1, and 1.5 are shipped — CLI, structured document adapters (`.docx` / `.xlsx` / `.pdf` / `.pptx`), encrypted mapping store, localhost Flask API, and the human-in-the-loop review session API are all functional. PowerPoint and PDF review (with a positioned `/layout` endpoint) landed in 0.2.0-rc.1. The Phase 3 desktop GUI ([`sanctum-desktop`](https://github.com/FilippoTonci/sanctum-desktop)) consumes the review-session API directly and runs end-to-end on Linux today; signed installers and the macOS / Windows release pipeline are next.
+> **Note:** Phases 0, 1, and 1.5 are shipped — CLI, structured document adapters (`.docx` / `.xlsx` / `.pdf` / `.pptx`), encrypted mapping store, localhost Flask API, and the human-in-the-loop review session API are all functional. PowerPoint and PDF review (with a positioned `/layout` endpoint) landed in 0.2.0-rc.1. The Phase 3 desktop GUI ([`sanctum-desktop`](https://github.com/FilippoTonci/sanctum-desktop)) consumes the review-session API directly; its unsigned macOS, Windows and Linux builds are published as [releases](https://github.com/FilippoTonci/sanctum-desktop/releases). Signed installers are next.
 
 ### Prerequisites
 
@@ -363,15 +360,15 @@ Sanctum is a tool to *reduce* risk, not eliminate it. Users must understand:
 | Layer | Technology | Status |
 |---|---|---|
 | Anonymization Engine | [Microsoft Presidio](https://github.com/microsoft/presidio) | ✅ Integrated |
-| NER Models | [spaCy](https://spacy.io/) (standard), HuggingFace Transformers (planned) | ✅ spaCy active |
+| NER Model | [GLiNER-PII](https://huggingface.co/knowledgator/gliner-pii-base-v1.0) as uint8 ONNX via [ONNX Runtime](https://onnxruntime.ai/), no PyTorch; [spaCy](https://spacy.io/) for tokens and lemmas | ✅ Integrated |
 | Synthetic Data (HIPS) | [Faker](https://faker.readthedocs.io/) | ✅ Integrated |
 | Configuration | [Pydantic Settings](https://docs.pydantic.dev/latest/concepts/pydantic_settings/) | ✅ Integrated |
 | CLI | [Click](https://click.palletsprojects.com/) + [Rich](https://rich.readthedocs.io/) | ✅ Integrated |
-| Desktop GUI | Electron / native wrapper | Planned (Phase 3) |
+| Desktop GUI | Electron + React ([`sanctum-desktop`](https://github.com/FilippoTonci/sanctum-desktop)) | ✅ Unsigned builds released |
 | Background Service | Python + Flask (localhost), served by [waitress](https://docs.pylonsproject.org/projects/waitress/) | ✅ Integrated |
 | Encrypted Mapping Store | ChaCha20-Poly1305 AEAD + Argon2id KDF (single-file container, OS file lock) | ✅ Integrated |
 | Document Processing | python-docx, openpyxl, pdfplumber, pypdf, python-pptx, reportlab | ✅ Integrated |
-| Packaging | PyInstaller / Electron Builder | Planned (Phase 3) |
+| Packaging | PyInstaller (engine sidecar) + electron-builder (installers) | ✅ Integrated, signing pending |
 
 ---
 

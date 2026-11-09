@@ -55,12 +55,13 @@ in via Protocols in `sanctum/core/protocols.py`. The composition root is
 
 No runtime network calls. Model downloads are install-time only.
 
-**Known latent gap**: `sanctum/analyzer/adapter.py::PresidioAnalyzer.__init__`
-constructs `AnalyzerEngine()` with no explicit NLP config when `nlp_engine` is
-not passed. Presidio's default is `en_core_web_lg` (560 MB), and if the model
-is missing it will call `spacy.cli.download()` — breaking the airgap. The fix
-is to wire `sanctum/analyzer/nlp_config.py::create_nlp_engine` into the
-default path. Do not add code that silently downloads models.
+**spaCy engine must be explicit**: `_create_engine` passes
+`sanctum/analyzer/nlp_config.py::create_nlp_engine(settings.nlp.spacy_model)`
+to `PresidioAnalyzer`. Constructing `PresidioAnalyzer()` without `nlp_engine`
+falls through to Presidio's default (`en_core_web_lg`, 560 MB), which calls
+`spacy.cli.download()` when the model is missing — breaking the airgap. Keep
+the composition root the only place an analyzer is built for real use. Do not
+add code that silently downloads models.
 
 **Bundled NER model**: `_create_engine` always swaps the stock
 `SpacyRecognizer` for `GlinerOnnxRecognizer`
@@ -74,9 +75,6 @@ The one sanctioned fetch is `scripts/fetch_ner_model.py` (install/build time).
 Its threshold (0.2) ships with it; don't inherit Presidio's 0.35–0.4 for it.
 Never add the `gliner` / `transformers` / `torch` packages back: they import
 PyTorch and resolve backbone files by Hub id.
-
-See `resources/presidio-architecture.md` for the full network-call audit and
-Presidio component breakdown — read it before touching the analyzer layer.
 
 ## Document adapters
 
@@ -140,5 +138,4 @@ python -m sanctum.cli ...       # same CLI, no PATH needed
 
 - `README.md` — architecture diagram, compliance mapping, phased roadmap.
 - `CONTRIBUTING.md` — ground rules, quality gates, fixture guidelines.
-- `resources/presidio-architecture.md` — authoritative Presidio audit + gotchas.
 - `.github/workflows/ci.yml` — CI matrix, coverage, spaCy model caching.
