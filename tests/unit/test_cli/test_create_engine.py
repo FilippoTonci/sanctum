@@ -43,12 +43,35 @@ def test_create_engine_wires_gliner_in_place_of_spacy_ner(tmp_path: Path) -> Non
         _create_engine()
 
     resolve.assert_called_once_with(tmp_path)
-    rec_cls.assert_called_once_with(tmp_path, threshold=0.2, score_floor=0.35)
+    rec_cls.assert_called_once_with(tmp_path, threshold=0.2)
     _, kwargs = mock_analyzer_cls.call_args
     extra = kwargs["extra_recognizers"]
     assert [type(r).__name__ for r in extra] == ["AnyDomainEmailRecognizer", "MagicMock"]
     assert extra[1] is fake_recognizer
     assert kwargs["remove_recognizer_names"] == ["SpacyRecognizer"]
+
+
+@pytest.mark.parametrize("threshold", [0.25, 0.5])
+def test_score_floor_does_not_follow_the_default_threshold(
+    tmp_path: Path, threshold: float
+) -> None:
+    """Regression for #52: a floor tied to the threshold made it a no-op."""
+    s = _settings(tmp_path)
+    s.analyzer.default_score_threshold = threshold
+    with (
+        patch("sanctum.analyzer.nlp_config.create_nlp_engine"),
+        patch("sanctum.analyzer.ner_model.resolve_model_dir", return_value=tmp_path),
+        patch("sanctum.analyzer.gliner_recognizer.GlinerOnnxRecognizer") as rec_cls,
+        patch("sanctum.anonymizer.adapter.PresidioAnonymizer"),
+        patch("sanctum.analyzer.adapter.PresidioAnalyzer") as mock_analyzer_cls,
+        patch("sanctum.cli.commands.settings", s),
+    ):
+        from sanctum.cli.commands import _create_engine
+
+        _create_engine()
+
+    assert "score_floor" not in rec_cls.call_args.kwargs
+    assert mock_analyzer_cls.call_args.kwargs["default_score_threshold"] == threshold
 
 
 def test_create_engine_fails_closed_without_the_model(tmp_path: Path) -> None:

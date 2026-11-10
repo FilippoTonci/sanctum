@@ -79,10 +79,13 @@ def _create_engine() -> SanctumEngine:
     # fall through to the default loader, which can call
     # `spacy.cli.download()` and break the air-gap.
     nlp_engine = create_nlp_engine(model_name=settings.nlp.spacy_model)
+    # The rescale floor stays at the recognizer's default (0.35, what the
+    # pattern recognizers are tuned around). Tying it to
+    # `default_score_threshold` would lift every model score above any
+    # threshold the user picks, so raising it would filter nothing (#52).
     ner = GlinerOnnxRecognizer(
         resolve_model_dir(settings.nlp.ner_model_dir),
         threshold=settings.nlp.ner_threshold,
-        score_floor=settings.analyzer.default_score_threshold,
     )
 
     analyzer = PresidioAnalyzer(
