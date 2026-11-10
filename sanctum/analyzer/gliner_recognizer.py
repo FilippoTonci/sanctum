@@ -61,9 +61,11 @@ class GlinerOnnxRecognizer(EntityRecognizer):
     Scores are rescaled from ``[threshold, 1]`` onto ``[score_floor, 1]``.
     Presidio applies one ``score_threshold`` to every recognizer, and the
     pattern recognizers are tuned around 0.35; without the rescale every model
-    hit between 0.2 and 0.35 would be dropped. Pass the analyzer's default
-    threshold as ``score_floor`` so the defaults line up exactly; a stricter
-    per-request threshold then tightens this recognizer proportionally.
+    hit between 0.2 and 0.35 would be dropped. Keep ``score_floor`` fixed at
+    that tuning point rather than tying it to the user's threshold: a stricter
+    threshold (per request or as the default) then tightens this recognizer
+    proportionally. Raising the floor along with it would lift every hit above
+    the new threshold and filter nothing.
     """
 
     def __init__(
