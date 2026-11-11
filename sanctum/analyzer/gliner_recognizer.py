@@ -2,7 +2,15 @@
 
 Replaces Presidio's stock ``SpacyRecognizer`` as the source of PERSON /
 ORGANIZATION / LOCATION / DATE_TIME and of ID numbers no regex recognizer
-covers (passport, tax ID). Every pattern and context recognizer stays.
+covers. Every pattern and context recognizer stays.
+
+The model spots sensitive numbers well but often picks the wrong kind (a phone
+number as an SSN, an amount as a card number), so all of its number labels
+map to one ``ID_NUMBER``. The specific types (CREDIT_CARD, IBAN_CODE, US_SSN,
+...) come only from Presidio's pattern recognizers, which check structure
+(checksums, formats). Model numbers with no digit, or that are currency
+amounts, are dropped; capitalised names it calls numbers (often banks: the
+"bank account" label) become ORGANIZATION (#56).
 
 Choices below come from the sanctum-research benchmark (REPORT.md):
 
@@ -40,13 +48,20 @@ KNOWLEDGATOR_PROMPTS: dict[str, str] = {
     "url": "URL",
     "ip address": "IP_ADDRESS",
     "iban": "IBAN_CODE",
-    "ssn": "US_SSN",
-    "driver license": "US_DRIVER_LICENSE",
-    "bank account": "US_BANK_NUMBER",
-    "credit card": "CREDIT_CARD",
+    "ssn": "ID_NUMBER",
+    "driver license": "ID_NUMBER",
+    "bank account": "ID_NUMBER",
+    "credit card": "ID_NUMBER",
     "passport number": "ID_NUMBER",
     "tax id": "ID_NUMBER",
 }
+
+# A model "number" that is really an amount: "$9,433.00", "£4.2 million", "120 EUR".
+_CURRENCY = re.compile(
+    r"^(?:[$£€¥]\s?[\d.,]+(?:\s?(?:k|m|bn|million|billion))?"
+    r"|[\d.,]+\s?(?:GBP|USD|EUR|CHF|JPY|dollars|pounds|euros))$",
+    re.IGNORECASE,
+)
 
 DEFAULT_THRESHOLD = 0.2
 MAX_CHUNK_CHARS = 1000
@@ -110,14 +125,17 @@ class GlinerOnnxRecognizer(EntityRecognizer):
         results: list[RecognizerResult] = []
         for offset, chunk in chunk_text(text):
             for ent in self._model.predict(chunk, labels, threshold=self._threshold):
-                if self._prompts[ent.label] not in wanted:
-                    continue
                 start, end = _trim(text, offset + ent.start, offset + ent.end)
                 if end <= start:
                     continue
+                etype: str | None = self._prompts[ent.label]
+                if etype == "ID_NUMBER":
+                    etype = _number_type(text[start:end])
+                if etype is None or etype not in wanted:
+                    continue
                 results.append(
                     RecognizerResult(
-                        entity_type=self._prompts[ent.label],
+                        entity_type=etype,
                         start=start,
                         end=end,
                         score=self._rescale(ent.score),
@@ -163,6 +181,20 @@ def chunk_text(text: str, max_chars: int = MAX_CHUNK_CHARS) -> list[tuple[int, s
     if cur is not None:
         out.append((cur[0], text[cur[0] : cur[1]]))
     return out
+
+
+def _number_type(span: str) -> str | None:
+    """Re-check a span the model called a number.
+
+    An amount ("$9,433.00") or a lowercase phrase ("client trust account") is
+    dropped. A capitalised name with no digit ("Barclays Bank", "ABN AMRO") is
+    what the model's "bank account" label often lands on: keep it, as the
+    organisation it is, rather than leak it.
+    """
+    span = span.strip()
+    if any(c.isdigit() for c in span):
+        return None if _CURRENCY.match(span) else "ID_NUMBER"
+    return "ORGANIZATION" if any(c.isupper() for c in span) else None
 
 
 def _trim(text: str, start: int, end: int) -> tuple[int, int]:

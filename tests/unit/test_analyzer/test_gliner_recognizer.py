@@ -149,3 +149,44 @@ class TestChunkText:
     def test_blank_text(self) -> None:
         assert chunk_text("") == []
         assert chunk_text("\n\n") == []
+
+
+def test_model_number_labels_all_map_to_id_number() -> None:
+    """The model's kind-of-number guesses are unreliable, so they collapse (#56)."""
+    number_labels = ["ssn", "driver license", "bank account", "credit card", "passport number"]
+    assert {KNOWLEDGATOR_PROMPTS[label] for label in number_labels} == {"ID_NUMBER"}
+
+
+@pytest.mark.parametrize(
+    ("span", "label"),
+    [
+        ("801-922-6916", "ssn"),
+        ("4111 1111 1111 1111", "credit card"),
+        ("20-45-77 41234567", "bank account"),
+    ],
+)
+def test_model_numbers_are_kept_as_id_number(span: str, label: str) -> None:
+    (r,) = _rec({span: (label, 0.9)}).analyze(f"Ref {span} here", entities=[])
+    assert r.entity_type == "ID_NUMBER"
+
+
+@pytest.mark.parametrize(
+    ("span", "label"),
+    [
+        ("$9,433.00", "credit card"),
+        ("£4.2 million", "bank account"),
+        ("1,200 EUR", "credit card"),
+        ("client trust account", "bank account"),
+        ("escrow acct", "bank account"),
+    ],
+)
+def test_amounts_and_digitless_numbers_are_dropped(span: str, label: str) -> None:
+    assert _rec({span: (label, 0.9)}).analyze(f"Pay {span} now", entities=[]) == []
+
+
+def test_capitalised_digitless_number_becomes_organization() -> None:
+    """The "bank account" label often lands on bank names: keep them (#56)."""
+    (r,) = _rec({"Barclays Bank": ("bank account", 0.9)}).analyze(
+        "Paid via Barclays Bank today", entities=[]
+    )
+    assert r.entity_type == "ORGANIZATION"
