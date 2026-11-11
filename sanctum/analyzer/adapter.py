@@ -15,7 +15,6 @@ class PresidioAnalyzer:
         nlp_engine: Any = None,
         registry: Any = None,
         default_score_threshold: float = 0.35,
-        default_language: str = "en",
         extra_recognizers: list[Any] | None = None,
         remove_recognizer_names: list[str] | None = None,
     ) -> None:
@@ -40,7 +39,6 @@ class PresidioAnalyzer:
             self._engine.registry.remove_recognizer(name)
 
         self._default_threshold = default_score_threshold
-        self._default_language = default_language
 
     def analyze(
         self,

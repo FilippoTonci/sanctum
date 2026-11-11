@@ -91,7 +91,6 @@ def _create_engine() -> SanctumEngine:
     analyzer = PresidioAnalyzer(
         nlp_engine=nlp_engine,
         default_score_threshold=settings.analyzer.default_score_threshold,
-        default_language=settings.analyzer.default_language,
         extra_recognizers=[AnyDomainEmailRecognizer(), ner],
         remove_recognizer_names=["SpacyRecognizer"],
     )
