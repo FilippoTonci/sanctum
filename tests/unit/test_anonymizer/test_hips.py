@@ -95,6 +95,47 @@ class TestHipsOperator:
     def test_missing_salt_still_works(self) -> None:
         assert _fake("John Smith", salt=None) not in ("", "John Smith")
 
+    @pytest.mark.parametrize(
+        ("original", "pattern"),
+        [
+            ("December 22, 2025", r"^[A-Z][a-z]+ \d{1,2}, \d{4}$"),
+            ("3 March 2024", r"^\d{1,2} [A-Z][a-z]+ \d{4}$"),
+            ("2025-12-22", r"^\d{4}-\d{2}-\d{2}$"),
+            ("22/12/2025", r"^\d{2}/\d{2}/\d{4}$"),
+        ],
+    )
+    def test_dates_keep_their_format(self, original: str, pattern: str) -> None:
+        import re
+
+        fake = _fake(original, "DATE_TIME")
+        assert fake != original
+        assert re.match(pattern, fake), fake
+
+    def test_dates_in_a_document_keep_their_order_and_gaps(self) -> None:
+        """Effective date -> term end must not flip (#58)."""
+        from datetime import datetime
+
+        fmt = "%B %d, %Y"
+        start, end = "December 22, 2025", "May 13, 2027"
+        for salt in ("a", "b", "c", "d"):
+            fs = datetime.strptime(_fake(start, "DATE_TIME", salt=salt), fmt)
+            fe = datetime.strptime(_fake(end, "DATE_TIME", salt=salt), fmt)
+            assert fe - fs == datetime.strptime(end, fmt) - datetime.strptime(start, fmt)
+
+    def test_unparseable_dates_still_get_a_fake(self) -> None:
+        assert _fake("next Monday", "DATE_TIME") not in ("", "next Monday")
+
+    @pytest.mark.parametrize("original", ["801-922-6916", "GB82WEST12345698765432", "HRB 88213"])
+    def test_numbers_keep_their_shape(self, original: str) -> None:
+        import re
+
+        def shape(s: str) -> str:
+            return re.sub(r"[a-z]", "a", re.sub(r"[A-Z]", "A", re.sub(r"\d", "9", s)))
+
+        fake = _fake(original, "ID_NUMBER")
+        assert fake != original
+        assert shape(fake) == shape(original)
+
 
 @pytest.fixture(scope="module")
 def anonymizer() -> PresidioAnonymizer:
