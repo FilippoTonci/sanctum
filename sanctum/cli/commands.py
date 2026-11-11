@@ -91,7 +91,6 @@ def _create_engine() -> SanctumEngine:
     analyzer = PresidioAnalyzer(
         nlp_engine=nlp_engine,
         default_score_threshold=settings.analyzer.default_score_threshold,
-        default_language=settings.analyzer.default_language,
         extra_recognizers=[AnyDomainEmailRecognizer(), ner],
         remove_recognizer_names=["SpacyRecognizer"],
     )
@@ -459,14 +458,9 @@ def commit_review_session(
 
     Reads the persisted session under ``~/.sanctum/sessions/<id>/``,
     applies every accepted and user-added decision against the stored
-    input bytes, and writes the final document to OUTPUT_PATH with
-    zero ``sanctum:`` trailers. Accepted pseudonymize decisions are
-    persisted to the encrypted mapping store; other operators leave
-    the store untouched.
-
-    Under Flow B (Phase 1.5 WS4) this is the session-scoped commit
-    entry point. The file-scoped ``commit-review <input> <output>``
-    form is retained as a deprecated shim for one release.
+    input bytes, and writes the final document to OUTPUT_PATH. Accepted
+    pseudonymize decisions are persisted to the encrypted mapping store;
+    other operators leave the store untouched.
     """
     from contextlib import nullcontext
 

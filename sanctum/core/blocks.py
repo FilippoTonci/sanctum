@@ -16,6 +16,7 @@ from dataclasses import dataclass
 
 from sanctum.core.models import DetectionResult, TextSegment
 from sanctum.core.propagation import collect_seeds, find_mentions
+from sanctum.core.role_terms import defined_terms, is_role_term
 
 
 @dataclass(frozen=True)
@@ -123,6 +124,13 @@ def detect_blocks(
         spans = [(d.start, d.end, d.entity_type, d.score) for d in analyze(block.text)]
         analysed.append((block, spans))
 
+    # A term defined anywhere ("the Supplier") is a role in every block.
+    defined = defined_terms(block.text for block, _ in analysed)
+    analysed = [
+        (block, [sp for sp in spans if not is_role_term(sp[2], block.text[sp[0] : sp[1]], defined)])
+        for block, spans in analysed
+    ]
+
     seeds = collect_seeds(
         (etype, block.text[s:e], score) for block, spans in analysed for s, e, etype, score in spans
     )
@@ -132,7 +140,8 @@ def detect_blocks(
         if seeds:
             covered = [(s, e) for s, e, _, _ in spans]
             for m in find_mentions(block.text, seeds, covered):
-                spans.append((m.start, m.end, m.entity_type, m.score))
+                if not is_role_term(m.entity_type, block.text[m.start : m.end], defined):
+                    spans.append((m.start, m.end, m.entity_type, m.score))
             spans.sort(key=lambda sp: (sp[0], sp[1]))
         for start, end, etype, score in spans:
             pieces = _project(block, start, end)

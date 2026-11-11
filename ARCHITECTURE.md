@@ -126,10 +126,10 @@ analyzer  anonymizer  documents    ← detection, rewriting, format I/O
 One reader/writer pair per format, behind a uniform `DocumentAdapter`
 protocol so the engine doesn't branch on format.
 
-- `base.py` — protocol + shared helpers.
 - `registry.py` — picks the adapter for a given extension.
+- `structured.py` — `build_segment` / `build_document` helpers.
 - `docx_adapter.py`, `pdf_adapter.py`, `pptx_adapter.py`,
-  `xlsx_adapter.py`, `text.py` — per-format implementations. Segment
+  `xlsx_adapter.py` — per-format implementations. Segment
   grain: docx per run (plus `hf/...` header/footer runs), pptx per run
   (text frames, tables, groups, `notes`, picture `alt`), pdf per line
   (`page{i}/line{j}`), xlsx per string cell.

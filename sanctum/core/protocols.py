@@ -40,20 +40,6 @@ class Anonymizer(Protocol):
 
 
 @runtime_checkable
-class DocumentReader(Protocol):
-    """Reads document content from a file path."""
-
-    def read(self, path: Path) -> str: ...
-
-
-@runtime_checkable
-class DocumentWriter(Protocol):
-    """Writes content to a file path."""
-
-    def write(self, path: Path, content: str) -> None: ...
-
-
-@runtime_checkable
 class StructuredDocumentReader(Protocol):
     """Reads a real-world office document into a StructuredDocument."""
 

@@ -762,3 +762,24 @@ class TestLinkedFindingLeakCheck:
         with pytest.raises(LeakCheckError):
             engine.process_document(reader, writer, tmp_path / "in.docx", out)
         assert not out.exists()
+
+
+def test_analyze_drops_role_nouns_before_and_after_propagation() -> None:
+    """Role nouns never seed propagation and are never added by it (#55)."""
+    from sanctum.core.engine import SanctumEngine
+    from sanctum.core.models import DetectionResult
+
+    text = 'Rachel Moore (the "Discloser") and the parties. Rachel signs.'
+
+    class Analyzer:
+        def analyze(self, text: str, **_: object) -> list[DetectionResult]:
+            def hit(etype: str, needle: str) -> DetectionResult:
+                i = text.index(needle)
+                return DetectionResult(
+                    entity_type=etype, start=i, end=i + len(needle), score=0.9, text_span=needle
+                )
+
+            return [hit("PERSON", "Rachel Moore"), hit("ORGANIZATION", "parties")]
+
+    found = SanctumEngine(Analyzer(), object()).analyze(text)  # type: ignore[arg-type]
+    assert [d.text_span for d in found] == ["Rachel Moore", "Rachel"]

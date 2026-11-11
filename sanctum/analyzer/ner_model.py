@@ -19,7 +19,6 @@ from sanctum.core.exceptions import ConfigurationError
 REPO_ID = "knowledgator/gliner-pii-base-v1.0"
 REVISION = "61726e0ad791dcab3e29339bbec3ad42ded65641"
 DIR_NAME = "gliner-pii-base-v1.0"
-LICENSE = "Apache-2.0"
 
 # Every file we take from the repo, with its SHA-256 at REVISION. README.md is
 # the model card, kept for provenance and licence attribution.

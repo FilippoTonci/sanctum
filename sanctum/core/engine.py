@@ -39,6 +39,7 @@ from sanctum.core.protocols import (
 from sanctum.core.review.previews import compute_preview, replacement_context
 from sanctum.core.review.proposals import build_proposals_from_findings
 from sanctum.core.review.session import commit as commit_session
+from sanctum.core.role_terms import defined_terms, is_role_term
 
 if TYPE_CHECKING:
     from sanctum.core.review.store import SessionStore
@@ -60,8 +61,9 @@ class SanctumEngine:
     ) -> list[DetectionResult]:
         """Run PII detection on the given text.
 
-        Names the analyzer finds are then marked wherever else they occur in
-        ``text`` (``sanctum.core.propagation``).
+        Role nouns and the text's own defined terms are dropped first
+        (``sanctum.core.role_terms``); names the analyzer finds are then marked
+        wherever else they occur in ``text`` (``sanctum.core.propagation``).
         """
         try:
             detections = self._analyzer.analyze(
@@ -72,7 +74,14 @@ class SanctumEngine:
             )
         except Exception as exc:
             raise AnalysisError(f"Analysis failed: {exc}") from exc
-        return propagate(text, detections)
+        # Filter before propagation (a role word must not seed) and after it
+        # (a seed's first word can be one: "expert network" -> "Expert").
+        defined = defined_terms([text])
+
+        def names(found: list[DetectionResult]) -> list[DetectionResult]:
+            return [d for d in found if not is_role_term(d.entity_type, d.text_span, defined)]
+
+        return names(propagate(text, names(detections)))
 
     def anonymize(
         self,
