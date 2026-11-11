@@ -41,12 +41,29 @@ def test_maps_labels_to_sanctum_types_with_absolute_offsets() -> None:
     assert all(r.recognition_metadata["recognizer_name"] == "GlinerOnnxRecognizer" for r in results)
 
 
-def test_only_prompts_for_requested_entities_are_sent() -> None:
-    rec = _rec({})
-    rec.analyze("Some text", entities=["LOCATION"])
+def test_full_label_set_is_prompted_and_results_filtered() -> None:
+    """A subset of entities must not change what the model sees (#57)."""
+    rec = _rec({"Jane Doe": ("name", 0.9), "Paris": ("location city", 0.8)})
+    results = rec.analyze("Jane Doe lives in Paris.", entities=["LOCATION"])
     (_, labels, threshold) = rec._model.calls[0]
-    assert labels == ["location address", "location city", "location country"]
+    assert labels == list(KNOWLEDGATOR_PROMPTS)
     assert threshold == 0.2
+    assert [r.entity_type for r in results] == ["LOCATION"]
+
+
+def test_subset_results_equal_full_results_filtered() -> None:
+    hits = {
+        "Jane Doe": ("name", 0.9),
+        "Paris": ("location city", 0.8),
+        "a@b.co": ("email address", 0.9),
+    }
+    text = "Jane Doe lives in Paris, a@b.co."
+    wanted = ["PERSON", "EMAIL_ADDRESS"]
+
+    def found(entities: list[str]) -> set[tuple[str, int, int]]:
+        return {(r.entity_type, r.start, r.end) for r in _rec(hits).analyze(text, entities)}
+
+    assert found(wanted) == {x for x in found([]) if x[0] in wanted}
 
 
 def test_no_requested_entity_supported_skips_the_model() -> None:

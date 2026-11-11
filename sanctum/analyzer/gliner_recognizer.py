@@ -100,13 +100,18 @@ class GlinerOnnxRecognizer(EntityRecognizer):
         nlp_artifacts: NlpArtifacts | None = None,
     ) -> list[RecognizerResult]:
         wanted = set(entities) if entities else set(self.supported_entities)
-        labels = [p for p, etype in self._prompts.items() if etype in wanted]
-        if not labels:
+        if not wanted & set(self._prompts.values()):
             return []
+        # Always prompt the full label set and filter afterwards: GLiNER's
+        # spans and scores depend on the labels it is given, so prompting a
+        # subset would change what is found for the types still wanted (#57).
+        labels = list(self._prompts)
 
         results: list[RecognizerResult] = []
         for offset, chunk in chunk_text(text):
             for ent in self._model.predict(chunk, labels, threshold=self._threshold):
+                if self._prompts[ent.label] not in wanted:
+                    continue
                 start, end = _trim(text, offset + ent.start, offset + ent.end)
                 if end <= start:
                     continue
