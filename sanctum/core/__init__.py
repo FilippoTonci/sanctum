@@ -23,8 +23,6 @@ from sanctum.core.models import (
 from sanctum.core.protocols import (
     Analyzer,
     Anonymizer,
-    DocumentReader,
-    DocumentWriter,
     OutputTextExtractor,
     StructuredDocumentReader,
     StructuredDocumentWriter,
@@ -40,8 +38,6 @@ __all__ = [
     "DetectionResult",
     "DocumentError",
     "DocumentFormat",
-    "DocumentReader",
-    "DocumentWriter",
     "LeakCheckError",
     "OperatorPolicy",
     "OutputTextExtractor",
