@@ -95,3 +95,22 @@ def test_block_texts_join_each_block_with_join_before_in_document_order() -> Non
         seg("l1", "second line", "para", join=" "),
     ]
     assert block_texts(segments) == ["Dear Jennifer", "alone", "first line second line"]
+
+
+def test_term_defined_in_one_block_is_dropped_in_every_block() -> None:
+    """(the "Supplier") on page 1 makes "Supplier" a role on page 5 too (#55)."""
+    segs = [
+        seg("p0/r0", 'Acme Ltd (the "Supplier") agrees.', "p0"),
+        seg("p9/r0", "The Supplier shall deliver.", "p9"),
+    ]
+    assert detect_blocks(segs, fake_analyze("ORGANIZATION", "Supplier")) == []
+
+
+def test_propagated_role_mentions_are_dropped() -> None:
+    """A seed's first word can be a role ("expert network" -> "Expert")."""
+    segs = [
+        seg("p0/r0", "From the expert network today.", "p0"),
+        seg("p1/r0", "Expert says hello.", "p1"),
+    ]
+    found = detect_blocks(segs, fake_analyze("ORGANIZATION", "expert network"))
+    assert [f.original for f in found] == ["expert network"]
