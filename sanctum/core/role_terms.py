@@ -1,4 +1,4 @@
-"""Role nouns and defined terms: words that name a role, not a person or firm.
+"""Role nouns, titles and defined terms: words that name a role, not a person or firm.
 
 GLiNER tags contract vocabulary as PERSON / ORGANIZATION ("the parties",
 "Authorized Representative", "the Supplier", "the Board", "HR"). In the
@@ -7,7 +7,9 @@ realistic fake data they get invented names ("the parties" -> "the Rodriguez
 Group"). Two deterministic guards, applied before name propagation so a role
 word never spreads:
 
-* a built-in list of role nouns and department names;
+* a built-in list of role nouns, job titles and department names, plus
+  fragments no name can be: pronouns ("I"), single letters, quarters ("Q2",
+  "FY24") - common on slides, where the model sees words without sentences;
 * the document's own defined terms: a quoted term introduced with an article,
   ``(the "Supplier")``, ``(each a "Party")``, or ``"Confidential Information"
   means``. Without an article, ``Acme Corporation Ltd ("Acme")`` defines a
@@ -46,7 +48,25 @@ ROLE_NOUNS = frozenset(
 # Quotes (straight and typographic) and punctuation around a finding.
 _STRIP = "\"'.,;:()" + "\u201c\u201d\u2018\u2019"
 _POSSESSIVE = re.compile("['\u2019]s$")
-_LEADING = re.compile(r"^(?:the|a|an|each|any|our|your|its|their|such)\s+")
+# Job titles describe a position, like a role noun, not who holds it.
+JOB_TITLES = frozenset(
+    {
+        "chief", "officer", "chief executive officer", "chief financial officer",
+        "chief operating officer", "chief technology officer", "chief information officer",
+        "ceo", "cfo", "coo", "cto", "cio", "director", "managing director",
+        "executive director", "non-executive director", "manager", "assistant",
+        "reviewer", "chair", "chairman", "chairwoman", "chairperson", "secretary",
+        "company secretary", "president", "vice president", "vp", "partner",
+        "senior partner", "associate", "counsel", "general counsel", "head", "lead",
+    }
+)  # fmt: skip
+
+PRONOUNS = frozenset(
+    {"i", "me", "we", "us", "you", "he", "she", "him", "her", "they", "them", "it"}
+)
+_PERIOD = re.compile(r"^(?:q[1-4]|h[12]|fy\s?'?\d{2,4})$")
+
+_LEADING = re.compile(r"^(?:the|a|an|each|any|my|our|your|his|her|its|their|such)\s+")
 _ORDINAL = re.compile(r"^(?:first|second|third|fourth|1st|2nd|3rd|4th)\s+")
 _UNIT = re.compile(r"\s+(?:team|department|dept|division|unit|function)$")
 # (the "Supplier"), (each a "Party"), (together, the "Parties"), (hereinafter "the Company")
@@ -83,11 +103,13 @@ def defined_terms(texts: Iterable[str]) -> frozenset[str]:
 
 
 def is_role_term(entity_type: str, text: str, defined: frozenset[str] = frozenset()) -> bool:
-    """True when a PERSON / ORGANIZATION finding is a role, not a name."""
+    """True when a PERSON / ORGANIZATION finding is a role or title, not a name."""
     if entity_type not in ROLE_TYPES:
         return False
     t = _normalise(text)
     if not t:
         return False
-    terms = ROLE_NOUNS | defined
+    if t in PRONOUNS or len(t) == 1 or _PERIOD.match(t):
+        return True
+    terms = ROLE_NOUNS | JOB_TITLES | defined
     return t in terms or (t.endswith("s") and t[:-1] in terms)

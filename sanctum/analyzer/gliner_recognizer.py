@@ -4,6 +4,13 @@ Replaces Presidio's stock ``SpacyRecognizer`` as the source of PERSON /
 ORGANIZATION / LOCATION / DATE_TIME and of ID numbers no regex recognizer
 covers. Every pattern and context recognizer stays.
 
+The model is asked only about what no pattern recognizer covers. Formats
+(email, phone, web and IP addresses, IBANs) belong to Presidio's pattern
+recognizers, which check their structure; asking the model as well only added
+guesses ("CEO" and "Budget Allocation" as web addresses on a slide deck), and
+a shorter label list sharpens it on names: on CoNLL-2003 test, 493 -> 337
+missed, with fewer false alarms (sanctum-research ``bench/real_text.py``).
+
 The model spots sensitive numbers well but often picks the wrong kind (a phone
 number as an SSN, an amount as a card number), so all of its number labels
 map to one ``ID_NUMBER``. The specific types (CREDIT_CARD, IBAN_CODE, US_SSN,
@@ -25,7 +32,7 @@ Choices below come from the sanctum-research benchmark (REPORT.md):
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -33,8 +40,9 @@ from presidio_analyzer import EntityRecognizer, RecognizerResult
 from presidio_analyzer.nlp_engine import NlpArtifacts
 from sanctum.analyzer.gliner_onnx import GlinerOnnx
 
-# Knowledgator gliner-pii label -> Sanctum entity type. Order is the prompt
-# order the benchmark used; GLiNER scores are mildly order-sensitive.
+# Knowledgator gliner-pii label -> Sanctum entity type: only types no pattern
+# recognizer covers (see the module docstring). Order is the prompt order the
+# benchmark used; GLiNER scores are mildly order-sensitive.
 KNOWLEDGATOR_PROMPTS: dict[str, str] = {
     "name": "PERSON",
     "organization": "ORGANIZATION",
@@ -43,11 +51,6 @@ KNOWLEDGATOR_PROMPTS: dict[str, str] = {
     "location country": "LOCATION",
     "date": "DATE_TIME",
     "dob": "DATE_TIME",
-    "email address": "EMAIL_ADDRESS",
-    "phone number": "PHONE_NUMBER",
-    "url": "URL",
-    "ip address": "IP_ADDRESS",
-    "iban": "IBAN_CODE",
     "ssn": "ID_NUMBER",
     "driver license": "ID_NUMBER",
     "bank account": "ID_NUMBER",
@@ -61,6 +64,10 @@ _CURRENCY = re.compile(
     r"^(?:[$£€¥]\s?[\d.,]+(?:\s?(?:k|m|bn|million|billion))?"
     r"|[\d.,]+\s?(?:GBP|USD|EUR|CHF|JPY|dollars|pounds|euros))$",
     re.IGNORECASE,
+)
+
+_WEEKDAYS = frozenset(
+    {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
 )
 
 DEFAULT_THRESHOLD = 0.2
@@ -128,9 +135,9 @@ class GlinerOnnxRecognizer(EntityRecognizer):
                 start, end = _trim(text, offset + ent.start, offset + ent.end)
                 if end <= start:
                     continue
-                etype: str | None = self._prompts[ent.label]
-                if etype == "ID_NUMBER":
-                    etype = _number_type(text[start:end])
+                claimed = self._prompts[ent.label]
+                recheck = _RECHECK.get(claimed)
+                etype = claimed if recheck is None else recheck(text[start:end])
                 if etype is None or etype not in wanted:
                     continue
                 results.append(
@@ -195,6 +202,30 @@ def _number_type(span: str) -> str | None:
     if any(c.isdigit() for c in span):
         return None if _CURRENCY.match(span) else "ID_NUMBER"
     return "ORGANIZATION" if any(c.isupper() for c in span) else None
+
+
+def _date_type(span: str) -> str | None:
+    """Re-check a span the model called a date.
+
+    A date worth hiding pins down a day: it has a digit or a capitalised name
+    ("March", "Easter Monday 2026"). Weekdays on their own and lowercase
+    phrases ("Monday", "week", "second quarter") identify no one: dropped.
+    """
+    span = span.strip()
+    if any(c.isdigit() for c in span):
+        return "DATE_TIME"
+    words = span.lower().split()
+    if not any(c.isupper() for c in span) or (len(words) == 1 and words[0] in _WEEKDAYS):
+        return None
+    return "DATE_TIME"
+
+
+# Per-type re-check of what the model says: the span's real type, or None to
+# drop it. One entry per type; the analysis loop stays the same.
+_RECHECK: dict[str, Callable[[str], str | None]] = {
+    "ID_NUMBER": _number_type,
+    "DATE_TIME": _date_type,
+}
 
 
 def _trim(text: str, start: int, end: int) -> tuple[int, int]:

@@ -55,10 +55,10 @@ def test_subset_results_equal_full_results_filtered() -> None:
     hits = {
         "Jane Doe": ("name", 0.9),
         "Paris": ("location city", 0.8),
-        "a@b.co": ("email address", 0.9),
+        "Acme Ltd": ("organization", 0.9),
     }
-    text = "Jane Doe lives in Paris, a@b.co."
-    wanted = ["PERSON", "EMAIL_ADDRESS"]
+    text = "Jane Doe lives in Paris, at Acme Ltd."
+    wanted = ["PERSON", "ORGANIZATION"]
 
     def found(entities: list[str]) -> set[tuple[str, int, int]]:
         return {(r.entity_type, r.start, r.end) for r in _rec(hits).analyze(text, entities)}
@@ -190,3 +190,20 @@ def test_capitalised_digitless_number_becomes_organization() -> None:
         "Paid via Barclays Bank today", entities=[]
     )
     assert r.entity_type == "ORGANIZATION"
+
+
+def test_model_is_not_asked_about_formats() -> None:
+    """Formats belong to the pattern recognizers, which check structure."""
+    formats = {"EMAIL_ADDRESS", "PHONE_NUMBER", "URL", "IP_ADDRESS", "IBAN_CODE"}
+    assert not formats & set(KNOWLEDGATOR_PROMPTS.values())
+
+
+@pytest.mark.parametrize("span", ["April 18, 2026", "2023", "March", "late 2024", "Q3 2026"])
+def test_dates_that_pin_down_a_day_are_kept(span: str) -> None:
+    (r,) = _rec({span: ("date", 0.9)}).analyze(f"Due {span} at noon", entities=[])
+    assert r.entity_type == "DATE_TIME"
+
+
+@pytest.mark.parametrize("span", ["Monday", "week", "second quarter", "next month"])
+def test_vague_dates_are_dropped(span: str) -> None:
+    assert _rec({span: ("date", 0.9)}).analyze(f"See you {span} then", entities=[]) == []
