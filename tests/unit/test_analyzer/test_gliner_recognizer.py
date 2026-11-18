@@ -196,3 +196,14 @@ def test_model_is_not_asked_about_formats() -> None:
     """Formats belong to the pattern recognizers, which check structure."""
     formats = {"EMAIL_ADDRESS", "PHONE_NUMBER", "URL", "IP_ADDRESS", "IBAN_CODE"}
     assert not formats & set(KNOWLEDGATOR_PROMPTS.values())
+
+
+@pytest.mark.parametrize("span", ["April 18, 2026", "2023", "March", "late 2024", "Q3 2026"])
+def test_dates_that_pin_down_a_day_are_kept(span: str) -> None:
+    (r,) = _rec({span: ("date", 0.9)}).analyze(f"Due {span} at noon", entities=[])
+    assert r.entity_type == "DATE_TIME"
+
+
+@pytest.mark.parametrize("span", ["Monday", "week", "second quarter", "next month"])
+def test_vague_dates_are_dropped(span: str) -> None:
+    assert _rec({span: ("date", 0.9)}).analyze(f"See you {span} then", entities=[]) == []

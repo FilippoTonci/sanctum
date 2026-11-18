@@ -53,3 +53,27 @@ def test_document_defined_terms_extend_the_list() -> None:
     defined = defined_terms(['Rheinwerk GmbH (the "Target")'])
     assert is_role_term("ORGANIZATION", "the Target", defined)
     assert not is_role_term("ORGANIZATION", "Rheinwerk GmbH", defined)
+
+
+@pytest.mark.parametrize(
+    ("entity_type", "text"),
+    [
+        ("PERSON", "Chief Executive Officer"),
+        ("PERSON", "the CEO"),
+        ("ORGANIZATION", "CFO"),
+        ("PERSON", "Directors"),
+        ("PERSON", "I"),
+        ("PERSON", "Q2"),
+        ("ORGANIZATION", "FY24"),
+        ("PERSON", "J"),
+        ("PERSON", "my assistant"),
+        ("PERSON", "her counsel"),
+    ],
+)
+def test_titles_pronouns_and_periods_are_not_names(entity_type: str, text: str) -> None:
+    assert is_role_term(entity_type, text)
+
+
+@pytest.mark.parametrize("text", ["Al", "Ed", "Jo Smith", "Partners Capital", "Chief Rabbi Mirvis"])
+def test_short_names_and_names_containing_titles_are_kept(text: str) -> None:
+    assert not is_role_term("PERSON", text)

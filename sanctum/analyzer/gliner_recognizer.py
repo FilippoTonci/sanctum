@@ -66,6 +66,10 @@ _CURRENCY = re.compile(
     re.IGNORECASE,
 )
 
+_WEEKDAYS = frozenset(
+    {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+)
+
 DEFAULT_THRESHOLD = 0.2
 MAX_CHUNK_CHARS = 1000
 
@@ -200,10 +204,27 @@ def _number_type(span: str) -> str | None:
     return "ORGANIZATION" if any(c.isupper() for c in span) else None
 
 
+def _date_type(span: str) -> str | None:
+    """Re-check a span the model called a date.
+
+    A date worth hiding pins down a day: it has a digit or a capitalised name
+    ("March", "Easter Monday 2026"). Weekdays on their own and lowercase
+    phrases ("Monday", "week", "second quarter") identify no one: dropped.
+    """
+    span = span.strip()
+    if any(c.isdigit() for c in span):
+        return "DATE_TIME"
+    words = span.lower().split()
+    if not any(c.isupper() for c in span) or (len(words) == 1 and words[0] in _WEEKDAYS):
+        return None
+    return "DATE_TIME"
+
+
 # Per-type re-check of what the model says: the span's real type, or None to
 # drop it. One entry per type; the analysis loop stays the same.
 _RECHECK: dict[str, Callable[[str], str | None]] = {
     "ID_NUMBER": _number_type,
+    "DATE_TIME": _date_type,
 }
 
 
